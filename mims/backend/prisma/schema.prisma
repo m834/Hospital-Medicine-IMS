@@ -1,0 +1,823 @@
+// M-IMS Database Schema
+// Hospital Medicine Inventory Management System
+// Multi-tenant architecture with hospital_id scoping
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// CORE ENTITIES
+// ============================================
+
+model Hospital {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  address   String?
+  phone     String?
+  email     String?
+  status    HospitalStatus @default(ACTIVE)
+  version   Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  users              User[]
+  pharmacies         Pharmacy[]
+  patients           Patient[]
+  medicines          Medicine[]
+  stockBatches       StockBatch[]
+  purchaseOrders     PurchaseOrder[]
+  grns               GRN[]
+  prescriptions      Prescription[]
+  issueTransactions  IssueTransaction[]
+  transferRequests   TransferRequest[] @relation("HospitalTransfers")
+  returnTransactions ReturnTransaction[]
+  alerts             Alert[]
+  auditLogs          AuditLog[]
+  syncOperations     SyncOperation[]
+  systemConfigs      SystemConfig[]
+
+  @@map("hospitals")
+}
+
+model User {
+  id               String     @id @default(uuid())
+  hospitalId       String?    @map("hospital_id") // NULL for SUPER_ADMIN, required for all other roles
+  pharmacyId       String?    @map("pharmacy_id")
+  email            String     @unique
+  passwordHash     String     @map("password_hash")
+  fullName         String     @map("full_name")
+  role             UserRole
+  phone            String?
+  status           UserStatus @default(ACTIVE)
+  mfaEnabled       Boolean    @default(false) @map("mfa_enabled")
+  mfaSecret        String?    @map("mfa_secret")
+  resetToken       String?    @map("reset_token")
+  resetTokenExpiry DateTime?  @map("reset_token_expiry")
+  lastLogin        DateTime?  @map("last_login")
+  version          Int        @default(1)
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  hospital               Hospital?           @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  pharmacy               Pharmacy?           @relation(fields: [pharmacyId], references: [id], onDelete: SetNull)
+  patientsRegistered     Patient[]           @relation("RegisteredBy")
+  attendingPatients      Patient[]           @relation("AttendingDoctor")
+  prescriptions          Prescription[]
+  issueTransactions      IssueTransaction[]
+  transferRequestsMade   TransferRequest[]   @relation("TransferRequester")
+  transfersApproved      TransferRequest[]   @relation("TransferApprover")
+  transfersReceived      TransferRequest[]   @relation("TransferReceiver")
+  returnTransactions     ReturnTransaction[]
+  purchaseOrdersCreated  PurchaseOrder[]
+  grnsReceived           GRN[]
+  alertsAcknowledged     Alert[]
+  auditLogs              AuditLog[]
+
+  @@index([hospitalId])
+  @@index([pharmacyId])
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+model Pharmacy {
+  id           String        @id @default(uuid())
+  hospitalId   String        @map("hospital_id")
+  name         String
+  code         String
+  type         PharmacyType
+  locationWard String?       @map("location_ward")
+  status       PharmacyStatus @default(ACTIVE)
+  version      Int           @default(1)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  hospital               Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  users                  User[]
+  stockBatches           StockBatch[]
+  purchaseOrders         PurchaseOrder[]
+  grns                   GRN[]
+  issueTransactions      IssueTransaction[]
+  transfersFrom          TransferRequest[]   @relation("FromPharmacy")
+  transfersTo            TransferRequest[]   @relation("ToPharmacy")
+  returnTransactions     ReturnTransaction[]
+  alerts                 Alert[]
+  syncOperations         SyncOperation[]
+
+  @@unique([hospitalId, code])
+  @@index([hospitalId])
+  @@index([type])
+  @@map("pharmacies")
+}
+
+// ============================================
+// PATIENT MANAGEMENT
+// ============================================
+
+model Patient {
+  id                String      @id @default(uuid())
+  hospitalId        String      @map("hospital_id")
+  nrNumber          String      @unique @map("nr_number")
+  fullName          String      @map("full_name")
+  mobile            String
+  cnic              String?     // Encrypted
+  dob               DateTime?
+  gender            Gender
+  address           String?
+  visitType         VisitType   @map("visit_type")
+  department        String?
+  ward              String?
+  bed               String?
+  attendingDoctorId String?     @map("attending_doctor_id")
+  registeredBy      String      @map("registered_by")
+  version           Int         @default(1)
+  registeredAt      DateTime    @default(now()) @map("registered_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  hospital           Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  attendingDoctor    User?               @relation("AttendingDoctor", fields: [attendingDoctorId], references: [id])
+  registeredByUser   User                @relation("RegisteredBy", fields: [registeredBy], references: [id])
+  prescriptions      Prescription[]
+  issueTransactions  IssueTransaction[]
+  returnTransactions ReturnTransaction[]
+
+  @@index([hospitalId])
+  @@index([nrNumber])
+  @@index([mobile])
+  @@index([registeredAt])
+  @@map("patients")
+}
+
+// ============================================
+// MEDICINE MANAGEMENT
+// ============================================
+
+model Medicine {
+  id                  String               @id @default(uuid())
+  hospitalId          String               @map("hospital_id")
+  name                String
+  genericName         String?              @map("generic_name")
+  strength            String?
+  form                MedicineForm
+  manufacturer        String?
+  status              MedicineStatus       @default(ACTIVE)
+  version             Int                  @default(1)
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+
+  // Relations
+  hospital            Hospital             @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  stockBatches        StockBatch[]
+  poItems             PurchaseOrderItem[]
+  grnItems            GRNItem[]
+  prescriptionItems   PrescriptionItem[]
+  issueItems          IssueItem[]
+  transferItems       TransferItem[]
+  returnItems         ReturnItem[]
+  alternativesFor     MedicineAlternative[] @relation("MainMedicine")
+  alternatives        MedicineAlternative[] @relation("AlternativeMedicine")
+
+  @@index([hospitalId])
+  @@index([name])
+  @@index([status])
+  @@map("medicines")
+}
+
+model MedicineAlternative {
+  id                   String   @id @default(uuid())
+  medicineId           String   @map("medicine_id")
+  alternativeMedicineId String  @map("alternative_medicine_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  // Relations
+  medicine             Medicine @relation("MainMedicine", fields: [medicineId], references: [id], onDelete: Cascade)
+  alternativeMedicine  Medicine @relation("AlternativeMedicine", fields: [alternativeMedicineId], references: [id], onDelete: Cascade)
+
+  @@unique([medicineId, alternativeMedicineId])
+  @@map("medicine_alternatives")
+}
+
+// ============================================
+// INVENTORY MANAGEMENT
+// ============================================
+
+model StockBatch {
+  id              String         @id @default(uuid())
+  hospitalId      String         @map("hospital_id")
+  pharmacyId      String         @map("pharmacy_id")
+  medicineId      String         @map("medicine_id")
+  batchNo         String         @map("batch_no")
+  qtyReceived     Int            @map("qty_received")
+  qtyAvailable    Int            @map("qty_available")
+  expiryDate      DateTime       @map("expiry_date")
+  manufacturer    String?
+  storageType     StorageType    @map("storage_type")
+  purchasePrice   Decimal        @map("purchase_price") @db.Decimal(10, 2)
+  governmentPrice Decimal        @map("government_price") @db.Decimal(10, 2)
+  retailPrice     Decimal        @map("retail_price") @db.Decimal(10, 2)
+  receivedDate    DateTime       @default(now()) @map("received_date")
+  status          BatchStatus    @default(AVAILABLE)
+  version         Int            @default(1)
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  hospital                Hospital                @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  pharmacy                Pharmacy                @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  medicine                Medicine                @relation(fields: [medicineId], references: [id], onDelete: Cascade)
+  issueItems              IssueItem[]
+  returnItems             ReturnItem[]
+  transferBatchMappingsSource TransferBatchMapping[] @relation("SourceBatch")
+  transferBatchMappingsDest   TransferBatchMapping[] @relation("DestinationBatch")
+  grnItems                GRNItem[]
+
+  @@index([hospitalId])
+  @@index([pharmacyId])
+  @@index([medicineId])
+  @@index([batchNo])
+  @@index([expiryDate])
+  @@index([status])
+  @@index([receivedDate])
+  @@map("stock_batches")
+}
+
+// ============================================
+// PURCHASE ORDER & GRN
+// ============================================
+
+model PurchaseOrder {
+  id            String            @id @default(uuid())
+  hospitalId    String            @map("hospital_id")
+  pharmacyId    String            @map("pharmacy_id")
+  poNumber      String            @unique @map("po_number")
+  vendorName    String?           @map("vendor_name")
+  vendorContact String?           @map("vendor_contact")
+  totalAmount   Decimal           @map("total_amount") @db.Decimal(12, 2)
+  status        POStatus          @default(DRAFT)
+  createdBy     String            @map("created_by")
+  version       Int               @default(1)
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  // Relations
+  hospital      Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  pharmacy      Pharmacy          @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  creator       User              @relation(fields: [createdBy], references: [id])
+  items         PurchaseOrderItem[]
+  grns          GRN[]
+
+  @@index([hospitalId])
+  @@index([pharmacyId])
+  @@index([status])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id          String        @id @default(uuid())
+  poId        String        @map("po_id")
+  medicineId  String        @map("medicine_id")
+  qtyOrdered  Int           @map("qty_ordered")
+  unitPrice   Decimal       @map("unit_price") @db.Decimal(10, 2)
+  totalPrice  Decimal       @map("total_price") @db.Decimal(10, 2)
+
+  // Relations
+  purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  medicine      Medicine      @relation(fields: [medicineId], references: [id])
+
+  @@index([poId])
+  @@map("purchase_order_items")
+}
+
+model GRN {
+  id           String   @id @default(uuid())
+  hospitalId   String   @map("hospital_id")
+  poId         String   @map("po_id")
+  pharmacyId   String   @map("pharmacy_id")
+  grnNumber    String   @unique @map("grn_number")
+  receivedDate DateTime @default(now()) @map("received_date")
+  receivedBy   String   @map("received_by")
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  hospital      Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id])
+  pharmacy      Pharmacy @relation(fields: [pharmacyId], references: [id])
+  receiver      User     @relation(fields: [receivedBy], references: [id])
+  items         GRNItem[]
+
+  @@index([hospitalId])
+  @@index([pharmacyId])
+  @@map("grns")
+}
+
+model GRNItem {
+  id           String     @id @default(uuid())
+  grnId        String     @map("grn_id")
+  medicineId   String     @map("medicine_id")
+  batchId      String     @map("batch_id")
+  qtyReceived  Int        @map("qty_received")
+
+  // Relations
+  grn          GRN        @relation(fields: [grnId], references: [id], onDelete: Cascade)
+  medicine     Medicine   @relation(fields: [medicineId], references: [id])
+  batch        StockBatch @relation(fields: [batchId], references: [id])
+
+  @@index([grnId])
+  @@map("grn_items")
+}
+
+// ============================================
+// PRESCRIPTION MANAGEMENT
+// ============================================
+
+model Prescription {
+  id                 String              @id @default(uuid())
+  hospitalId         String              @map("hospital_id")
+  nrNumber           String              @map("nr_number")
+  doctorId           String              @map("doctor_id")
+  prescriptionType   PrescriptionType    @map("prescription_type")
+  scannedImageUrl    String?             @map("scanned_image_url")
+  status             PrescriptionStatus  @default(PENDING)
+  notes              String?
+  version            Int                 @default(1)
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  hospital           Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient            Patient             @relation(fields: [nrNumber], references: [nrNumber])
+  doctor             User                @relation(fields: [doctorId], references: [id])
+  items              PrescriptionItem[]
+  issueTransactions  IssueTransaction[]
+
+  @@index([hospitalId])
+  @@index([nrNumber])
+  @@index([doctorId])
+  @@index([status])
+  @@map("prescriptions")
+}
+
+model PrescriptionItem {
+  id             String                   @id @default(uuid())
+  prescriptionId String                   @map("prescription_id")
+  medicineId     String                   @map("medicine_id")
+  qtyPrescribed  Int                      @map("qty_prescribed")
+  dosage         String?
+  frequency      String?
+  duration       String?
+  status         PrescriptionItemStatus   @default(PENDING)
+
+  // Relations
+  prescription   Prescription             @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  medicine       Medicine                 @relation(fields: [medicineId], references: [id])
+
+  @@index([prescriptionId])
+  @@map("prescription_items")
+}
+
+// ============================================
+// ISSUANCE & RETURNS
+// ============================================
+
+model IssueTransaction {
+  id             String                @id @default(uuid())
+  hospitalId     String                @map("hospital_id")
+  pharmacyId     String                @map("pharmacy_id")
+  nrNumber       String                @map("nr_number")
+  prescriptionId String?               @map("prescription_id")
+  issuedBy       String                @map("issued_by")
+  totalAmount    Decimal               @map("total_amount") @db.Decimal(10, 2)
+  priceType      PriceType             @map("price_type")
+  status         IssueTransactionStatus @default(COMPLETED)
+  version        Int                   @default(1)
+  issuedAt       DateTime              @default(now()) @map("issued_at")
+  receiptUrl     String?               @map("receipt_url")
+
+  // Relations
+  hospital           Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  pharmacy           Pharmacy            @relation(fields: [pharmacyId], references: [id])
+  patient            Patient             @relation(fields: [nrNumber], references: [nrNumber])
+  prescription       Prescription?       @relation(fields: [prescriptionId], references: [id])
+  issuer             User                @relation(fields: [issuedBy], references: [id])
+  items              IssueItem[]
+  returnTransactions ReturnTransaction[]
+
+  @@index([hospitalId])
+  @@index([pharmacyId])
+  @@index([nrNumber])
+  @@index([issuedAt])
+  @@map("issue_transactions")
+}
+
+model IssueItem {
+  id         String           @id @default(uuid())
+  issueId    String           @map("issue_id")
+  batchId    String           @map("batch_id")
+  medicineId String           @map("medicine_id")
+  qtyIssued  Int              @map("qty_issued")
+  unitPrice  Decimal          @map("unit_price") @db.Decimal(10, 2)
+  totalPrice Decimal          @map("total_price") @db.Decimal(10, 2)
+
+  // Relations
+  issueTransaction IssueTransaction @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  batch            StockBatch       @relation(fields: [batchId], references: [id])
+  medicine         Medicine         @relation(fields: [medicineId], references: [id])
+
+  @@index([issueId])
+  @@map("issue_items")
+}
+
+model ReturnTransaction {
+  id         String       @id @default(uuid())
+  hospitalId String       @map("hospital_id")
+  pharmacyId String       @map("pharmacy_id")
+  nrNumber   String?      @map("nr_number")
+  issueId    String?      @map("issue_id")
+  returnType ReturnType   @map("return_type")
+  reason     String
+  returnedBy String       @map("returned_by")
+  version    Int          @default(1)
+  returnedAt DateTime     @default(now()) @map("returned_at")
+
+  // Relations
+  hospital         Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  pharmacy         Pharmacy          @relation(fields: [pharmacyId], references: [id])
+  patient          Patient?          @relation(fields: [nrNumber], references: [nrNumber])
+  issueTransaction IssueTransaction? @relation(fields: [issueId], references: [id])
+  returnedByUser   User              @relation(fields: [returnedBy], references: [id])
+  items            ReturnItem[]
+
+  @@index([hospitalId])
+  @@index([pharmacyId])
+  @@map("return_transactions")
+}
+
+model ReturnItem {
+  id           String            @id @default(uuid())
+  returnId     String            @map("return_id")
+  batchId      String            @map("batch_id")
+  medicineId   String            @map("medicine_id")
+  qtyReturned  Int               @map("qty_returned")
+  refundAmount Decimal           @map("refund_amount") @db.Decimal(10, 2)
+  condition    ReturnCondition
+
+  // Relations
+  returnTransaction ReturnTransaction @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  batch             StockBatch        @relation(fields: [batchId], references: [id])
+  medicine          Medicine          @relation(fields: [medicineId], references: [id])
+
+  @@index([returnId])
+  @@map("return_items")
+}
+
+// ============================================
+// TRANSFER MANAGEMENT
+// ============================================
+
+model TransferRequest {
+  id            String          @id @default(uuid())
+  hospitalId    String          @map("hospital_id")
+  fromPharmacyId String         @map("from_pharmacy_id")
+  toPharmacyId  String          @map("to_pharmacy_id")
+  requestNumber String          @unique @map("request_number")
+  status        TransferStatus  @default(PENDING)
+  requestedBy   String          @map("requested_by")
+  approvedBy    String?         @map("approved_by")
+  approvedAt    DateTime?       @map("approved_at")
+  dispatchedAt  DateTime?       @map("dispatched_at")
+  receivedAt    DateTime?       @map("received_at")
+  receivedBy    String?         @map("received_by")
+  notes         String?
+  version       Int             @default(1)
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  hospital      Hospital        @relation("HospitalTransfers", fields: [hospitalId], references: [id], onDelete: Cascade)
+  fromPharmacy  Pharmacy        @relation("FromPharmacy", fields: [fromPharmacyId], references: [id])
+  toPharmacy    Pharmacy        @relation("ToPharmacy", fields: [toPharmacyId], references: [id])
+  requester     User            @relation("TransferRequester", fields: [requestedBy], references: [id])
+  approver      User?           @relation("TransferApprover", fields: [approvedBy], references: [id])
+  receiver      User?           @relation("TransferReceiver", fields: [receivedBy], references: [id])
+  items         TransferItem[]
+
+  @@index([hospitalId])
+  @@index([fromPharmacyId])
+  @@index([toPharmacyId])
+  @@index([status])
+  @@map("transfer_requests")
+}
+
+model TransferItem {
+  id            String                  @id @default(uuid())
+  transferId    String                  @map("transfer_id")
+  medicineId    String                  @map("medicine_id")
+  qtyRequested  Int                     @map("qty_requested")
+  qtyApproved   Int?                    @map("qty_approved")
+  qtyDispatched Int?                    @map("qty_dispatched")
+  qtyReceived   Int?                    @map("qty_received")
+
+  // Relations
+  transferRequest  TransferRequest        @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  medicine         Medicine               @relation(fields: [medicineId], references: [id])
+  batchMappings    TransferBatchMapping[]
+
+  @@index([transferId])
+  @@map("transfer_items")
+}
+
+model TransferBatchMapping {
+  id                  String       @id @default(uuid())
+  transferItemId      String       @map("transfer_item_id")
+  sourceBatchId       String       @map("source_batch_id")
+  destinationBatchId  String?      @map("destination_batch_id")
+  qty                 Int
+
+  // Relations
+  transferItem        TransferItem @relation(fields: [transferItemId], references: [id], onDelete: Cascade)
+  sourceBatch         StockBatch   @relation("SourceBatch", fields: [sourceBatchId], references: [id])
+  destinationBatch    StockBatch?  @relation("DestinationBatch", fields: [destinationBatchId], references: [id])
+
+  @@index([transferItemId])
+  @@map("transfer_batch_mappings")
+}
+
+// ============================================
+// ALERTS & NOTIFICATIONS
+// ============================================
+
+model Alert {
+  id              String        @id @default(uuid())
+  hospitalId      String        @map("hospital_id")
+  pharmacyId      String        @map("pharmacy_id")
+  alertType       AlertType     @map("alert_type")
+  severity        AlertSeverity
+  message         String
+  entityType      String?       @map("entity_type")
+  entityId        String?       @map("entity_id")
+  status          AlertStatus   @default(ACTIVE)
+  acknowledgedBy  String?       @map("acknowledged_by")
+  acknowledgedAt  DateTime?     @map("acknowledged_at")
+  version         Int           @default(1)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  resolvedAt      DateTime?     @map("resolved_at")
+
+  // Relations
+  hospital        Hospital      @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  pharmacy        Pharmacy      @relation(fields: [pharmacyId], references: [id])
+  acknowledger    User?         @relation(fields: [acknowledgedBy], references: [id])
+
+  @@index([hospitalId])
+  @@index([pharmacyId])
+  @@index([alertType])
+  @@index([status])
+  @@map("alerts")
+}
+
+// ============================================
+// AUDIT & SYNC
+// ============================================
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  hospitalId  String   @map("hospital_id")
+  userId      String   @map("user_id")
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  beforeState Json?    @map("before_state")
+  afterState  Json?    @map("after_state")
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  timestamp   DateTime @default(now())
+
+  // Relations
+  hospital    Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([hospitalId])
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+model SyncOperation {
+  id                  String         @id @default(uuid())
+  hospitalId          String         @map("hospital_id")
+  pharmacyId          String         @map("pharmacy_id")
+  operationType       String         @map("operation_type")
+  entityType          String         @map("entity_type")
+  entityId            String         @map("entity_id")
+  payload             Json
+  status              SyncStatus     @default(PENDING)
+  version             Int
+  createdAt           DateTime       @default(now()) @map("created_at")
+  syncedAt            DateTime?      @map("synced_at")
+  conflictResolution  Json?          @map("conflict_resolution")
+
+  // Relations
+  hospital            Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  pharmacy            Pharmacy       @relation(fields: [pharmacyId], references: [id])
+
+  @@index([hospitalId])
+  @@index([pharmacyId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("sync_operations")
+}
+
+model SystemConfig {
+  id          String   @id @default(uuid())
+  hospitalId  String?  @map("hospital_id")
+  configKey   String   @map("config_key")
+  configValue Json     @map("config_value")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  hospital    Hospital? @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+
+  @@unique([hospitalId, configKey])
+  @@map("system_configs")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum HospitalStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  HOSPITAL_ADMIN
+  MAIN_PHARMACY_MANAGER
+  SUB_PHARMACY_MANAGER
+  DOCTOR
+  DOCTOR_ASSISTANT
+  REGISTRATION_STAFF
+  PHARMACY_STAFF
+  AUDITOR
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum PharmacyType {
+  MAIN
+  SUB
+}
+
+enum PharmacyStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum VisitType {
+  OPD
+  EMERGENCY
+  WARD_INDOOR
+}
+
+enum MedicineForm {
+  TABLET
+  CAPSULE
+  SYRUP
+  INJECTION
+  CREAM
+  DROPS
+  OINTMENT
+  POWDER
+  SUSPENSION
+}
+
+enum MedicineStatus {
+  ACTIVE
+  DISCONTINUED
+}
+
+enum StorageType {
+  ROOM_TEMPERATURE
+  COLD_STORAGE
+  REFRIGERATED
+}
+
+enum BatchStatus {
+  AVAILABLE
+  EXPIRED
+  DEPLETED
+  QUARANTINE
+}
+
+enum POStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  RECEIVED
+  CANCELLED
+}
+
+enum PrescriptionType {
+  E_PRESCRIPTION
+  SCANNED
+  WRITTEN
+}
+
+enum PrescriptionStatus {
+  PENDING
+  ISSUED
+  PARTIALLY_ISSUED
+  CANCELLED
+}
+
+enum PrescriptionItemStatus {
+  PENDING
+  ISSUED
+  OUT_OF_STOCK
+}
+
+enum PriceType {
+  GOVERNMENT
+  RETAIL
+  CUSTOM
+}
+
+enum IssueTransactionStatus {
+  COMPLETED
+  RETURNED
+  PARTIAL_RETURN
+}
+
+enum ReturnType {
+  PATIENT_RETURN
+  PHARMACY_RETURN
+  EXPIRED
+  DAMAGED
+}
+
+enum ReturnCondition {
+  UNOPENED
+  OPENED
+  DAMAGED
+  EXPIRED
+}
+
+enum TransferStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DISPATCHED
+  RECEIVED
+  CANCELLED
+}
+
+enum AlertType {
+  LOW_STOCK
+  NEAR_EXPIRY
+  EXPIRED_STOCK
+  STOCK_OUT
+  PENDING_TRANSFER
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AlertStatus {
+  ACTIVE
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum SyncStatus {
+  PENDING
+  SYNCED
+  CONFLICT
+  FAILED
+}

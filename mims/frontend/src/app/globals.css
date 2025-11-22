@@ -1,0 +1,240 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme Variables */
+@layer base {
+  :root {
+    /* Fresh Mint Theme (Default) */
+    --background: 150 100% 97%; /* #f7fff9 */
+    --foreground: 222 51% 11%; /* #0b132b */
+    --muted-foreground: 220 13% 35%; /* #4b5563 */
+    --card: 0 0% 100%; /* #ffffff */
+    --border: 150 54% 94%; /* #e6f7f0 */
+    --primary: 165 100% 39%; /* #00c9a7 */
+    --primary-foreground: 0 0% 100%; /* #ffffff */
+    --secondary: 222 51% 11%; /* #0b132b */
+    --secondary-foreground: 0 0% 100%; /* #ffffff */
+    --accent: 159 80% 47%; /* #16db93 */
+    --accent-foreground: 0 0% 100%; /* #ffffff */
+    --muted: 150 20% 96%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --radius: 0.75rem;
+    
+    /* Sidebar specific colors */
+    --sidebar-bg: 150 54% 97%; /* #f0fdf4 */
+    --sidebar-fg: 222 51% 11%; /* #0b132b */
+    --sidebar-muted: 220 13% 45%; /* #667085 */
+    --sidebar-hover: 159 80% 47% / 0.1; /* #16db93 with 10% opacity */
+    
+    /* StatCard Colors */
+    --teal: 169 100% 39%; /* #00BFB3 */
+    --teal-light: 169 100% 96%; /* #E6FFFE */
+    --pink: 348 100% 76%; /* #FF8B9A */
+    --pink-light: 348 100% 96%; /* #FFF0F2 */
+    --navy: 223 47% 31%; /* #2A4267 */
+    --navy-light: 223 47% 95%; /* #F0F3F9 */
+  }
+
+  .dark {
+    --background: 222 47% 8%;         /* #0a0f1c - deep navy black */
+    --foreground: 220 20% 96%;        /* #f3f4f6 - soft white */
+    --muted-foreground: 220 15% 65%;  /* #a1a8b5 - balanced gray */
+    
+    --card: 223 25% 12%;              /* #111827 - dark slate */
+    --border: 220 15% 28%;            /* #3b4559 - clean but defined */
+  
+    --primary: 268 83% 59%;           /* #8b5cf6 - rich violet (modern) */
+    --primary-foreground: 0 0% 100%;  /* #ffffff */
+  
+    --secondary: 160 94% 40%;         /* #06d6a0 - sharp emerald teal */
+    --secondary-foreground: 0 0% 10%; /* #1a1a1a */
+  
+    --accent: 270 100% 71%;           /* #a78bfa - elegant purple pop */
+    --accent-foreground: 0 0% 100%;   /* #ffffff */
+  
+    --muted: 220 15% 16%;             /* #1e2533 - subtle muted blocks */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+  
+    /* Sidebar */
+    --sidebar-bg: 222 47% 8%;         /* #0a0f1c - matches background */
+    --sidebar-fg: 220 20% 96%;        /* #f3f4f6 */
+    --sidebar-muted: 220 15% 60%;     /* #97a0b3 */
+    --sidebar-hover: 268 83% 59% / 0.15; /* hover violet with low opacity */
+  
+    /* Table */
+    --table-bg: 223 25% 12%;          /* same as card */
+    --table-border: 220 15% 28%;      /* same as border */
+    --table-header-bg: 222 40% 12%;   /* #121c2a - slightly lifted */
+    --table-header-fg: 220 20% 96%;   /* #f3f4f6 */
+    --table-row-hover: 270 100% 71% / 0.08;
+    --table-stripe: 223 30% 10%;      /* #0e1420 - subtle row stripe */
+  
+    /* StatCard Colors (optional accent sets) */
+    --teal: 168 100% 40%;             /* #00e1c8 - punchy biz teal */
+    --teal-light: 168 80% 20%;        /* #084d45 */
+    --pink: 336 100% 65%;             /* #ff66b3 - confident pop */
+    --pink-light: 336 80% 22%;        /* #3b1228 */
+    --navy: 224 60% 75%;              /* #a2b9f3 - soft blue highlight */
+    --navy-light: 224 40% 18%;        /* #1a243e */
+  }
+}
+
+/* Smooth Transitions & Animations */
+@layer utilities {
+  .transition-smooth {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-in-out;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.4s ease-out;
+  }
+  
+  .animate-scale-in {
+    animation: scaleIn 0.3s ease-out;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Professional Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+
+    --radius: 0.5rem;
+
+    --chart-1: 12 76% 61%;
+
+    --chart-2: 173 58% 39%;
+
+    --chart-3: 197 37% 24%;
+
+    --chart-4: 43 74% 66%;
+
+    --chart-5: 27 87% 67%;
+  }
+
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
