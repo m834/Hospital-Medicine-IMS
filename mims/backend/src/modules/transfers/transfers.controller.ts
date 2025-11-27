@@ -146,4 +146,13 @@ export class TransfersController {
   ) {
     return this.transfersService.receive(id, req.user.id);
   }
+
+  @Post(':id/fix-received')
+  @Roles(UserRole.SUPER_ADMIN)
+  async fixReceivedTransfer(
+    @Param('id') id: string,
+    @Request() req,
+  ) {
+    return this.transfersService.fixReceivedTransfer(id, req.user.id);
+  }
 }

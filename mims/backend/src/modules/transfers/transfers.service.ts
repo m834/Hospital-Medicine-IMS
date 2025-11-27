@@ -222,6 +222,12 @@ export class TransfersService {
         items: {
           include: {
             medicine: true,
+            batchMappings: {
+              include: {
+                sourceBatch: true,
+                destinationBatch: true,
+              },
+            },
           },
         },
       },
@@ -407,6 +413,14 @@ export class TransfersService {
           throw new NotFoundException(`Batch ${batchMapping.batchId} not found`);
         }
 
+        // Validate that batch belongs to the TO pharmacy (provider)
+        // FROM = requester, TO = provider (source of stock)
+        if (batch.pharmacyId !== transfer.toPharmacyId) {
+          throw new BadRequestException(
+            `Batch ${batch.batchNo} does not belong to the provider pharmacy. Stock must be dispatched from the provider pharmacy.`
+          );
+        }
+
         if (batch.qtyAvailable < batchMapping.quantity) {
           throw new BadRequestException(
             `Insufficient quantity in batch ${batch.batchNo}. Available: ${batch.qtyAvailable}, Requested: ${batchMapping.quantity}`
@@ -503,17 +517,37 @@ export class TransfersService {
       );
     }
 
+    // Check if already received (has destination batches)
+    const hasDestinationBatches = transfer.items.some(item => 
+      item.batchMappings?.some(mapping => mapping.destinationBatchId)
+    );
+
+    if (hasDestinationBatches) {
+      throw new BadRequestException(
+        'Transfer has already been received (destination batches exist)',
+      );
+    }
+
     // Create stock batches in destination pharmacy for each mapping
     for (const item of transfer.items) {
+      // Check if there are batch mappings
+      if (!item.batchMappings || item.batchMappings.length === 0) {
+        throw new BadRequestException(
+          `No batch mappings found for item ${item.medicine.name}. Transfer must be dispatched before receiving.`,
+        );
+      }
+
       for (const mapping of item.batchMappings) {
         const sourceBatch = mapping.sourceBatch;
 
-        // Create new stock batch in destination pharmacy with same details
+        // Create new stock batch in requester pharmacy (FROM pharmacy)
+        // FROM = requester asking for medicines
+        // TO = provider being asked to supply medicines
         const destinationBatch = await this.prisma.stockBatch.create({
           data: {
             hospitalId: transfer.hospitalId,
             medicineId: item.medicineId,
-            pharmacyId: transfer.toPharmacyId,
+            pharmacyId: transfer.fromPharmacyId, // Stock goes to the requester (FROM pharmacy)
             batchNo: sourceBatch.batchNo,
             expiryDate: sourceBatch.expiryDate,
             manufacturer: sourceBatch.manufacturer,
@@ -593,5 +627,113 @@ export class TransfersService {
     });
 
     return updatedTransfer;
+  }
+
+  // Admin utility to fix RECEIVED transfers that don't have destination batches
+  async fixReceivedTransfer(id: string, userId: string) {
+    // Get the transfer with all details
+    const transfer = await this.prisma.transferRequest.findUnique({
+      where: { id },
+      include: {
+        fromPharmacy: true,
+        toPharmacy: true,
+        items: {
+          include: {
+            medicine: true,
+            batchMappings: {
+              include: {
+                sourceBatch: true,
+                destinationBatch: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!transfer) {
+      throw new NotFoundException('Transfer request not found');
+    }
+
+    // Only fix if status is RECEIVED
+    if (transfer.status !== TransferStatus.RECEIVED) {
+      throw new BadRequestException('Transfer is not in RECEIVED status');
+    }
+
+    let batchesCreated = 0;
+    let batchesDeleted = 0;
+
+    // Process each item
+    for (const item of transfer.items) {
+      if (!item.batchMappings || item.batchMappings.length === 0) {
+        console.warn(`No batch mappings for item ${item.medicine.name} in transfer ${transfer.requestNumber}`);
+        continue;
+      }
+
+      for (const mapping of item.batchMappings) {
+        const sourceBatch = mapping.sourceBatch;
+
+        // Check if destination batch exists
+        if (mapping.destinationBatch) {
+          // Check if destination batch is in the WRONG pharmacy (toPharmacy instead of fromPharmacy)
+          if (mapping.destinationBatch.pharmacyId === transfer.toPharmacyId) {
+            console.log(`Found incorrectly placed batch ${mapping.destinationBatch.batchNo} in ${transfer.toPharmacy.name}, will delete and recreate in ${transfer.fromPharmacy.name}`);
+            
+            // Delete the incorrectly created batch
+            await this.prisma.stockBatch.delete({
+              where: { id: mapping.destinationBatch.id },
+            });
+            batchesDeleted++;
+
+            // Clear the destination batch reference
+            await this.prisma.transferBatchMapping.update({
+              where: { id: mapping.id },
+              data: { destinationBatchId: null },
+            });
+          } else if (mapping.destinationBatch.pharmacyId === transfer.fromPharmacyId) {
+            // Batch is already in the correct pharmacy, skip
+            console.log(`Batch ${mapping.destinationBatch.batchNo} already in correct pharmacy ${transfer.fromPharmacy.name}`);
+            continue;
+          }
+        }
+
+        // Create new stock batch in the correct pharmacy (fromPharmacy - requester)
+        const destinationBatch = await this.prisma.stockBatch.create({
+          data: {
+            hospitalId: transfer.hospitalId,
+            medicineId: item.medicineId,
+            pharmacyId: transfer.fromPharmacyId, // Stock goes to the requester (FROM pharmacy)
+            batchNo: sourceBatch.batchNo,
+            expiryDate: sourceBatch.expiryDate,
+            manufacturer: sourceBatch.manufacturer,
+            storageType: sourceBatch.storageType,
+            qtyReceived: mapping.qty,
+            qtyAvailable: mapping.qty,
+            purchasePrice: sourceBatch.purchasePrice,
+            governmentPrice: sourceBatch.governmentPrice,
+            retailPrice: sourceBatch.retailPrice,
+            receivedDate: new Date(),
+            status: BatchStatus.AVAILABLE,
+          },
+        });
+
+        // Update the batch mapping with destination batch ID
+        await this.prisma.transferBatchMapping.update({
+          where: { id: mapping.id },
+          data: {
+            destinationBatchId: destinationBatch.id,
+          },
+        });
+
+        batchesCreated++;
+      }
+    }
+
+    return {
+      message: `Successfully fixed transfer ${transfer.requestNumber}. Created ${batchesCreated} batches in ${transfer.fromPharmacy.name}${batchesDeleted > 0 ? ` and deleted ${batchesDeleted} incorrectly placed batches from ${transfer.toPharmacy.name}` : ''}.`,
+      batchesCreated,
+      batchesDeleted,
+      transfer: await this.findOne(id),
+    };
   }
 }

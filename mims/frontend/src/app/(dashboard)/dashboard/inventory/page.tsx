@@ -124,6 +124,16 @@ export default function InventoryDashboardPage() {
 
   const currentHospitalId = user?.hospitalId || selectedHospital?.id;
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const isHospitalAdmin = user?.role === 'HOSPITAL_ADMIN';
+  const isMainManager = user?.role === 'MAIN_PHARMACY_MANAGER';
+  const userPharmacyId = user?.pharmacyId;
+
+  // Auto-set pharmacy filter for non-admin users with a pharmacy
+  useEffect(() => {
+    if (!isSuperAdmin && !isHospitalAdmin && !isMainManager && userPharmacyId) {
+      setSelectedPharmacy(userPharmacyId);
+    }
+  }, [isSuperAdmin, isHospitalAdmin, isMainManager, userPharmacyId]);
 
   // Calculate stats whenever stockBatches changes
   useEffect(() => {
@@ -175,8 +185,16 @@ export default function InventoryDashboardPage() {
   const fetchStockBatches = async () => {
     try {
       const params: any = { limit: 100 };
+      
+      // For non-admin users with a pharmacy, ALWAYS filter by their pharmacy
+      if (!isSuperAdmin && !isHospitalAdmin && !isMainManager && userPharmacyId) {
+        params.pharmacyId = userPharmacyId;
+      } else if (selectedPharmacy !== 'all') {
+        // For admins or main managers, use the selected pharmacy filter
+        params.pharmacyId = selectedPharmacy;
+      }
+      
       if (selectedMedicine !== 'all') params.medicineId = selectedMedicine;
-      if (selectedPharmacy !== 'all') params.pharmacyId = selectedPharmacy;
       if (selectedStatus !== 'all') params.status = selectedStatus;
       if (selectedStorage !== 'all') params.storageType = selectedStorage;
       if (searchQuery) params.search = searchQuery;
@@ -396,12 +414,18 @@ export default function InventoryDashboardPage() {
               </SelectContent>
             </Select>
 
-            <Select value={selectedPharmacy} onValueChange={setSelectedPharmacy}>
+            <Select 
+              value={selectedPharmacy} 
+              onValueChange={setSelectedPharmacy}
+              disabled={!isSuperAdmin && !isHospitalAdmin && !!userPharmacyId}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="All Pharmacies" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Pharmacies</SelectItem>
+                {(isSuperAdmin || isHospitalAdmin || isMainManager) && (
+                  <SelectItem value="all">All Pharmacies</SelectItem>
+                )}
                 {pharmacies.map((pharmacy) => (
                   <SelectItem key={pharmacy.id} value={pharmacy.id}>
                     {pharmacy.name} ({pharmacy.code})

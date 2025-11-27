@@ -109,6 +109,7 @@ export default function RequestTransferPage() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [stockInfo, setStockInfo] = useState<Map<string, number>>(new Map());
+  const [userPharmacyType, setUserPharmacyType] = useState<'MAIN' | 'SUB' | null>(null);
 
   const router = useRouter();
   const { user } = useAuthStore();
@@ -137,9 +138,9 @@ export default function RequestTransferPage() {
   useEffect(() => {
     // Filter pharmacies when hospital changes (for Super Admin)
     if (isSuperAdmin && selectedHospitalId) {
-      // Show only SUB pharmacies of selected hospital
+      // For Super Admin: show both MAIN and SUB pharmacies of selected hospital
       const filteredPharmacies = allPharmacies.filter(
-        (p) => p.hospitalId === selectedHospitalId && p.type === 'SUB'
+        (p) => p.hospitalId === selectedHospitalId
       );
       setPharmacies(filteredPharmacies);
       // Reset pharmacy selection when hospital changes
@@ -199,11 +200,33 @@ export default function RequestTransferPage() {
         // For Super Admin, don't filter yet - wait for hospital selection
         setPharmacies([]);
       } else {
-        // For regular users, show only SUB pharmacies (exclude user's own pharmacy and MAIN pharmacies)
-        const filteredPharmacies = pharmacyList.filter(
-          (p: Pharmacy) => p.id !== userPharmacyId && p.type === 'SUB'
-        );
-        setPharmacies(filteredPharmacies);
+        // For regular users, determine what pharmacies they can request TO based on their pharmacy type
+        const userPharmacy = pharmacyList.find((p: Pharmacy) => p.id === userPharmacyId);
+        
+        if (userPharmacy) {
+          // Store user pharmacy type for UI labels
+          setUserPharmacyType(userPharmacy.type);
+          
+          if (userPharmacy.type === 'SUB') {
+            // Sub-pharmacy requests TO Main pharmacy (asking main to provide stock)
+            const filteredPharmacies = pharmacyList.filter(
+              (p: Pharmacy) => 
+                p.hospitalId === userPharmacy.hospitalId && 
+                p.type === 'MAIN' &&
+                p.id !== userPharmacyId
+            );
+            setPharmacies(filteredPharmacies);
+          } else if (userPharmacy.type === 'MAIN') {
+            // Main pharmacy can request TO Sub pharmacies (asking sub to provide stock)
+            const filteredPharmacies = pharmacyList.filter(
+              (p: Pharmacy) => 
+                p.hospitalId === userPharmacy.hospitalId && 
+                p.type === 'SUB' &&
+                p.id !== userPharmacyId
+            );
+            setPharmacies(filteredPharmacies);
+          }
+        }
       }
     } catch (error) {
       console.error('Error fetching pharmacies:', error);
@@ -302,37 +325,58 @@ export default function RequestTransferPage() {
       return;
     }
 
-    // Determine destination pharmacy (where stock goes TO)
+    // Determine source and destination for transfer
+    // The user's pharmacy is always the REQUESTER (FROM pharmacy - asking for stock)
+    // The selected pharmacy is being asked to PROVIDE the stock (TO pharmacy - will give stock)
+    
+    let fromPharmacyId: string;
     let toPharmacyId: string;
     
     if (isSuperAdmin) {
-      // For Super Admin: destination is the MAIN pharmacy of selected hospital
-      if (!data.hospitalId) {
-        alert('Please select a hospital');
-        return;
-      }
-      const mainPharmacy = allPharmacies.find(
-        (p) => p.hospitalId === data.hospitalId && p.type === 'MAIN'
-      );
-      if (!mainPharmacy) {
-        alert('Main pharmacy not found for selected hospital');
-        return;
-      }
-      toPharmacyId = mainPharmacy.id;
+      alert('Super Admin transfer logic needs destination pharmacy selection');
+      return;
     } else {
-      // For regular users: destination is their own pharmacy
-      if (!userPharmacyId) {
+      // For regular users (Sub or Main Pharmacy Manager)
+      const userPharmacy = allPharmacies.find((p) => p.id === userPharmacyId);
+      if (!userPharmacy || !userPharmacyId) {
         alert('User pharmacy not found');
         return;
       }
-      toPharmacyId = userPharmacyId;
+      
+      // User's pharmacy is the one making the request (FROM - the requester)
+      fromPharmacyId = userPharmacyId;
+      
+      // Selected pharmacy is being asked to provide stock (TO - the provider)
+      toPharmacyId = data.fromPharmacyId;
+      
+      // Validate the transfer
+      const targetPharmacy = allPharmacies.find((p) => p.id === toPharmacyId);
+      if (!targetPharmacy) {
+        alert('Target pharmacy not found');
+        return;
+      }
+      
+      if (targetPharmacy.hospitalId !== userPharmacy.hospitalId) {
+        alert('Cannot request to pharmacy in different hospital');
+        return;
+      }
+      
+      if (userPharmacy.type === 'SUB' && targetPharmacy.type !== 'MAIN') {
+        alert('Sub-pharmacy can only request to Main pharmacy');
+        return;
+      }
+      
+      if (userPharmacy.type === 'MAIN' && targetPharmacy.type !== 'SUB') {
+        alert('Main pharmacy can only request to Sub-pharmacies');
+        return;
+      }
     }
 
     setSubmitting(true);
     try {
       const payload = {
-        fromPharmacyId: data.fromPharmacyId, // Source: Selected sub-pharmacy
-        toPharmacyId: toPharmacyId, // Destination: Main pharmacy (for super admin) or user's pharmacy
+        fromPharmacyId, // Requester: user's pharmacy making the request
+        toPharmacyId,   // Provider: selected pharmacy being asked to provide stock
         items: transferItems.map((item) => ({
           medicineId: item.medicineId,
           qtyRequested: item.qtyRequested,
@@ -374,8 +418,10 @@ export default function RequestTransferPage() {
             <h1 className="text-3xl font-bold">Request Stock Transfer</h1>
             <p className="text-muted-foreground">
               {isSuperAdmin 
-                ? "Transfer medicines from sub-pharmacy to main pharmacy" 
-                : "Request medicines from sub-pharmacies"}
+                ? "Create transfer request between pharmacies" 
+                : userPharmacyType === 'SUB'
+                ? "Request medicines to main pharmacy"
+                : "Request medicines to sub-pharmacies"}
             </p>
           </div>
         </div>
@@ -388,8 +434,10 @@ export default function RequestTransferPage() {
             <CardTitle>Transfer Details</CardTitle>
             <CardDescription>
               {isSuperAdmin 
-                ? "Select hospital and source sub-pharmacy to transfer stock to main pharmacy" 
-                : "Select source sub-pharmacy and add notes (optional)"}
+                ? "Select hospital and pharmacies for transfer" 
+                : userPharmacyType === 'SUB'
+                ? "Select main pharmacy to send your request to and add notes (optional)"
+                : "Select sub-pharmacy to send your request to and add notes (optional)"}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -433,11 +481,17 @@ export default function RequestTransferPage() {
                   name="fromPharmacyId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Source Pharmacy (Sub-Pharmacy) *</FormLabel>
+                      <FormLabel>
+                        {isSuperAdmin 
+                          ? 'Target Pharmacy *' 
+                          : userPharmacyType === 'SUB'
+                          ? 'Request To (Main Pharmacy) *'
+                          : 'Request To (Sub-Pharmacy) *'}
+                      </FormLabel>
                       <Select
                         onValueChange={(value) => {
                           field.onChange(value);
-                          // Re-fetch stock when source changes
+                          // Re-fetch stock when target pharmacy changes
                           if (transferItems.length > 0) {
                             fetchStockAvailability();
                           }
@@ -451,7 +505,9 @@ export default function RequestTransferPage() {
                               placeholder={
                                 isSuperAdmin && !selectedHospitalId
                                   ? "Select hospital first"
-                                  : "Select sub-pharmacy"
+                                  : userPharmacyType === 'SUB'
+                                  ? "Select main pharmacy to request to"
+                                  : "Select sub-pharmacy to request to"
                               } 
                             />
                           </SelectTrigger>
@@ -461,6 +517,8 @@ export default function RequestTransferPage() {
                             <div className="px-2 py-4 text-sm text-muted-foreground text-center">
                               {isSuperAdmin 
                                 ? "Select a hospital first" 
+                                : userPharmacyType === 'SUB'
+                                ? "No main pharmacies available"
                                 : "No sub-pharmacies available"}
                             </div>
                           )}

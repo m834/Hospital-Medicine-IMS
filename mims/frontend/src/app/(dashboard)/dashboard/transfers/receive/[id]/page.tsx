@@ -38,15 +38,15 @@ interface TransferItem {
   id: string;
   medicine: {
     id: string;
-    genericName: string;
-    brandName?: string;
+    name: string;
+    genericName?: string;
     strength?: string;
-    dosageForm?: string;
+    form?: string;
   };
   qtyRequested: number;
   qtyApproved: number;
-  qtyDispatched: number;
-  batchMappings: Array<{
+  qtyDispatched?: number;
+  batchMappings?: Array<{
     id: string;
     qty: number;
     sourceBatch: {
@@ -312,14 +312,14 @@ export default function ReceiveTransferPage() {
                 <TableRow key={item.id}>
                   <TableCell>
                     <div>
-                      <p className="font-medium">{item.medicine.genericName}</p>
-                      {item.medicine.brandName && (
+                      <p className="font-medium">{item.medicine.name}</p>
+                      {item.medicine.genericName && (
                         <p className="text-sm text-muted-foreground">
-                          {item.medicine.brandName}
+                          {item.medicine.genericName}
                         </p>
                       )}
                       <p className="text-xs text-muted-foreground">
-                        {item.medicine.strength} {item.medicine.dosageForm}
+                        {item.medicine.strength} {item.medicine.form}
                       </p>
                     </div>
                   </TableCell>
@@ -330,31 +330,37 @@ export default function ReceiveTransferPage() {
                     {item.qtyApproved}
                   </TableCell>
                   <TableCell className="text-center font-medium">
-                    {item.qtyDispatched}
+                    {item.qtyDispatched || item.qtyApproved || 0}
                   </TableCell>
                   <TableCell>
-                    <div className="space-y-1 text-sm">
-                      {item.batchMappings.map((mapping) => (
-                        <div
-                          key={mapping.id}
-                          className="flex items-center gap-2 text-xs"
-                        >
-                          <Package className="h-3 w-3 text-muted-foreground" />
-                          <span className="font-mono">
-                            {mapping.sourceBatch.batchNo}
-                          </span>
-                          <span>× {mapping.qty}</span>
-                          <span className="text-muted-foreground">
-                            Exp: {format(new Date(mapping.sourceBatch.expiryDate), 'MMM yyyy')}
-                          </span>
-                          {mapping.sourceBatch.manufacturer && (
-                            <span className="text-muted-foreground">
-                              ({mapping.sourceBatch.manufacturer})
+                    {item.batchMappings && item.batchMappings.length > 0 ? (
+                      <div className="space-y-1 text-sm">
+                        {item.batchMappings.map((mapping) => (
+                          <div
+                            key={mapping.id}
+                            className="flex items-center gap-2 text-xs"
+                          >
+                            <Package className="h-3 w-3 text-muted-foreground" />
+                            <span className="font-mono">
+                              {mapping.sourceBatch.batchNo}
                             </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+                            <span>× {mapping.qty}</span>
+                            <span className="text-muted-foreground">
+                              Exp: {format(new Date(mapping.sourceBatch.expiryDate), 'MMM yyyy')}
+                            </span>
+                            {mapping.sourceBatch.manufacturer && (
+                              <span className="text-muted-foreground">
+                                ({mapping.sourceBatch.manufacturer})
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">
+                        No batch details available
+                      </span>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

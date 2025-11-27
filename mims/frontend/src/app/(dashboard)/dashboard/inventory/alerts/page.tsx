@@ -73,6 +73,9 @@ export default function StockAlertsPage() {
 
   const currentHospitalId = user?.hospitalId || selectedHospital?.id;
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const isHospitalAdmin = user?.role === 'HOSPITAL_ADMIN';
+  const isMainManager = user?.role === 'MAIN_PHARMACY_MANAGER';
+  const userPharmacyId = user?.pharmacyId;
 
   useEffect(() => {
     if (currentHospitalId || isSuperAdmin) {
@@ -83,10 +86,15 @@ export default function StockAlertsPage() {
   const fetchStockBatches = async () => {
     setLoading(true);
     try {
+      const params: any = { limit: 200 };  // Max allowed by backend validation
+      
+      // For non-admin users with a pharmacy, ALWAYS filter by their pharmacy
+      if (!isSuperAdmin && !isHospitalAdmin && !isMainManager && userPharmacyId) {
+        params.pharmacyId = userPharmacyId;
+      }
+      
       // Backend has a max limit of 200, so we need to fetch in pages
-      const response = await api.get('/inventory/batches', {
-        params: { limit: 200 },  // Max allowed by backend validation
-      });
+      const response = await api.get('/inventory/batches', { params });
       const batches = response.data?.data || response.data || [];
       // Filter only AVAILABLE batches on frontend
       setAllBatches(batches.filter((b: StockBatch) => b.status === 'AVAILABLE'));

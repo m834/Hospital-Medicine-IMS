@@ -76,8 +76,9 @@ interface TransferRequest {
 export default function IssuancePage() {
   const [pendingRequests, setPendingRequests] = useState<TransferRequest[]>([]);
   const [approvedRequests, setApprovedRequests] = useState<TransferRequest[]>([]);
+  const [allRequests, setAllRequests] = useState<TransferRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'pending' | 'approved'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'all'>('pending');
   const [mainPharmacyId, setMainPharmacyId] = useState<string | null>(null);
 
   const router = useRouter();
@@ -136,6 +137,7 @@ export default function IssuancePage() {
       if (!mainPharmacyId) {
         setPendingRequests([]);
         setApprovedRequests([]);
+        setAllRequests([]);
         setLoading(false);
         return;
       }
@@ -155,6 +157,7 @@ export default function IssuancePage() {
       setApprovedRequests(
         transfers.filter((t: TransferRequest) => t.status === 'APPROVED')
       );
+      setAllRequests(transfers); // All records regardless of status
     } catch (error) {
       console.error('Error fetching transfer requests:', error);
       setPendingRequests([]);
@@ -257,7 +260,7 @@ export default function IssuancePage() {
       </Card>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'pending' | 'approved')}>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'pending' | 'approved' | 'all')}>
         <TabsList>
           <TabsTrigger value="pending">
             <Clock className="h-4 w-4 mr-2" />
@@ -266,6 +269,10 @@ export default function IssuancePage() {
           <TabsTrigger value="approved">
             <CheckCircle className="h-4 w-4 mr-2" />
             Approved ({approvedRequests.length})
+          </TabsTrigger>
+          <TabsTrigger value="all">
+            <Package className="h-4 w-4 mr-2" />
+            All Records ({allRequests.length})
           </TabsTrigger>
         </TabsList>
 
@@ -433,6 +440,84 @@ export default function IssuancePage() {
                               Dispatch
                             </Button>
                           </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* All Records Tab */}
+        <TabsContent value="all">
+          <Card>
+            <CardHeader>
+              <CardTitle>All Transfer Records</CardTitle>
+              <CardDescription>
+                Complete history of all transfer requests regardless of status
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {allRequests.length === 0 ? (
+                <div className="text-center py-12">
+                  <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">No transfer records found</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Request #</TableHead>
+                      <TableHead>From Pharmacy</TableHead>
+                      <TableHead>Requested By</TableHead>
+                      <TableHead>Items</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {allRequests.map((request) => (
+                      <TableRow key={request.id}>
+                        <TableCell className="font-mono font-semibold">
+                          {request.requestNumber}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{request.fromPharmacy.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {request.fromPharmacy.code}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-medium">{request.requester.fullName}</span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-semibold">{request.items.length} medicines</span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="text-sm">
+                              {format(new Date(request.createdAt), 'MMM dd, yyyy')}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {format(new Date(request.createdAt), 'HH:mm')}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>{getStatusBadge(request.status)}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleViewDetails(request.id)}
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            View
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}

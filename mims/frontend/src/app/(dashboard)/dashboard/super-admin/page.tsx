@@ -1,23 +1,121 @@
 /**
- * Super Admin Dashboard - ClickUp Professional Style
- * System-wide overview and hospital management
- * Context-aware: Shows hospital-specific data when a hospital is selected
+ * Super Admin Dashboard
+ * System-wide overview and hospital management with role-based widgets
  */
 
 'use client';
 
-import { useState, useCallback } from 'react';
-import { Hospital, Users, Building2, Activity, Plus, UserPlus, BarChart3, Filter, AlertCircle } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { Hospital, Users, Building2, Activity, Plus, UserPlus, BarChart3, Filter, AlertCircle, Store, ArrowLeftRight } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
+import { UserRole } from '@/lib/constants';
+import { getQuickActionsForRole } from '@/lib/rbac-config';
+import StatsCard from '@/components/dashboard/StatsCard';
+import QuickActionsWidget from '@/components/dashboard/QuickActionsWidget';
+import AlertsWidget, { Alert } from '@/components/dashboard/AlertsWidget';
+import RecentActivityWidget, { ActivityItem } from '@/components/dashboard/RecentActivityWidget';
 import { cn } from '@/lib/utils';
 import { CreateHospitalModal } from '@/components/modals/create-hospital-modal';
 import api from '@/lib/api';
 
+interface DashboardStats {
+  totalHospitals: number;
+  totalUsers: number;
+  totalPharmacies: number;
+  activeTransfers: number;
+  systemHealth: number;
+}
+
 export default function SuperAdminDashboard() {
+  const router = useRouter();
   const { user } = useAuthStore();
   const { selectedHospital, setHospitals } = useHospitalStore();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
+  useEffect(() => {
+    // Verify Super Admin role
+    if (!user || user.role !== UserRole.SUPER_ADMIN) {
+      router.push('/dashboard');
+      return;
+    }
+
+    fetchDashboardData();
+  }, [user, router, selectedHospital]);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+
+      // Fetch stats - TODO: replace with actual API calls
+      setStats({
+        totalHospitals: 2,
+        totalUsers: 3,
+        totalPharmacies: 6,
+        activeTransfers: 5,
+        systemHealth: 98,
+      });
+
+      // Generate alerts
+      setAlerts([
+        {
+          id: '1',
+          type: 'warning',
+          title: 'Pending User Approvals',
+          message: '3 new user registration requests waiting for approval',
+          href: '/dashboard/users?filter=pending',
+          timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
+        },
+        {
+          id: '2',
+          type: 'info',
+          title: 'System Update Available',
+          message: 'A new version is available for deployment',
+          timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        },
+      ]);
+
+      // Generate activities
+      setActivities([
+        {
+          id: '1',
+          title: 'New Hospital Registered',
+          description: 'City General Hospital added to the system',
+          timestamp: new Date(Date.now() - 30 * 60 * 1000),
+          user: 'Admin User',
+          type: 'success',
+          href: '/dashboard/hospitals',
+        },
+        {
+          id: '2',
+          title: 'User Created',
+          description: 'Dr. John Smith registered as DOCTOR',
+          timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
+          user: 'Hospital Admin',
+          type: 'info',
+          href: '/dashboard/users',
+        },
+        {
+          id: '3',
+          title: 'Transfer Completed',
+          description: 'Main Pharmacy → Sub Pharmacy A (50 items)',
+          timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000),
+          user: 'Pharmacy Manager',
+          type: 'success',
+          href: '/dashboard/transfers',
+        },
+      ]);
+    } catch (error) {
+      console.error('Failed to fetch dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Refresh hospitals list
   const refreshHospitals = useCallback(async () => {
@@ -29,76 +127,7 @@ export default function SuperAdminDashboard() {
     }
   }, [setHospitals]);
 
-  // Stats change based on selected hospital
-  const stats = selectedHospital
-    ? [
-        {
-          label: 'Hospital Pharmacies',
-          value: '3',
-          icon: Building2,
-          bgColor: 'bg-[hsl(var(--teal-light))]',
-          iconColor: 'text-[hsl(var(--teal))]',
-          trend: '+0%',
-        },
-        {
-          label: 'Hospital Users',
-          value: '12',
-          icon: Users,
-          bgColor: 'bg-[hsl(var(--pink-light))]',
-          iconColor: 'text-[hsl(var(--pink))]',
-          trend: '+2 this month',
-        },
-        {
-          label: 'Total Patients',
-          value: '145',
-          icon: Users,
-          bgColor: 'bg-[hsl(var(--navy-light))]',
-          iconColor: 'text-[hsl(var(--navy))]',
-          trend: '+23 today',
-        },
-        {
-          label: 'Stock Status',
-          value: 'Good',
-          icon: Activity,
-          bgColor: 'bg-primary/10',
-          iconColor: 'text-primary',
-          trend: '98% filled',
-        },
-      ]
-    : [
-        {
-          label: 'Total Hospitals',
-          value: '2',
-          icon: Hospital,
-          bgColor: 'bg-[hsl(var(--teal-light))]',
-          iconColor: 'text-[hsl(var(--teal))]',
-          trend: '+0%',
-        },
-        {
-          label: 'Total Users',
-          value: '3',
-          icon: Users,
-          bgColor: 'bg-[hsl(var(--pink-light))]',
-          iconColor: 'text-[hsl(var(--pink))]',
-          trend: '+0%',
-        },
-        {
-          label: 'Active Pharmacies',
-          value: '6',
-          icon: Building2,
-          bgColor: 'bg-[hsl(var(--navy-light))]',
-          iconColor: 'text-[hsl(var(--navy))]',
-          trend: '+0%',
-        },
-        {
-          label: 'System Status',
-          value: 'Online',
-          icon: Activity,
-          bgColor: 'bg-primary/10',
-          iconColor: 'text-primary',
-          trend: '100%',
-        },
-      ];
+  const quickActions = getQuickActionsForRole(UserRole.SUPER_ADMIN);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -130,38 +159,74 @@ export default function SuperAdminDashboard() {
             </button>
           </div>
         ) : (
-          <button className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 hover:shadow">
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 hover:shadow"
+          >
             <Plus className="h-4 w-4" />
             New Hospital
           </button>
         )}
       </div>
 
-      {/* Stats Grid - ClickUp Style */}
+      {/* Stats Grid - Using new StatsCard component */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat, index) => {
-          const Icon = stat.icon;
-          return (
-            <div
-              key={stat.label}
-              className="group rounded-xl border border-border bg-card p-5 shadow-sm transition-all hover:shadow-md animate-slide-up"
-              style={{ animationDelay: `${index * 50}ms` }}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{stat.label}</p>
-                  <p className="mt-2 text-3xl font-bold text-foreground">{stat.value}</p>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    <span className="font-medium text-primary">{stat.trend}</span> {selectedHospital ? 'for this hospital' : 'from last month'}
-                  </p>
-                </div>
-                <div className={cn('rounded-lg p-2.5', stat.bgColor)}>
-                  <Icon className={cn('h-5 w-5', stat.iconColor)} />
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        <StatsCard
+          title="Total Hospitals"
+          value={stats?.totalHospitals ?? 0}
+          icon={Hospital}
+          color="blue"
+          href="/dashboard/hospitals"
+          loading={loading}
+          trend={{
+            value: 0,
+            isPositive: true,
+            label: 'vs last month',
+          }}
+        />
+        <StatsCard
+          title="Total Users"
+          value={stats?.totalUsers ?? 0}
+          icon={Users}
+          color="green"
+          href="/dashboard/users"
+          loading={loading}
+          trend={{
+            value: 0,
+            isPositive: true,
+            label: 'vs last month',
+          }}
+        />
+        <StatsCard
+          title="Total Pharmacies"
+          value={stats?.totalPharmacies ?? 0}
+          icon={Store}
+          color="purple"
+          href="/dashboard/pharmacies"
+          loading={loading}
+        />
+        <StatsCard
+          title="Active Transfers"
+          value={stats?.activeTransfers ?? 0}
+          icon={ArrowLeftRight}
+          color="yellow"
+          href="/dashboard/transfers"
+          loading={loading}
+        />
+      </div>
+
+      {/* System Health & Alerts */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <StatsCard
+          title="System Health"
+          value={`${stats?.systemHealth ?? 0}%`}
+          icon={Activity}
+          color={stats && stats.systemHealth >= 95 ? 'green' : 'yellow'}
+          loading={loading}
+        />
+        <div className="lg:col-span-2">
+          <AlertsWidget alerts={alerts} title="System Alerts" maxItems={3} />
+        </div>
       </div>
 
       {/* Context Indicator - Shows when hospital is selected */}
@@ -180,42 +245,39 @@ export default function SuperAdminDashboard() {
         </div>
       )}
 
-      {/* Quick Actions */}
-      <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-foreground">Quick Actions</h2>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <button
-            onClick={() => setIsCreateModalOpen(true)}
-            className="flex items-center gap-3 rounded-lg border border-border bg-background p-4 text-left transition-all hover:border-primary hover:shadow-sm"
-          >
-            <div className="rounded-lg bg-primary/10 p-2">
-              <Hospital className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">Create Hospital</p>
-              <p className="text-xs text-muted-foreground">Add new hospital</p>
-            </div>
-          </button>
+      {/* Quick Actions using new widget */}
+      <QuickActionsWidget actions={quickActions} title="Administration" />
 
-          <button className="flex items-center gap-3 rounded-lg border border-border bg-background p-4 text-left transition-all hover:border-secondary hover:shadow-sm">
-            <div className="rounded-lg bg-secondary/10 p-2">
-              <UserPlus className="h-5 w-5 text-secondary" />
+      {/* Recent Activity & Cross-Hospital Stats */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <RecentActivityWidget activities={activities} title="Recent System Activity" maxItems={5} />
+        
+        {/* Cross-Hospital Statistics */}
+        <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+          <h3 className="mb-4 text-base font-semibold text-foreground">Cross-Hospital Insights</h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between rounded-lg border border-border p-4">
+              <div>
+                <p className="text-sm font-medium text-foreground">Total Stock Value</p>
+                <p className="text-xs text-muted-foreground">Across all hospitals</p>
+              </div>
+              <p className="text-2xl font-bold text-primary">₹2.5M</p>
             </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">Assign Admin</p>
-              <p className="text-xs text-muted-foreground">Hospital Admin role</p>
+            <div className="flex items-center justify-between rounded-lg border border-border p-4">
+              <div>
+                <p className="text-sm font-medium text-foreground">Daily Transactions</p>
+                <p className="text-xs text-muted-foreground">Last 24 hours</p>
+              </div>
+              <p className="text-2xl font-bold text-secondary">1,234</p>
             </div>
-          </button>
-
-          <button className="flex items-center gap-3 rounded-lg border border-border bg-background p-4 text-left transition-all hover:border-accent hover:shadow-sm">
-            <div className="rounded-lg bg-accent/10 p-2">
-              <BarChart3 className="h-5 w-5 text-accent" />
+            <div className="flex items-center justify-between rounded-lg border border-border p-4">
+              <div>
+                <p className="text-sm font-medium text-foreground">Active Users</p>
+                <p className="text-xs text-muted-foreground">Currently online</p>
+              </div>
+              <p className="text-2xl font-bold text-accent">87</p>
             </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">View Reports</p>
-              <p className="text-xs text-muted-foreground">System analytics</p>
-            </div>
-          </button>
+          </div>
         </div>
       </div>
 

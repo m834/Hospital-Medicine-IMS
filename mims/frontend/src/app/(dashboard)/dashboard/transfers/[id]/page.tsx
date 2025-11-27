@@ -31,9 +31,11 @@ import {
   Clock,
   XCircle,
   Truck,
+  Wrench,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { format } from 'date-fns';
+import { useAuthStore } from '@/stores/auth.store';
 
 interface TransferItem {
   id: string;
@@ -87,9 +89,11 @@ export default function TransferDetailsPage() {
   const router = useRouter();
   const params = useParams();
   const transferId = params?.id as string;
+  const { user } = useAuthStore();
 
   const [transfer, setTransfer] = useState<TransferRequest | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fixing, setFixing] = useState(false);
 
   useEffect(() => {
     if (transferId) {
@@ -106,6 +110,24 @@ export default function TransferDetailsPage() {
       console.error('Error fetching transfer details:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFixReceivedStock = async () => {
+    if (!confirm('This will create stock batches in the destination pharmacy for this transfer. Continue?')) {
+      return;
+    }
+
+    setFixing(true);
+    try {
+      const response = await api.post(`/transfers/${transferId}/fix-received`);
+      alert(response.data.message || 'Stock batches created successfully!');
+      await fetchTransferDetails(); // Refresh the transfer details
+    } catch (error: any) {
+      console.error('Error fixing transfer:', error);
+      alert(error.response?.data?.message || 'Failed to fix transfer');
+    } finally {
+      setFixing(false);
     }
   };
 
@@ -184,6 +206,25 @@ export default function TransferDetailsPage() {
               >
                 <CheckCircle className="h-4 w-4 mr-2" />
                 Receive Transfer
+              </Button>
+            )}
+            {transfer.status === 'RECEIVED' && user?.role === 'SUPER_ADMIN' && (
+              <Button
+                variant="outline"
+                onClick={handleFixReceivedStock}
+                disabled={fixing}
+              >
+                {fixing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Fixing...
+                  </>
+                ) : (
+                  <>
+                    <Wrench className="h-4 w-4 mr-2" />
+                    Fix Stock (Admin)
+                  </>
+                )}
               </Button>
             )}
             {getStatusBadge(transfer.status)}

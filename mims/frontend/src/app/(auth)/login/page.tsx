@@ -171,72 +171,90 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="w-full max-w-md space-y-8 p-8">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold tracking-tight">Medicine IMS</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Hospital Medicine Inventory Management System
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Sign in to your account
-          </p>
-        </div>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
+      {/* Full Background Image */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: 'url(/assets/mims.jpg)' }}
+      />
+      {/* Dark overlay for better text readability */}
+      <div className="absolute inset-0 bg-black/50" />
 
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="user@example.com"
-              {...register('email')}
-              disabled={isLoading}
-            />
-            {errors.email && (
-              <p className="text-sm text-destructive">{errors.email.message}</p>
-            )}
+      {/* Login Form - Centered with glass effect */}
+      <div className="relative z-10 w-full max-w-md mx-4">
+        <div className="backdrop-blur-md bg-blue-50/95 dark:bg-blue-900/95 p-8 rounded-2xl shadow-2xl border border-blue-200/50">
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold tracking-tight text-blue-900 dark:text-white mb-2">
+              Medicine IMS
+            </h1>
+            <p className="text-sm text-blue-700 dark:text-blue-300">
+              Hospital Medicine Inventory Management System
+            </p>
+            <p className="mt-4 text-lg font-medium text-blue-800 dark:text-blue-200">
+              Welcome Back
+            </p>
+            <p className="text-sm text-blue-600 dark:text-blue-300">
+              Sign in to your account to continue
+            </p>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              {...register('password')}
-              disabled={isLoading}
-            />
-            {errors.password && (
-              <p className="text-sm text-destructive">{errors.password.message}</p>
-            )}
+          {error && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="user@example.com"
+                {...register('email')}
+                disabled={isLoading}
+                className="bg-white/80 dark:bg-gray-800/80"
+              />
+              {errors.email && (
+                <p className="text-sm text-destructive">{errors.email.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                {...register('password')}
+                disabled={isLoading}
+                className="bg-white/80 dark:bg-gray-800/80"
+              />
+              {errors.password && (
+                <p className="text-sm text-destructive">{errors.password.message}</p>
+              )}
+            </div>
+
+            <Button type="submit" className="w-full" disabled={isLoading} size="lg">
+              {isLoading ? (
+                <>
+                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent"></div>
+                  Signing in...
+                </>
+              ) : (
+                'Sign in'
+              )}
+            </Button>
+          </form>
+
+          <div className="mt-6 text-center space-y-2">
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              Only authorized users can access this system.
+            </p>
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              Contact your administrator to create an account.
+            </p>
           </div>
-
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? (
-              <>
-                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent"></div>
-                Signing in...
-              </>
-            ) : (
-              'Sign in'
-            )}
-          </Button>
-        </form>
-
-        <div className="text-center space-y-2">
-          <p className="text-sm text-muted-foreground">
-            Only authorized users can access this system.
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Contact your administrator to create an account.
-          </p>
         </div>
       </div>
     </div>
