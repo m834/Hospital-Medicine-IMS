@@ -1,0 +1,274 @@
+/* Print Styles for Reports */
+@media print {
+  /* Hide unnecessary elements */
+  nav,
+  aside,
+  .no-print,
+  button,
+  header,
+  footer {
+    display: none !important;
+  }
+
+  /* Page setup */
+  @page {
+    size: A4;
+    margin: 1.5cm;
+  }
+
+  /* Body */
+  body {
+    font-size: 10pt;
+    line-height: 1.3;
+    color: #000;
+    background: #fff;
+  }
+
+  /* Container */
+  .container {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Cards */
+  .card,
+  [class*="Card"] {
+    border: 1px solid #ddd !important;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+    margin-bottom: 10pt;
+    background: #fff !important;
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+    page-break-inside: auto;
+  }
+
+  table thead {
+    display: table-header-group;
+    font-weight: bold;
+  }
+
+  table tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  table th,
+  table td {
+    border: 1px solid #ddd;
+    padding: 6pt;
+    text-align: left;
+  }
+
+  table th {
+    background-color: #f5f5f5 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Headings */
+  h1 {
+    font-size: 18pt;
+    margin-bottom: 12pt;
+    page-break-after: avoid;
+  }
+
+  h2 {
+    font-size: 14pt;
+    margin-top: 12pt;
+    margin-bottom: 8pt;
+    page-break-after: avoid;
+  }
+
+  h3 {
+    font-size: 12pt;
+    margin-top: 10pt;
+    margin-bottom: 6pt;
+    page-break-after: avoid;
+  }
+
+  /* Page breaks */
+  .page-break {
+    page-break-before: always;
+  }
+
+  .avoid-break {
+    page-break-inside: avoid;
+  }
+
+  /* Summary cards */
+  .grid {
+    display: grid;
+    gap: 8pt;
+  }
+
+  /* Badges */
+  .badge,
+  [class*="Badge"] {
+    border: 1px solid #999;
+    background: transparent !important;
+    color: #000 !important;
+    padding: 2pt 4pt;
+  }
+
+  /* Icons - hide or make small */
+  svg {
+    width: 12pt;
+    height: 12pt;
+    opacity: 0.7;
+  }
+
+  /* Color adjustments for print */
+  .text-blue-600,
+  .text-green-600,
+  .text-indigo-600,
+  .text-purple-600,
+  .text-orange-600,
+  .text-pink-600,
+  .text-red-600,
+  .text-cyan-600 {
+    color: #000 !important;
+  }
+
+  .bg-blue-50,
+  .bg-green-50,
+  .bg-indigo-50,
+  .bg-purple-50,
+  .bg-orange-50,
+  .bg-pink-50,
+  .bg-red-50,
+  .bg-cyan-50 {
+    background-color: #f9f9f9 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Expandable sections - ensure they're expanded */
+  [class*="collapsed"] {
+    display: block !important;
+  }
+
+  /* Links */
+  a {
+    text-decoration: none;
+    color: #000;
+  }
+
+  a[href]:after {
+    content: "";
+  }
+
+  /* Report header */
+  .report-header {
+    text-align: center;
+    margin-bottom: 20pt;
+    padding-bottom: 10pt;
+    border-bottom: 2px solid #000;
+  }
+
+  /* Page numbers */
+  .page-number {
+    position: fixed;
+    bottom: 10pt;
+    right: 10pt;
+    font-size: 8pt;
+  }
+
+  /* Ensure colored backgrounds print */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Fix for nested tables */
+  table table {
+    margin: 4pt 0;
+  }
+
+  /* Transaction sections */
+  .transaction-section {
+    margin-bottom: 15pt;
+    page-break-inside: avoid;
+  }
+
+  /* Batch details */
+  .batch-details {
+    font-size: 8pt;
+    background-color: #fafafa !important;
+  }
+
+  /* Timeline */
+  .timeline {
+    page-break-inside: avoid;
+  }
+
+  /* Remove shadows */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Borders for structure */
+  .border {
+    border: 1px solid #ddd !important;
+  }
+
+  .border-t {
+    border-top: 1px solid #ddd !important;
+  }
+
+  .border-b {
+    border-bottom: 1px solid #ddd !important;
+  }
+
+  /* Spacing */
+  .space-y-6 > * + * {
+    margin-top: 15pt !important;
+  }
+
+  .space-y-4 > * + * {
+    margin-top: 10pt !important;
+  }
+
+  .space-y-2 > * + * {
+    margin-top: 5pt !important;
+  }
+
+  /* Hide interactive elements */
+  input,
+  select,
+  textarea,
+  .cursor-pointer {
+    cursor: default;
+    pointer-events: none;
+  }
+
+  /* Collapse empty sections */
+  .empty-state {
+    display: none;
+  }
+}
+
+/* Optional: Print button specific styles */
+@media screen {
+  .print-only {
+    display: none;
+  }
+}
+
+@media print {
+  .print-only {
+    display: block;
+  }
+
+  .screen-only {
+    display: none;
+  }
+}

@@ -24,37 +24,43 @@ export class PatientsController {
   constructor(private readonly patientsService: PatientsService) {}
 
   @Post()
-  @Roles('HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR')
+  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR')
   create(@Body() createPatientDto: CreatePatientDto, @CurrentUser() user: any) {
     return this.patientsService.create(createPatientDto, user.id, user.hospitalId);
   }
 
   @Get()
-  @Roles('HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR', 'PHARMACIST')
+  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR', 'DOCTOR_ASSISTANT', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER', 'PHARMACY_STAFF')
   findAll(@Query() searchDto: SearchPatientsDto, @CurrentUser() user: any) {
-    return this.patientsService.findAll(searchDto, user.hospitalId);
+    // For SUPER_ADMIN, use hospitalId from query params or user's hospitalId
+    const hospitalId = searchDto.hospitalId || user.hospitalId;
+    return this.patientsService.findAll(searchDto, hospitalId);
   }
 
   @Get('stats')
-  @Roles('HOSPITAL_ADMIN', 'REGISTRATION_STAFF')
-  getStats(@CurrentUser() user: any) {
-    return this.patientsService.getStats(user.hospitalId);
+  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF')
+  getStats(@Query('hospitalId') hospitalId: string, @CurrentUser() user: any) {
+    // For SUPER_ADMIN, use hospitalId from query params or user's hospitalId
+    const targetHospitalId = hospitalId || user.hospitalId;
+    return this.patientsService.getStats(targetHospitalId);
   }
 
   @Get('nr/:nrNumber')
-  @Roles('HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR', 'PHARMACIST')
-  findByNRNumber(@Param('nrNumber') nrNumber: string, @CurrentUser() user: any) {
-    return this.patientsService.findByNRNumber(nrNumber, user.hospitalId);
+  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR', 'DOCTOR_ASSISTANT', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER', 'PHARMACY_STAFF')
+  findByNRNumber(@Param('nrNumber') nrNumber: string, @Query('hospitalId') hospitalId: string, @CurrentUser() user: any) {
+    const targetHospitalId = hospitalId || user.hospitalId;
+    return this.patientsService.findByNRNumber(nrNumber, targetHospitalId);
   }
 
   @Get(':id')
-  @Roles('HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR', 'PHARMACIST')
-  findOne(@Param('id') id: string, @CurrentUser() user: any) {
-    return this.patientsService.findOne(id, user.hospitalId);
+  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR', 'DOCTOR_ASSISTANT', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER', 'PHARMACY_STAFF')
+  findOne(@Param('id') id: string, @Query('hospitalId') hospitalId: string, @CurrentUser() user: any) {
+    const targetHospitalId = hospitalId || user.hospitalId;
+    return this.patientsService.findOne(id, targetHospitalId);
   }
 
   @Patch(':id')
-  @Roles('HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR')
+  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR')
   update(
     @Param('id') id: string,
     @Body() updatePatientDto: UpdatePatientDto,

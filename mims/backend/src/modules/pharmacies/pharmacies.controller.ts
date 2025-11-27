@@ -49,6 +49,8 @@ export class PharmaciesController {
     UserRole.HOSPITAL_ADMIN,
     UserRole.MAIN_PHARMACY_MANAGER,
     UserRole.SUB_PHARMACY_MANAGER,
+    UserRole.PHARMACY_STAFF,
+    UserRole.AUDITOR,
   )
   findAll(@Query('hospitalId') hospitalId?: string, @Request() req?) {
     // Hospital users can only see pharmacies in their hospital

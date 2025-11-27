@@ -100,7 +100,7 @@ const menuItems: MenuItem[] = [
   // Reports - SUPER_ADMIN has full access
   { 
     label: 'Reports', 
-    href: '/dashboard/reports', 
+    href: '/dashboard/reports/daily-transactions', 
     icon: BarChart3, 
     roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.AUDITOR] 
   },

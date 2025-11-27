@@ -4,6 +4,10 @@ import { Type } from 'class-transformer';
 export class SearchPatientsDto {
   @IsString()
   @IsOptional()
+  hospitalId?: string; // For SUPER_ADMIN to query specific hospital
+
+  @IsString()
+  @IsOptional()
   search?: string; // Search by NR-Number, name, CNIC, or mobile
 
   @IsString()

@@ -10,12 +10,13 @@ import { PatientsModule } from './modules/patients/patients.module';
 import { SyncModule } from './modules/sync/sync.module';
 import { MedicinesModule } from './modules/medicines/medicines.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
-// import { PrescriptionsModule } from './modules/prescriptions/prescriptions.module';
+import { PrescriptionsModule } from './modules/prescriptions/prescriptions.module';
 import { IssuanceModule } from './modules/issuance/issuance.module';
 import { PharmaciesModule } from './modules/pharmacies/pharmacies.module';
 import { UsersModule } from './modules/users/users.module';
 import { TransfersModule } from './modules/transfers/transfers.module';
-// import { ReportsModule } from './modules/reports/reports.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 
 // Import configuration
 import { DatabaseModule } from './database/database.module';
@@ -49,13 +50,14 @@ import appConfig from './config/app.config';
     SyncModule,
     MedicinesModule,
     InventoryModule,
-    // PrescriptionsModule,
+    PrescriptionsModule,
     IssuanceModule,
     HospitalsModule,
     PharmaciesModule,
     UsersModule,
     TransfersModule,
-    // ReportsModule,
+    ReportsModule,
+    AnalyticsModule,
   ],
   providers: [
     {

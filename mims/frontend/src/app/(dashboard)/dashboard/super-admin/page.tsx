@@ -261,7 +261,7 @@ export default function SuperAdminDashboard() {
                 <p className="text-sm font-medium text-foreground">Total Stock Value</p>
                 <p className="text-xs text-muted-foreground">Across all hospitals</p>
               </div>
-              <p className="text-2xl font-bold text-primary">₹2.5M</p>
+              <p className="text-2xl font-bold text-primary">PKR 2.5M</p>
             </div>
             <div className="flex items-center justify-between rounded-lg border border-border p-4">
               <div>

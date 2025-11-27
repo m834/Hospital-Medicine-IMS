@@ -1,4 +1,5 @@
 import './globals.css'
+import './print.css'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { ThemeProvider } from '@/providers/theme-provider'

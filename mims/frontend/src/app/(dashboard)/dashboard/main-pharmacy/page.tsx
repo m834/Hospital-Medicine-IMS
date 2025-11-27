@@ -156,7 +156,7 @@ export default function MainPharmacyDashboard() {
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         <StatsCard
           title="Total Stock Value"
-          value={`₹${stats?.totalStockValue.toLocaleString() ?? 0}`}
+          value={`PKR${stats?.totalStockValue.toLocaleString() ?? 0}`}
           icon={Package}
           color="blue"
           href="/dashboard/inventory"
@@ -299,10 +299,10 @@ export default function MainPharmacyDashboard() {
         <h3 className="mb-4 text-lg font-semibold text-gray-900">Stock Summary by Category</h3>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {[
-            { category: 'Antibiotics', count: 245, value: '₹45K' },
-            { category: 'Painkillers', count: 389, value: '₹28K' },
-            { category: 'Vitamins', count: 156, value: '₹12K' },
-            { category: 'Others', count: 455, value: '₹40K' },
+            { category: 'Antibiotics', count: 245, value: 'PKR45K' },
+            { category: 'Painkillers', count: 389, value: 'PKR28K' },
+            { category: 'Vitamins', count: 156, value: 'PKR12K' },
+            { category: 'Others', count: 455, value: 'PKR40K' },
           ].map((item) => (
             <div
               key={item.category}
