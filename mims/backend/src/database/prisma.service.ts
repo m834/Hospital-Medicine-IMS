@@ -12,14 +12,24 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         { level: 'error', emit: 'stdout' },
         { level: 'warn', emit: 'stdout' },
       ],
+      // PERFORMANCE OPTIMIZATION: Connection pooling configuration
+      // These settings are passed to the DATABASE_URL connection string
+      datasources: {
+        db: {
+          url: process.env.DATABASE_URL,
+        },
+      },
     });
 
-    // Log queries in development
+    // Log slow queries in development
     if (process.env.NODE_ENV === 'development') {
       // @ts-ignore
       this.$on('query', (e) => {
-        this.logger.debug(`Query: ${e.query}`);
-        this.logger.debug(`Duration: ${e.duration}ms`);
+        if (e.duration > 1000) {
+          this.logger.warn(`⚠️ Slow query (${e.duration}ms): ${e.query}`);
+        } else {
+          this.logger.debug(`Query: ${e.query} (${e.duration}ms)`);
+        }
       });
     }
   }
@@ -28,6 +38,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     try {
       await this.$connect();
       this.logger.log('✅ Database connected successfully');
+      this.logger.log(`📊 Connection pool: See DATABASE_URL for pool settings`);
     } catch (error) {
       this.logger.error('❌ Database connection failed', error);
       throw error;

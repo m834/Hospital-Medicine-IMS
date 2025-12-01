@@ -43,7 +43,7 @@ const patientSchema = z.object({
   dob: z.string().optional(),
   gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
   address: z.string().optional(),
-  visitType: z.enum(['INPATIENT', 'OUTPATIENT']),
+  visitType: z.enum(['OPD', 'EMERGENCY', 'WARD_INDOOR']),
   department: z.string().optional(),
   ward: z.string().optional(),
   bed: z.string().optional(),
@@ -78,7 +78,7 @@ export default function RegisterPatientPage() {
       dob: '',
       gender: 'MALE',
       address: '',
-      visitType: 'OUTPATIENT',
+      visitType: 'OPD',
       department: '',
       ward: '',
       bed: '',
@@ -112,6 +112,12 @@ export default function RegisterPatientPage() {
   const onSubmit = async (data: PatientFormData) => {
     setSubmitting(true);
     try {
+      if (!currentHospitalId) {
+        alert('Please select a hospital first');
+        setSubmitting(false);
+        return;
+      }
+
       const payload = {
         ...data,
         dob: data.dob || undefined,
@@ -124,7 +130,12 @@ export default function RegisterPatientPage() {
         attendingDoctorId: data.attendingDoctorId || undefined,
       };
 
-      const response = await api.post('/patients', payload);
+      // For SUPER_ADMIN, pass hospitalId as query param
+      const params = user?.role === 'SUPER_ADMIN' && selectedHospital?.id 
+        ? { hospitalId: currentHospitalId }
+        : {};
+
+      const response = await api.post('/patients', payload, { params });
       const patient = response.data;
 
       alert(`Patient registered successfully!\nNR Number: ${patient.nrNumber}`);
@@ -282,12 +293,13 @@ export default function RegisterPatientPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="OUTPATIENT">Out-Patient (OPD)</SelectItem>
-                          <SelectItem value="INPATIENT">In-Patient (IPD)</SelectItem>
+                          <SelectItem value="OPD">Out-Patient (OPD)</SelectItem>
+                          <SelectItem value="EMERGENCY">Emergency</SelectItem>
+                          <SelectItem value="WARD_INDOOR">Ward/Indoor (IPD)</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormDescription>
-                        Out-Patient for OPD visits, In-Patient for admitted patients
+                        OPD for outpatient visits, Emergency for urgent cases, Ward/Indoor for admitted patients
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -308,7 +320,7 @@ export default function RegisterPatientPage() {
                   )}
                 />
 
-                {visitType === 'INPATIENT' && (
+                {visitType === 'WARD_INDOOR' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}

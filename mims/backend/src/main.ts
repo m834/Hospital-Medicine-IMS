@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
+import * as compression from 'compression';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -11,6 +12,13 @@ async function bootstrap() {
 
   // Security
   app.use(helmet());
+
+  // PERFORMANCE OPTIMIZATION: Enable gzip compression
+  // Reduces response size by 60-80% for JSON/text
+  app.use(compression({
+    threshold: 1024, // Only compress responses larger than 1KB
+    level: 6, // Compression level (0-9, 6 is good balance)
+  }));
   
   // CORS configuration
   app.enableCors({

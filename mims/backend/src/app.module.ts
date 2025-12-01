@@ -4,6 +4,9 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
+// Import common modules
+import { CommonModule } from './common/common.module';
+
 // Import feature modules
 import { AuthModule } from './modules/auth/auth.module';
 import { PatientsModule } from './modules/patients/patients.module';
@@ -43,6 +46,9 @@ import appConfig from './config/app.config';
 
     // Database
     DatabaseModule,
+
+    // Common services (global)
+    CommonModule,
 
     // Feature modules
     AuthModule,

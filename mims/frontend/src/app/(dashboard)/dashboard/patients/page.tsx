@@ -130,8 +130,8 @@ export default function PatientsPage() {
       const todayCount = patientList.filter(
         (p: Patient) => new Date(p.registeredAt).toDateString() === today
       ).length;
-      const inPatientCount = patientList.filter((p: Patient) => p.visitType === 'INPATIENT').length;
-      const outPatientCount = patientList.filter((p: Patient) => p.visitType === 'OUTPATIENT').length;
+      const inPatientCount = patientList.filter((p: Patient) => p.visitType === 'WARD_INDOOR').length;
+      const outPatientCount = patientList.filter((p: Patient) => p.visitType === 'OPD' || p.visitType === 'EMERGENCY').length;
 
       setStats({
         totalPatients: total,
@@ -156,9 +156,21 @@ export default function PatientsPage() {
   };
 
   const getVisitTypeBadge = (visitType: string) => {
-    return visitType === 'INPATIENT'
-      ? 'bg-purple-100 text-purple-800'
-      : 'bg-green-100 text-green-800';
+    const colors = {
+      'OPD': 'bg-green-100 text-green-800',
+      'EMERGENCY': 'bg-red-100 text-red-800',
+      'WARD_INDOOR': 'bg-purple-100 text-purple-800',
+    };
+    return colors[visitType as keyof typeof colors] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getVisitTypeLabel = (visitType: string) => {
+    const labels = {
+      'OPD': 'OPD',
+      'EMERGENCY': 'Emergency',
+      'WARD_INDOOR': 'Ward/Indoor',
+    };
+    return labels[visitType as keyof typeof labels] || visitType;
   };
 
   if (loading) {
@@ -313,7 +325,7 @@ export default function PatientsPage() {
                     </TableCell>
                     <TableCell>
                       <Badge className={getVisitTypeBadge(patient.visitType)}>
-                        {patient.visitType}
+                        {getVisitTypeLabel(patient.visitType)}
                       </Badge>
                     </TableCell>
                     <TableCell>{patient.department || '-'}</TableCell>

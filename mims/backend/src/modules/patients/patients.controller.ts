@@ -8,6 +8,7 @@ import {
   Delete,
   Query,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { PatientsService } from './patients.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
@@ -24,9 +25,19 @@ export class PatientsController {
   constructor(private readonly patientsService: PatientsService) {}
 
   @Post()
-  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR')
-  create(@Body() createPatientDto: CreatePatientDto, @CurrentUser() user: any) {
-    return this.patientsService.create(createPatientDto, user.id, user.hospitalId);
+  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER')
+  create(@Body() createPatientDto: CreatePatientDto, @Query('hospitalId') hospitalId: string, @CurrentUser() user: any) {
+    // For SUPER_ADMIN without hospitalId, use hospitalId from query params
+    // For other users, use their hospitalId
+    const targetHospitalId = user.role === 'SUPER_ADMIN' && !user.hospitalId 
+      ? hospitalId 
+      : user.hospitalId;
+    
+    if (!targetHospitalId) {
+      throw new BadRequestException('Hospital ID is required');
+    }
+    
+    return this.patientsService.create(createPatientDto, user.id, targetHospitalId);
   }
 
   @Get()
