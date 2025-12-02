@@ -79,23 +79,23 @@ export default function CreatePrescriptionPage() {
   const prescriptionType = watch('prescriptionType');
 
   useEffect(() => {
-    if (selectedHospital?.id) {
-      fetchMedicines();
-    }
+    fetchMedicines();
   }, [selectedHospital]);
 
   const fetchMedicines = async () => {
-    if (!selectedHospital?.id) return;
-    
     try {
       setLoadingMedicines(true);
-      const response = await api.get('/medicines', {
-        params: { 
-          hospitalId: selectedHospital.id,
-          limit: 500, 
-          status: 'ACTIVE' 
-        },
-      });
+      const params: any = { 
+        limit: 200, 
+        status: 'ACTIVE' 
+      };
+      
+      // Only add hospitalId for SUPER_ADMIN with selected hospital
+      if (user?.role === 'SUPER_ADMIN' && selectedHospital?.id) {
+        params.hospitalId = selectedHospital.id;
+      }
+      
+      const response = await api.get('/medicines', { params });
       setMedicines(response.data.data || []);
     } catch (error: any) {
       console.error('Failed to fetch medicines:', error);
@@ -145,10 +145,9 @@ export default function CreatePrescriptionPage() {
     try {
       setSubmitting(true);
 
-      // Prepare prescription data with doctorId
-      const prescriptionData = {
+      // Prepare prescription data
+      const prescriptionData: any = {
         ...data,
-        doctorId: user.id,
         items: data.items.map((item) => ({
           medicineId: item.medicineId,
           qtyPrescribed: Number(item.qtyPrescribed),
@@ -157,6 +156,11 @@ export default function CreatePrescriptionPage() {
           duration: item.duration || undefined,
         })),
       };
+
+      // Only include doctorId if the user is a doctor
+      if (user.role === 'DOCTOR' || user.role === 'DOCTOR_ASSISTANT') {
+        prescriptionData.doctorId = user.id;
+      }
 
       const response = await api.post('/prescriptions', prescriptionData);
 

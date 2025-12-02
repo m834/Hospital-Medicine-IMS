@@ -28,6 +28,9 @@ export class PrescriptionsController {
     UserRole.HOSPITAL_ADMIN,
     UserRole.DOCTOR,
     UserRole.DOCTOR_ASSISTANT,
+    UserRole.MAIN_PHARMACY_MANAGER,
+    UserRole.PHARMACY_STAFF,
+    UserRole.SUB_PHARMACY_MANAGER,
   )
   create(@Body() createPrescriptionDto: CreatePrescriptionDto) {
     return this.prescriptionsService.create(createPrescriptionDto);
@@ -95,6 +98,9 @@ export class PrescriptionsController {
     UserRole.HOSPITAL_ADMIN,
     UserRole.DOCTOR,
     UserRole.DOCTOR_ASSISTANT,
+    UserRole.MAIN_PHARMACY_MANAGER,
+    UserRole.PHARMACY_STAFF,
+    UserRole.SUB_PHARMACY_MANAGER,
   )
   updateStatus(
     @Param('id') id: string,

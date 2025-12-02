@@ -28,9 +28,9 @@ export class CreatePrescriptionDto {
   @IsNotEmpty()
   nrNumber: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  doctorId: string;
+  doctorId?: string;
 
   @IsEnum(['E_PRESCRIPTION', 'SCANNED', 'WRITTEN'])
   prescriptionType: 'E_PRESCRIPTION' | 'SCANNED' | 'WRITTEN';

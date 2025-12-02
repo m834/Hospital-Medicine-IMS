@@ -21,16 +21,19 @@ export class PrescriptionsService {
       throw new NotFoundException(`Patient with NR Number ${nrNumber} not found`);
     }
 
-    // Verify doctor exists
-    const doctor = await this.prisma.user.findFirst({
-      where: {
-        id: doctorId,
-        role: 'DOCTOR',
-      },
-    });
+    // Verify doctor exists (if provided)
+    let doctor = null;
+    if (doctorId) {
+      doctor = await this.prisma.user.findFirst({
+        where: {
+          id: doctorId,
+          role: 'DOCTOR',
+        },
+      });
 
-    if (!doctor) {
-      throw new NotFoundException(`Doctor with ID ${doctorId} not found`);
+      if (!doctor) {
+        throw new NotFoundException(`Doctor with ID ${doctorId} not found`);
+      }
     }
 
     // Verify all medicines exist
@@ -48,7 +51,7 @@ export class PrescriptionsService {
       data: {
         hospitalId: patient.hospitalId,
         nrNumber: patient.nrNumber,
-        doctorId: doctor.id,
+        doctorId: doctor?.id || null,
         prescriptionType: prescriptionData.prescriptionType,
         scannedImageUrl: prescriptionData.scannedImageUrl,
         notes: prescriptionData.notes,

@@ -346,7 +346,7 @@ model Prescription {
   id                 String              @id @default(uuid())
   hospitalId         String              @map("hospital_id")
   nrNumber           String              @map("nr_number")
-  doctorId           String              @map("doctor_id")
+  doctorId           String?             @map("doctor_id")
   prescriptionType   PrescriptionType    @map("prescription_type")
   scannedImageUrl    String?             @map("scanned_image_url")
   status             PrescriptionStatus  @default(PENDING)
@@ -358,7 +358,7 @@ model Prescription {
   // Relations
   hospital           Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   patient            Patient             @relation(fields: [nrNumber], references: [nrNumber])
-  doctor             User                @relation(fields: [doctorId], references: [id])
+  doctor             User?               @relation(fields: [doctorId], references: [id])
   items              PrescriptionItem[]
   issueTransactions  IssueTransaction[]
 

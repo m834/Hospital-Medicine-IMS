@@ -38,11 +38,11 @@ interface Prescription {
     gender: string;
     mobile: string;
   };
-  doctor: {
+  doctor?: {
     id: string;
     fullName: string;
     email: string;
-  };
+  } | null;
   items: PrescriptionItem[];
 }
 
@@ -67,7 +67,10 @@ export default function PrescriptionsPage() {
   const fetchPrescriptions = async () => {
     try {
       setLoading(true);
-      const params: any = { page, limit };
+      const params: any = { 
+        page: Number(page), 
+        limit: Number(limit) 
+      };
       
       if (searchNR) {
         params.nrNumber = searchNR;
@@ -116,7 +119,7 @@ export default function PrescriptionsPage() {
     }
   };
 
-  const canCreatePrescription = ['SUPER_ADMIN', 'HOSPITAL_ADMIN', 'DOCTOR', 'DOCTOR_ASSISTANT'].includes(
+  const canCreatePrescription = ['SUPER_ADMIN', 'HOSPITAL_ADMIN', 'DOCTOR', 'DOCTOR_ASSISTANT', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER'].includes(
     user?.role || ''
   );
 
@@ -244,7 +247,9 @@ export default function PrescriptionsPage() {
                         <div className="text-sm text-gray-500">{prescription.patient.mobile}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{prescription.doctor.fullName}</div>
+                        <div className="text-sm text-gray-900">
+                          {prescription.doctor?.fullName || '-'}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span

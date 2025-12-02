@@ -67,6 +67,10 @@ export default function RegisterPatientPage() {
   const { user } = useAuthStore();
   const { selectedHospital } = useHospitalStore();
 
+  // Check if user has access to register patients
+  const allowedRoles = ['SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER'];
+  const hasAccess = user && allowedRoles.includes(user.role);
+
   const currentHospitalId = user?.hospitalId || selectedHospital?.id;
 
   const form = useForm<PatientFormData>({
@@ -89,10 +93,16 @@ export default function RegisterPatientPage() {
   const visitType = form.watch('visitType');
 
   useEffect(() => {
+    // Redirect if no access
+    if (user && !hasAccess) {
+      router.push('/unauthorized');
+      return;
+    }
+
     if (currentHospitalId) {
       fetchDoctors();
     }
-  }, [currentHospitalId]);
+  }, [currentHospitalId, user, hasAccess]);
 
   const fetchDoctors = async () => {
     setLoadingDoctors(true);

@@ -1,4 +1,5 @@
 import { IsOptional, IsString, IsEnum, IsInt, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class SearchPrescriptionsDto {
   @IsOptional()
@@ -14,11 +15,13 @@ export class SearchPrescriptionsDto {
   status?: 'PENDING' | 'ISSUED' | 'PARTIALLY_ISSUED' | 'CANCELLED';
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   limit?: number = 50;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   page?: number = 1;

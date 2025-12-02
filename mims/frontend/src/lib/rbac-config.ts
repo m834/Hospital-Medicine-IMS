@@ -3,6 +3,7 @@
  * Defines permissions, dashboard layouts, and feature access for each user role
  */
 
+import { Main } from 'next/document';
 import { UserRole } from './constants';
 import {
   LayoutDashboard,
@@ -210,7 +211,8 @@ export const quickActions: QuickAction[] = [
     href: '/dashboard/patients/register',
     icon: UserPlus,
     description: 'Register a new patient',
-    roles: [UserRole.SUPER_ADMIN, UserRole.REGISTRATION_STAFF],
+    roles: [UserRole.SUPER_ADMIN, UserRole.REGISTRATION_STAFF, UserRole.HOSPITAL_ADMIN,  UserRole.MAIN_PHARMACY_MANAGER,
+      UserRole.SUB_PHARMACY_MANAGER],
   },
   {
     label: 'Create Prescription',

@@ -40,9 +40,9 @@ interface Prescription {
   status: string;
   notes?: string;
   createdAt: string;
-  doctor: {
+  doctor?: {
     fullName: string;
-  };
+  } | null;
   items: PrescriptionItem[];
 }
 
@@ -340,7 +340,9 @@ export default function DispensingPage() {
                 >
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <p className="font-semibold">Dr. {prescription.doctor.fullName}</p>
+                      <p className="font-semibold">
+                        {prescription.doctor?.fullName ? `Dr. ${prescription.doctor.fullName}` : 'No Doctor Assigned'}
+                      </p>
                       <p className="text-sm text-gray-600">
                         {format(new Date(prescription.createdAt), 'MMM dd, yyyy')}
                       </p>
