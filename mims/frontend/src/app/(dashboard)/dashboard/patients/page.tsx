@@ -28,6 +28,7 @@ import {
   Phone,
   Calendar,
   MapPin,
+  Printer,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth.store';
@@ -143,6 +144,197 @@ export default function PatientsPage() {
       console.error('Error fetching patients:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const printReceipt = (patient: Patient) => {
+    const hospitalName = selectedHospital?.name || 'Hospital Medical Center';
+    
+    const receiptHTML = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Patient Registration Receipt - ${patient.nrNumber}</title>
+          <style>
+            @page {
+              size: 80mm auto;
+              margin: 0;
+            }
+            * { 
+              margin: 0; 
+              padding: 0; 
+              box-sizing: border-box; 
+            }
+            body { 
+              font-family: 'Courier New', monospace; 
+              width: 80mm;
+              padding: 10mm;
+              font-size: 12px;
+              line-height: 1.4;
+            }
+            .receipt { 
+              width: 100%;
+            }
+            .header { 
+              text-align: center; 
+              border-bottom: 2px dashed #000;
+              padding-bottom: 10px;
+              margin-bottom: 10px;
+            }
+            .hospital-name { 
+              font-size: 16px; 
+              font-weight: bold;
+              margin-bottom: 3px;
+              text-transform: uppercase;
+            }
+            .receipt-title {
+              font-size: 12px;
+              font-weight: bold;
+              margin-top: 5px;
+            }
+            .row { 
+              display: flex;
+              justify-content: space-between;
+              margin: 5px 0;
+              font-size: 11px;
+            }
+            .label { 
+              font-weight: bold;
+              flex-shrink: 0;
+            }
+            .value { 
+              text-align: right;
+              margin-left: 10px;
+              word-break: break-word;
+            }
+            .nr-number {
+              font-size: 16px;
+              font-weight: bold;
+              text-align: center;
+              margin: 10px 0;
+              padding: 8px;
+              border: 2px solid #000;
+              background: #f0f0f0;
+              letter-spacing: 2px;
+            }
+            .section { 
+              margin: 10px 0;
+              padding-top: 10px;
+              border-top: 1px dashed #000;
+            }
+            .footer {
+              margin-top: 15px;
+              padding-top: 10px;
+              border-top: 2px dashed #000;
+              text-align: center;
+              font-size: 10px;
+            }
+            @media print {
+              body { 
+                padding: 5mm;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="receipt">
+            <div class="header">
+              <div class="hospital-name">${hospitalName}</div>
+              <div class="receipt-title">PATIENT REGISTRATION</div>
+            </div>
+
+            <div class="nr-number">
+              ${patient.nrNumber}
+            </div>
+
+            <div class="section">
+              <div class="row">
+                <span class="label">Name:</span>
+                <span class="value">${patient.fullName}</span>
+              </div>
+              <div class="row">
+                <span class="label">Gender:</span>
+                <span class="value">${patient.gender}</span>
+              </div>
+              ${patient.dob ? `
+              <div class="row">
+                <span class="label">DOB:</span>
+                <span class="value">${format(new Date(patient.dob), 'dd/MM/yyyy')}</span>
+              </div>
+              ` : ''}
+              ${patient.mobile ? `
+              <div class="row">
+                <span class="label">Mobile:</span>
+                <span class="value">${patient.mobile}</span>
+              </div>
+              ` : ''}
+            </div>
+
+            <div class="section">
+              <div class="row">
+                <span class="label">Visit Type:</span>
+                <span class="value">${getVisitTypeLabel(patient.visitType)}</span>
+              </div>
+              ${patient.department ? `
+              <div class="row">
+                <span class="label">Department:</span>
+                <span class="value">${patient.department}</span>
+              </div>
+              ` : ''}
+              ${patient.attendingDoctor?.fullName ? `
+              <div class="row">
+                <span class="label">Doctor:</span>
+                <span class="value">Dr. ${patient.attendingDoctor.fullName}</span>
+              </div>
+              ` : ''}
+            </div>
+
+            <div class="section">
+              <div class="row">
+                <span class="label">Date:</span>
+                <span class="value">${format(new Date(patient.registeredAt), 'dd/MM/yyyy')}</span>
+              </div>
+              <div class="row">
+                <span class="label">Time:</span>
+                <span class="value">${format(new Date(patient.registeredAt), 'hh:mm a')}</span>
+              </div>
+            </div>
+
+            <div class="footer">
+              <p>Keep this receipt for your records</p>
+              <p style="margin-top: 5px;">Printed: ${format(new Date(), 'dd/MM/yyyy hh:mm a')}</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    // Create hidden iframe for printing
+    const printFrame = document.createElement('iframe');
+    printFrame.style.position = 'fixed';
+    printFrame.style.right = '0';
+    printFrame.style.bottom = '0';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = 'none';
+    document.body.appendChild(printFrame);
+
+    const frameDoc = printFrame.contentWindow?.document;
+    if (frameDoc) {
+      frameDoc.open();
+      frameDoc.write(receiptHTML);
+      frameDoc.close();
+
+      // Wait for content to load, then print
+      printFrame.onload = () => {
+        setTimeout(() => {
+          printFrame.contentWindow?.print();
+          // Remove iframe after printing
+          setTimeout(() => {
+            document.body.removeChild(printFrame);
+          }, 100);
+        }, 250);
+      };
     }
   };
 
@@ -334,14 +526,24 @@ export default function PatientsPage() {
                       {format(new Date(patient.registeredAt), 'MMM dd, yyyy')}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => router.push(`/dashboard/patients/${patient.id}`)}
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        View
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => router.push(`/dashboard/patients/${patient.id}`)}
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => printReceipt(patient)}
+                        >
+                          <Printer className="h-4 w-4 mr-1" />
+                          Print
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

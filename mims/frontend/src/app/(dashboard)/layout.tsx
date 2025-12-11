@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
+import { StockAlertTicker } from '@/components/dashboard/stock-alert-ticker';
 import { FullPageLoader } from '@/components/ui/loader';
 import { useAuthStore } from '@/stores/auth.store';
 import { validateToken, getStoredUser } from '@/lib/auth';
@@ -88,6 +89,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           isSidebarCollapsed={isSidebarCollapsed}
         />
+
+        {/* Stock Alert Ticker - Below Navbar */}
+        <StockAlertTicker />
 
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto p-6 bg-background">

@@ -38,7 +38,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { PackagePlus, Loader2, Calendar, DollarSign, Package, Building2, FileSpreadsheet } from 'lucide-react';
+import { PackagePlus, Loader2, Calendar, DollarSign, Package, Building2, FileSpreadsheet, Plus, Trash2, Save } from 'lucide-react';
 import { BulkImportModal } from '@/components/inventory/bulk-import-modal';
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
@@ -131,10 +131,15 @@ const receiveStockSchema = z.object({
 
 type ReceiveStockFormData = z.infer<typeof receiveStockSchema>;
 
+interface StockItem extends ReceiveStockFormData {
+  tempId: string;
+}
+
 export default function ReceiveStockPage() {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
   const [recentBatches, setRecentBatches] = useState<StockBatch[]>([]);
+  const [items, setItems] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [manualEntry, setManualEntry] = useState(false);
@@ -186,9 +191,18 @@ export default function ReceiveStockPage() {
 
   const fetchMedicines = async () => {
     try {
-      const response = await api.get('/medicines');
+      const params: any = { limit: 200, status: 'ACTIVE' };
+      
+      // For SUPER_ADMIN, include hospitalId if hospital is selected
+      if (user?.role === 'SUPER_ADMIN' && selectedHospital?.id) {
+        params.hospitalId = selectedHospital.id;
+      }
+      
+      const response = await api.get('/medicines', { params });
       const medicineList = response.data?.data || response.data || [];
       setMedicines(medicineList.filter((m: Medicine) => m.status === 'ACTIVE'));
+      
+      console.log('Fetched medicines:', medicineList.length, 'for hospital:', currentHospitalId);
     } catch (error) {
       console.error('Error fetching medicines:', error);
     }
@@ -196,10 +210,19 @@ export default function ReceiveStockPage() {
 
   const fetchPharmacies = async () => {
     try {
-      const response = await api.get('/pharmacies');
+      const params: any = {};
+      
+      // For SUPER_ADMIN, include hospitalId if hospital is selected
+      if (user?.role === 'SUPER_ADMIN' && selectedHospital?.id) {
+        params.hospitalId = selectedHospital.id;
+      }
+      
+      const response = await api.get('/pharmacies', { params });
       const pharmacyList = response.data || [];
       // Only show MAIN pharmacies for receiving stock
       setPharmacies(pharmacyList.filter((p: Pharmacy) => p.type === 'MAIN' && p.status === 'ACTIVE'));
+      
+      console.log('Fetched pharmacies:', pharmacyList.length, 'for hospital:', currentHospitalId);
     } catch (error) {
       console.error('Error fetching pharmacies:', error);
     }
@@ -228,66 +251,153 @@ export default function ReceiveStockPage() {
       const date = new Date();
       const year = date.getFullYear().toString().slice(-2);
       const month = (date.getMonth() + 1).toString().padStart(2, '0');
-      const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const timestamp = Date.now().toString().slice(-4); // Use timestamp for uniqueness
+      const random = Math.random().toString(36).substring(2, 4).toUpperCase();
 
-      const batchNo = `${pharmacy.code}-${medicine.name.substring(0, 3).toUpperCase()}-${year}${month}-${random}`;
+      const batchNo = `${pharmacy.code}-${medicine.name.substring(0, 3).toUpperCase()}-${year}${month}-${timestamp}${random}`;
       form.setValue('batchNo', batchNo);
     }
   };
 
-  const onSubmit = async (data: ReceiveStockFormData) => {
+  const addItemToList = (data: ReceiveStockFormData) => {
+    // Validate that we have either medicineId or manual entry
+    if (!data.medicineId && !data.medicineName) {
+      alert('Please select a medicine or enter medicine details manually');
+      return;
+    }
+
+    // Generate unique batch number if empty
+    if (!data.batchNo) {
+      const timestamp = Date.now().toString().slice(-6);
+      const random = Math.random().toString(36).substring(2, 4).toUpperCase();
+      const pharmacy = pharmacies.find(p => p.id === data.pharmacyId);
+      const pharmacyCode = pharmacy?.code || 'UNK';
+      data.batchNo = `${pharmacyCode}-${timestamp}-${random}`;
+    }
+
+    const newItem: StockItem = {
+      ...data,
+      tempId: Date.now().toString() + Math.random().toString(36).substring(7),
+    };
+    setItems([...items, newItem]);
+    
+    // Reset form for next item
+    form.reset({
+      medicineId: '',
+      medicineName: '',
+      genericName: '',
+      form: '',
+      strength: '',
+      medicineManufacturer: '',
+      pharmacyId: data.pharmacyId, // Keep the same pharmacy selected
+      batchNo: '',
+      qtyReceived: 0,
+      expiryDate: '',
+      manufacturer: '',
+      storageType: 'ROOM_TEMPERATURE',
+      purchasePrice: 0,
+      governmentPrice: 0,
+      retailPrice: 0,
+    });
+  };
+
+  const removeItem = (tempId: string) => {
+    setItems(items.filter(item => item.tempId !== tempId));
+  };
+
+  const saveAllItems = async () => {
+    if (items.length === 0) {
+      alert('Please add at least one item to save');
+      return;
+    }
+
     setLoading(true);
+    let successCount = 0;
+    let failedItems: { item: StockItem; error: string }[] = [];
+
     try {
-      // Clean up the data - remove empty strings
-      const cleanData: any = {
-        ...data,
-        qtyReceived: Number(data.qtyReceived),
-        purchasePrice: Number(data.purchasePrice),
-        governmentPrice: Number(data.governmentPrice),
-        retailPrice: Number(data.retailPrice),
-      };
+      // Log user and hospital context for debugging
+      console.log('Current User:', user?.email, 'Role:', user?.role);
+      console.log('Hospital ID:', currentHospitalId);
+      console.log('Processing', items.length, 'items');
 
-      // Remove empty string values for optional fields
-      Object.keys(cleanData).forEach(key => {
-        if (cleanData[key] === '' || cleanData[key] === null) {
-          delete cleanData[key];
+      // Process items sequentially to better track errors
+      for (const item of items) {
+        try {
+          const cleanData: any = {
+            pharmacyId: item.pharmacyId,
+            batchNo: item.batchNo,
+            qtyReceived: Number(item.qtyReceived),
+            expiryDate: item.expiryDate,
+            storageType: item.storageType,
+            purchasePrice: Number(item.purchasePrice),
+            governmentPrice: Number(item.governmentPrice),
+            retailPrice: Number(item.retailPrice),
+          };
+
+          // Add medicineId OR manual medicine details
+          if (item.medicineId && item.medicineId.trim() !== '') {
+            cleanData.medicineId = item.medicineId;
+          } else {
+            // Manual entry mode
+            cleanData.medicineName = item.medicineName;
+            cleanData.form = item.form;
+            if (item.strength) cleanData.strength = item.strength;
+            if (item.genericName) cleanData.genericName = item.genericName;
+            if (item.medicineManufacturer) cleanData.medicineManufacturer = item.medicineManufacturer;
+          }
+
+          // Add optional fields only if they have values
+          if (item.manufacturer && item.manufacturer.trim() !== '') {
+            cleanData.manufacturer = item.manufacturer;
+          }
+
+          console.log('Sending data for item:', cleanData);
+          
+          await api.post('/inventory/batches', cleanData);
+          successCount++;
+        } catch (err: any) {
+          const errorMessage = err.response?.data?.message || 'Unknown error';
+          console.error('Failed to save item:', err.response?.data);
+          failedItems.push({ item, error: errorMessage });
         }
-      });
+      }
 
-      await api.post('/inventory/batches', cleanData);
+      // Clear successfully added items
+      if (successCount > 0) {
+        fetchRecentBatches();
+      }
 
-      // Reset form and refresh data
-      form.reset({
-        medicineId: '',
-        medicineName: '',
-        genericName: '',
-        form: '',
-        strength: '',
-        medicineManufacturer: '',
-        pharmacyId: '',
-        batchNo: '',
-        qtyReceived: 0,
-        expiryDate: '',
-        manufacturer: '',
-        storageType: 'ROOM_TEMPERATURE',
-        purchasePrice: 0,
-        governmentPrice: 0,
-        retailPrice: 0,
-      });
-      setManualEntry(false); // Reset to default mode
-      fetchRecentBatches();
-
-      alert('Stock batch received successfully!');
+      // Show results
+      if (failedItems.length === 0) {
+        alert(`Successfully received all ${successCount} stock batch(es)!`);
+        setItems([]);
+      } else if (successCount === 0) {
+        alert(`Failed to receive all items:\n${failedItems.map((f, i) => `${i + 1}. ${f.error}`).join('\n')}`);
+      } else {
+        const failedInfo = failedItems.map((f, i) => {
+          const medicine = medicines.find(m => m.id === f.item.medicineId);
+          const medicineName = medicine?.name || f.item.medicineName || 'Unknown';
+          return `${i + 1}. ${medicineName}: ${f.error}`;
+        }).join('\n');
+        
+        alert(`Partially successful:\n✓ ${successCount} succeeded\n✗ ${failedItems.length} failed\n\nFailed items:\n${failedInfo}`);
+        
+        // Remove successful items, keep failed ones
+        const failedTempIds = failedItems.map(f => f.item.tempId);
+        setItems(items.filter(item => failedTempIds.includes(item.tempId)));
+      }
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || 'Failed to receive stock';
-      console.error('Error receiving stock:', errorMessage);
-      form.setError('root', {
-        type: 'manual',
-        message: errorMessage,
-      });
+      console.error('Unexpected error:', err);
+      alert('An unexpected error occurred while saving items');
     } finally {
       setLoading(false);
     }
+  };
+
+  const onSubmit = async (data: ReceiveStockFormData) => {
+    // Add item to list instead of submitting immediately
+    addItemToList(data);
   };
 
   const formatDate = (dateString: string) => {
@@ -332,6 +442,11 @@ export default function ReceiveStockPage() {
           <p className="text-muted-foreground">
             Create stock batches for medicines received from vendors (GRN)
           </p>
+          {user?.role === 'SUPER_ADMIN' && selectedHospital && (
+            <p className="text-sm text-blue-600 font-medium mt-1">
+              📍 {selectedHospital.name}
+            </p>
+          )}
         </div>
         <Button onClick={() => setBulkImportOpen(true)} variant="outline">
           <FileSpreadsheet className="mr-2 h-4 w-4" />
@@ -350,72 +465,132 @@ export default function ReceiveStockPage() {
         }}
       />
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6">
         {/* Receive Stock Form */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <PackagePlus className="h-5 w-5" />
-                Receive New Stock Batch
-              </CardTitle>
-              <CardDescription>
-                Enter details of the stock received from vendor
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  {/* Toggle for manual entry */}
-                  <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                    <div>
-                      <p className="font-medium text-sm">Manual Medicine Entry</p>
-                      <p className="text-xs text-muted-foreground">
-                        For bulk imports or new medicines not in the system
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant={manualEntry ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => {
-                        setManualEntry(!manualEntry);
-                        if (!manualEntry) {
-                          // Switching to manual entry - clear medicineId
-                          form.setValue('medicineId', '');
-                        } else {
-                          // Switching to dropdown - clear manual fields
-                          form.setValue('medicineName', '');
-                          form.setValue('genericName', '');
-                          form.setValue('form', '');
-                          form.setValue('strength', '');
-                          form.setValue('medicineManufacturer', '');
-                        }
-                      }}
-                    >
-                      {manualEntry ? 'Enabled' : 'Disabled'}
-                    </Button>
-                  </div>
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <PackagePlus className="h-5 w-5" />
+                  Receive New Stock Batch
+                </CardTitle>
+                <CardDescription>
+                  Add stock items in one line - click Add Item for each entry
+                </CardDescription>
+              </div>
+              {items.length > 0 && (
+                <Button onClick={saveAllItems} disabled={loading} size="lg">
+                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  <Save className="mr-2 h-4 w-4" />
+                  Save All ({items.length})
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {/* Warning if no medicines available */}
+            {!loadingData && medicines.length === 0 && !manualEntry && (
+              <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800 font-medium">
+                  ⚠️ No medicines found for this hospital
+                </p>
+                <p className="text-xs text-yellow-700 mt-1">
+                  Please add medicines first or enable "Manual Medicine Entry" mode above.
+                </p>
+              </div>
+            )}
 
-                  <div className="grid grid-cols-2 gap-4">
-                    {/* Medicine Selection or Manual Entry */}
-                    {!manualEntry ? (
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                {/* Toggle for manual entry */}
+                <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                  <div>
+                    <p className="font-medium text-sm">Manual Medicine Entry</p>
+                    <p className="text-xs text-muted-foreground">
+                      For new medicines not in the system
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant={manualEntry ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setManualEntry(!manualEntry);
+                      if (!manualEntry) {
+                        form.setValue('medicineId', '');
+                      } else {
+                        form.setValue('medicineName', '');
+                        form.setValue('genericName', '');
+                        form.setValue('form', '');
+                        form.setValue('strength', '');
+                        form.setValue('medicineManufacturer', '');
+                      }
+                    }}
+                  >
+                    {manualEntry ? 'Enabled' : 'Disabled'}
+                  </Button>
+                </div>
+
+                {/* Inline Form Fields */}
+                <div className="grid grid-cols-12 gap-3 items-end">
+                  {/* Medicine Selection or Manual Entry */}
+                  {!manualEntry ? (
+                    <FormField
+                      control={form.control}
+                      name="medicineId"
+                      render={({ field }) => (
+                        <FormItem className="col-span-3">
+                          <FormLabel>Medicine *</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value || ''}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {medicines.map((medicine) => (
+                                <SelectItem key={medicine.id} value={medicine.id}>
+                                  {medicine.name} {medicine.strength && `(${medicine.strength})`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ) : (
+                    <>
                       <FormField
                         control={form.control}
-                        name="medicineId"
+                        name="medicineName"
                         render={({ field }) => (
                           <FormItem className="col-span-2">
                             <FormLabel>Medicine *</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Name" {...field} value={field.value || ''} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="form"
+                        render={({ field }) => (
+                          <FormItem className="col-span-1">
+                            <FormLabel>Form *</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value || ''}>
                               <FormControl>
                                 <SelectTrigger>
-                                  <SelectValue placeholder="Select medicine" />
+                                  <SelectValue placeholder="Form" />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {medicines.map((medicine) => (
-                                  <SelectItem key={medicine.id} value={medicine.id}>
-                                    {medicine.name} {medicine.strength && `(${medicine.strength})`} - {medicine.form}
+                                {MEDICINE_FORMS.map((form) => (
+                                  <SelectItem key={form.value} value={form.value}>
+                                    {form.label}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -424,357 +599,276 @@ export default function ReceiveStockPage() {
                           </FormItem>
                         )}
                       />
-                    ) : (
-                      <>
-                        <FormField
-                          control={form.control}
-                          name="medicineName"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Medicine Name *</FormLabel>
-                              <FormControl>
-                                <Input placeholder="e.g., Paracetamol" {...field} value={field.value || ''} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={form.control}
-                          name="form"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Form *</FormLabel>
-                              <Select onValueChange={field.onChange} value={field.value || ''}>
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select form" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {MEDICINE_FORMS.map((form) => (
-                                    <SelectItem key={form.value} value={form.value}>
-                                      {form.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={form.control}
-                          name="strength"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Strength</FormLabel>
-                              <FormControl>
-                                <Input placeholder="e.g., 500mg" {...field} value={field.value || ''} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={form.control}
-                          name="genericName"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Generic Name</FormLabel>
-                              <FormControl>
-                                <Input placeholder="e.g., Acetaminophen" {...field} value={field.value || ''} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={form.control}
-                          name="medicineManufacturer"
-                          render={({ field }) => (
-                            <FormItem className="col-span-2">
-                              <FormLabel>Medicine Manufacturer</FormLabel>
-                              <FormControl>
-                                <Input placeholder="e.g., GSK" {...field} value={field.value || ''} />
-                              </FormControl>
-                              <FormDescription>
-                                For creating new medicine record
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </>
-                    )}
-
-                    {/* Pharmacy Select */}
-                    <FormField
-                      control={form.control}
-                      name="pharmacyId"
-                      render={({ field }) => (
-                        <FormItem className="col-span-2">
-                          <FormLabel>Main Pharmacy *</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value || ''}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select pharmacy" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {pharmacies.map((pharmacy) => (
-                                <SelectItem key={pharmacy.id} value={pharmacy.id}>
-                                  {pharmacy.name} ({pharmacy.code})
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormDescription>
-                            Only main pharmacies can receive stock directly
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Batch Number */}
-                    <FormField
-                      control={form.control}
-                      name="batchNo"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Batch Number *</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Auto-generated" {...field} value={field.value || ''} />
-                          </FormControl>
-                          <FormDescription>
-                            Auto-generated when medicine and pharmacy are selected
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Quantity Received */}
-                    <FormField
-                      control={form.control}
-                      name="qtyReceived"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Quantity Received *</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              min="1"
-                              placeholder="100"
-                              {...field}
-                              value={field.value ?? 0}
-                              onChange={(e) => field.onChange(Number(e.target.value))}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Expiry Date */}
-                    <FormField
-                      control={form.control}
-                      name="expiryDate"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Expiry Date *</FormLabel>
-                          <FormControl>
-                            <Input type="date" {...field} value={field.value || ''} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Manufacturer */}
-                    <FormField
-                      control={form.control}
-                      name="manufacturer"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Manufacturer</FormLabel>
-                          <FormControl>
-                            <Input placeholder="GSK, Pfizer, etc." {...field} value={field.value || ''} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Storage Type */}
-                    <FormField
-                      control={form.control}
-                      name="storageType"
-                      render={({ field }) => (
-                        <FormItem className="col-span-2">
-                          <FormLabel>Storage Type *</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value || 'ROOM_TEMPERATURE'}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select storage type" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {STORAGE_TYPES.map((type) => (
-                                <SelectItem key={type.value} value={type.value}>
-                                  {type.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Purchase Price */}
-                    <FormField
-                      control={form.control}
-                      name="purchasePrice"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Purchase Price (PKR) *</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              placeholder="0.00"
-                              {...field}
-                              value={field.value ?? 0}
-                              onChange={(e) => field.onChange(Number(e.target.value))}
-                            />
-                          </FormControl>
-                          <FormDescription>Cost per unit</FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Government Price */}
-                    <FormField
-                      control={form.control}
-                      name="governmentPrice"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Government Price (PKR) *</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              placeholder="0.00"
-                              {...field}
-                              value={field.value ?? 0}
-                              onChange={(e) => field.onChange(Number(e.target.value))}
-                            />
-                          </FormControl>
-                          <FormDescription>Subsidized price</FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Retail Price */}
-                    <FormField
-                      control={form.control}
-                      name="retailPrice"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Retail Price (PKR) *</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              placeholder="0.00"
-                              {...field}
-                              value={field.value ?? 0}
-                              onChange={(e) => field.onChange(Number(e.target.value))}
-                            />
-                          </FormControl>
-                          <FormDescription>Market price</FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  {/* Form-level error */}
-                  {form.formState.errors.root && (
-                    <div className="rounded-lg border border-destructive p-3 bg-destructive/10">
-                      <p className="text-sm text-destructive">
-                        {form.formState.errors.root.message}
-                      </p>
-                    </div>
+                    </>
                   )}
 
-                  <Button type="submit" disabled={loading} className="w-full">
-                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {loading ? 'Receiving Stock...' : 'Receive Stock Batch'}
-                  </Button>
-                </form>
-              </Form>
-            </CardContent>
-          </Card>
-        </div>
+                  {/* Pharmacy */}
+                  <FormField
+                    control={form.control}
+                    name="pharmacyId"
+                    render={({ field }) => (
+                      <FormItem className="col-span-2">
+                        <FormLabel>Pharmacy *</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ''}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {pharmacies.map((pharmacy) => (
+                              <SelectItem key={pharmacy.id} value={pharmacy.id}>
+                                {pharmacy.code}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-        {/* Quick Info */}
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Quick Info</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-start gap-3">
-                <Package className="h-5 w-5 text-blue-600 mt-0.5" />
-                <div>
-                  <p className="font-medium text-sm">Batch Number</p>
-                  <p className="text-xs text-muted-foreground">
-                    Auto-generated based on pharmacy code and medicine
-                  </p>
+                  {/* Batch Number */}
+                  <FormField
+                    control={form.control}
+                    name="batchNo"
+                    render={({ field }) => (
+                      <FormItem className="col-span-2">
+                        <FormLabel>Batch No *</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Auto" {...field} value={field.value || ''} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Quantity */}
+                  <FormField
+                    control={form.control}
+                    name="qtyReceived"
+                    render={({ field }) => (
+                      <FormItem className="col-span-1">
+                        <FormLabel>Qty *</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="1"
+                            placeholder="0"
+                            {...field}
+                            value={field.value ?? 0}
+                            onChange={(e) => field.onChange(Number(e.target.value))}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Expiry Date */}
+                  <FormField
+                    control={form.control}
+                    name="expiryDate"
+                    render={({ field }) => (
+                      <FormItem className="col-span-2">
+                        <FormLabel>Expiry *</FormLabel>
+                        <FormControl>
+                          <Input type="date" {...field} value={field.value || ''} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Purchase Price */}
+                  <FormField
+                    control={form.control}
+                    name="purchasePrice"
+                    render={({ field }) => (
+                      <FormItem className="col-span-1">
+                        <FormLabel>Price *</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0"
+                            {...field}
+                            value={field.value ?? 0}
+                            onChange={(e) => field.onChange(Number(e.target.value))}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Add Item Button */}
+                  <div className="col-span-1">
+                    <Button type="submit" className="w-full">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Additional Fields Row (Optional) */}
+                <div className="grid grid-cols-12 gap-3">
+                  <FormField
+                    control={form.control}
+                    name="storageType"
+                    render={({ field }) => (
+                      <FormItem className="col-span-3">
+                        <FormLabel>Storage Type *</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || 'ROOM_TEMPERATURE'}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {STORAGE_TYPES.map((type) => (
+                              <SelectItem key={type.value} value={type.value}>
+                                {type.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="governmentPrice"
+                    render={({ field }) => (
+                      <FormItem className="col-span-3">
+                        <FormLabel>Govt Price *</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            {...field}
+                            value={field.value ?? 0}
+                            onChange={(e) => field.onChange(Number(e.target.value))}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="retailPrice"
+                    render={({ field }) => (
+                      <FormItem className="col-span-3">
+                        <FormLabel>Retail Price *</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            {...field}
+                            value={field.value ?? 0}
+                            onChange={(e) => field.onChange(Number(e.target.value))}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="manufacturer"
+                    render={({ field }) => (
+                      <FormItem className="col-span-3">
+                        <FormLabel>Manufacturer</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Optional" {...field} value={field.value || ''} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* Form-level error */}
+                {form.formState.errors.root && (
+                  <div className="rounded-lg border border-destructive p-3 bg-destructive/10">
+                    <p className="text-sm text-destructive">
+                      {form.formState.errors.root.message}
+                    </p>
+                  </div>
+                )}
+              </form>
+            </Form>
+
+            {/* Added Items List */}
+            {items.length > 0 && (
+              <div className="mt-6">
+                <h3 className="font-semibold mb-3 flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  Items to Receive ({items.length})
+                </h3>
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Medicine</TableHead>
+                        <TableHead>Pharmacy</TableHead>
+                        <TableHead>Batch No</TableHead>
+                        <TableHead>Qty</TableHead>
+                        <TableHead>Expiry</TableHead>
+                        <TableHead>Price</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {items.map((item) => {
+                        const medicine = medicines.find(m => m.id === item.medicineId);
+                        const pharmacy = pharmacies.find(p => p.id === item.pharmacyId);
+                        const medicineName = medicine?.name || item.medicineName;
+                        const pharmacyCode = pharmacy?.code || item.pharmacyId;
+                        
+                        return (
+                          <TableRow key={item.tempId}>
+                            <TableCell className="font-medium">
+                              {medicineName}
+                              {medicine?.strength && ` (${medicine.strength})`}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{pharmacyCode}</Badge>
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">{item.batchNo}</TableCell>
+                            <TableCell>{item.qtyReceived}</TableCell>
+                            <TableCell className="text-sm">{formatDate(item.expiryDate)}</TableCell>
+                            <TableCell className="font-mono text-sm">PKR {Number(item.purchasePrice).toFixed(2)}</TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeItem(item.tempId)}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
                 </div>
               </div>
-              <div className="flex items-start gap-3">
-                <Calendar className="h-5 w-5 text-green-600 mt-0.5" />
-                <div>
-                  <p className="font-medium text-sm">Expiry Date</p>
-                  <p className="text-xs text-muted-foreground">
-                    FIFO system uses this for automatic batch selection
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <DollarSign className="h-5 w-5 text-purple-600 mt-0.5" />
-                <div>
-                  <p className="font-medium text-sm">Pricing</p>
-                  <p className="text-xs text-muted-foreground">
-                    Purchase, Government, and Retail prices tracked separately
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <Building2 className="h-5 w-5 text-orange-600 mt-0.5" />
-                <div>
-                  <p className="font-medium text-sm">Main Pharmacy Only</p>
-                  <p className="text-xs text-muted-foreground">
-                    Stock received at main pharmacy, then transferred to sub-pharmacies
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Quick Info moved to bottom or can be removed */}
       </div>
 
       {/* Recent Batches */}
