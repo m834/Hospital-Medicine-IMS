@@ -186,6 +186,50 @@ async function main() {
     }
   }
 
+  console.log('');
+
+  // ============================================
+  // 5. CREATE POPULAR MEDICINES
+  // ============================================
+  console.log('Seeding popular medicines for each hospital...');
+
+  const popularMedicines = [
+    { name: 'Paracetamol', genericName: 'Paracetamol', strength: '500mg', form: 'TABLET' },
+    { name: 'Ibuprofen', genericName: 'Ibuprofen', strength: '200mg', form: 'TABLET' },
+    { name: 'Amoxicillin', genericName: 'Amoxicillin', strength: '500mg', form: 'CAPSULE' },
+    { name: 'Metformin', genericName: 'Metformin', strength: '500mg', form: 'TABLET' },
+    { name: 'Omeprazole', genericName: 'Omeprazole', strength: '20mg', form: 'CAPSULE' },
+    { name: 'Ciprofloxacin', genericName: 'Ciprofloxacin', strength: '500mg', form: 'TABLET' },
+    { name: 'Salbutamol Syrup', genericName: 'Salbutamol', strength: '2mg/5ml', form: 'SYRUP' },
+    { name: 'Amoxicillin-Clavulanate', genericName: 'Amoxicillin/Clavulanate', strength: '625mg', form: 'TABLET' },
+  ];
+
+  for (const hospital of createdHospitals) {
+    for (const med of popularMedicines) {
+      const exists = await prisma.medicine.findFirst({
+        where: { name: med.name, hospitalId: hospital.id },
+      });
+
+      if (!exists) {
+        await prisma.medicine.create({
+          data: {
+            hospitalId: hospital.id,
+            name: med.name,
+            genericName: med.genericName,
+            strength: med.strength,
+            form: med.form as any,
+            manufacturer: 'Generic Manufacturer',
+            status: 'ACTIVE',
+          },
+        });
+        console.log(`✅ Seeded medicine ${med.name} for ${hospital.name}`);
+      } else {
+        console.log(`⚠️  Medicine ${med.name} already exists for ${hospital.name}. Skipping...`);
+      }
+    }
+  }
+
+
   console.log('\n✅ Database seeding completed successfully!\n');
   console.log('='.repeat(60));
   console.log('DEFAULT CREDENTIALS:');
