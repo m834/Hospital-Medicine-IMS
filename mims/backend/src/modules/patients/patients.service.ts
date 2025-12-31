@@ -90,7 +90,7 @@ export class PatientsService {
         department: createPatientDto.department,
         ward: createPatientDto.ward,
         bed: createPatientDto.bed,
-        attendingDoctorId: createPatientDto.attendingDoctorId,
+        attendingDoctorId: createPatientDto.attendingDoctorId || null,
         registeredBy: userId,
       },
       include: {

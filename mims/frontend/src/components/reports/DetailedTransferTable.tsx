@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
   Table,
   TableBody,
@@ -93,10 +93,9 @@ export function DetailedTransferTable({ data, direction }: DetailedTransferTable
   };
 
   const totalTransfers = data.length;
-  const totalItems = data.reduce((sum, transfer) => sum + transfer.totalItems, 0);
+  const totalItems = data.reduce((sum, transfer) => sum + (transfer.itemCount || 0), 0);
   const totalQuantity = data.reduce(
-    (sum, transfer) =>
-      sum + transfer.items.reduce((itemSum, item) => itemSum + item.totalQuantity, 0),
+    (sum, transfer) => sum + (transfer.totalQuantity || 0),
     0
   );
 
@@ -151,7 +150,7 @@ export function DetailedTransferTable({ data, direction }: DetailedTransferTable
         </TableHeader>
         <TableBody>
           {data.map((transfer) => (
-            <>
+            <React.Fragment key={transfer.transferId || transfer.id}>
               {/* Transfer Row */}
               <TableRow
                 key={transfer.transferId}
@@ -328,7 +327,7 @@ export function DetailedTransferTable({ data, direction }: DetailedTransferTable
                   </TableCell>
                 </TableRow>
               )}
-            </>
+            </React.Fragment>
           ))}
         </TableBody>
       </Table>

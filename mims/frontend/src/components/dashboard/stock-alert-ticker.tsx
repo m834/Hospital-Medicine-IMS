@@ -69,8 +69,12 @@ export function StockAlertTicker() {
       const response = await api.get('/inventory/batches', { params });
       const batches = response.data?.data || response.data || [];
       
+      console.log('Total batches fetched:', batches.length);
+      
       // Filter only AVAILABLE batches
       const availableBatches = batches.filter((b: any) => b.status === 'AVAILABLE');
+      
+      console.log('Available batches:', availableBatches.length);
 
       const processedAlerts: StockAlert[] = [];
       const today = new Date();
@@ -81,8 +85,8 @@ export function StockAlertTicker() {
           (expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
         );
 
-        // Expiring soon (within 30 days)
-        if (daysUntilExpiry > 0 && daysUntilExpiry <= 30) {
+        // Expiring soon (within 7 days for alert ticker)
+        if (daysUntilExpiry > 0 && daysUntilExpiry <= 7) {
           processedAlerts.push({
             id: `exp-${batch.id}`,
             type: 'EXPIRING_SOON',
@@ -95,9 +99,8 @@ export function StockAlertTicker() {
           });
         }
 
-        // Low stock (less than 20% of received quantity or less than 10 units)
-        const lowStockThreshold = Math.max(Math.floor(batch.qtyReceived * 0.2), 10);
-        if (batch.qtyAvailable > 0 && batch.qtyAvailable <= lowStockThreshold) {
+        // Critical Low stock (below 15 units)
+        if (batch.qtyAvailable > 0 && batch.qtyAvailable < 15) {
           processedAlerts.push({
             id: `low-${batch.id}`,
             type: 'LOW_STOCK',
@@ -108,10 +111,8 @@ export function StockAlertTicker() {
           });
         }
 
-        // Medium stock (20-50% of received quantity)
-        const mediumStockMin = lowStockThreshold;
-        const mediumStockMax = Math.floor(batch.qtyReceived * 0.5);
-        if (batch.qtyAvailable > mediumStockMin && batch.qtyAvailable <= mediumStockMax) {
+        // Medium stock (15-30 units)
+        if (batch.qtyAvailable >= 15 && batch.qtyAvailable <= 30) {
           processedAlerts.push({
             id: `med-${batch.id}`,
             type: 'MEDIUM_STOCK',
@@ -122,6 +123,8 @@ export function StockAlertTicker() {
           });
         }
       });
+      
+      console.log('Processed alerts:', processedAlerts.length, processedAlerts);
 
       // Sort by priority: Expiring Soon > Low Stock > Medium Stock
       const priorityOrder = { EXPIRING_SOON: 1, LOW_STOCK: 2, MEDIUM_STOCK: 3 };
