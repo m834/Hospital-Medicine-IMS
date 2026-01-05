@@ -1,0 +1,362 @@
+@startuml Hospital Management System ER Diagram
+
+' ============= Platform Database Entities =============
+entity "hospitals" as hospitals {
+    * id : uuid <<PK>>
+    --
+    * name : varchar(255)
+    * code : varchar(50) <<UK>>
+    * address : text
+    * phone : varchar(20)
+    * email : varchar(255)
+    * database_name : varchar(100) <<UK>>
+    * status : enum('ACTIVE','INACTIVE','SUSPENDED')
+    * created_at : timestamp
+    * updated_at : timestamp
+}
+
+entity "feature_flags" as feature_flags {
+    * id : uuid <<PK>>
+    * hospital_id : uuid <<FK>>
+    --
+    * module_name : enum('OPD','IPD','PHARMACY','INVENTORY','LAB','RADIOLOGY','REPORTS','DEPARTMENTS')
+    * is_enabled : boolean
+    config : jsonb
+    * created_at : timestamp
+    * updated_at : timestamp
+}
+
+entity "users" as users {
+    * id : uuid <<PK>>
+    * hospital_id : uuid <<FK>>
+    --
+    * email : varchar(255) <<UK>>
+    * password_hash : varchar(255)
+    * first_name : varchar(100)
+    * last_name : varchar(100)
+    * phone : varchar(20)
+    * role : enum('MASTER_ADMIN','SUPER_ADMIN','HOSPITAL_ADMIN','DOCTOR','NURSE','RECEPTIONIST','PHARMACIST','LAB_TECHNICIAN','RADIOLOGIST','BILLING_STAFF')
+    department_id : uuid <<FK>>
+    sub_department_id : uuid <<FK>>
+    * is_active : boolean
+    * created_at : timestamp
+    * updated_at : timestamp
+}
+
+entity "permissions" as permissions {
+    * id : uuid <<PK>>
+    --
+    * role : enum
+    * resource : varchar(100)
+    * action : enum('CREATE','READ','UPDATE','DELETE','EXECUTE')
+    * scope : enum('PLATFORM','HOSPITAL','DEPARTMENT','SUB_DEPARTMENT','SELF')
+}
+
+entity "sessions" as sessions {
+    * id : uuid <<PK>>
+    * user_id : uuid <<FK>>
+    --
+    * access_token : text
+    * refresh_token : text
+    * expires_at : timestamp
+    * created_at : timestamp
+}
+
+' ============= Hospital Database Entities (Per Hospital) =============
+
+entity "patients" as patients {
+    * id : uuid <<PK>>
+    * hospital_id : uuid
+    --
+    * mr_number : varchar(50) <<UK>>
+    * first_name : varchar(100)
+    * last_name : varchar(100)
+    * date_of_birth : date
+    * gender : enum('MALE','FEMALE','OTHER')
+    * phone : varchar(20)
+    email : varchar(255)
+    address : text
+    blood_group : varchar(10)
+    emergency_contact : varchar(20)
+    * created_at : timestamp
+    * updated_at : timestamp
+}
+
+entity "medical_records" as medical_records {
+    * id : uuid <<PK>>
+    * patient_id : uuid <<FK>>
+    --
+    * mr_number : varchar(50)
+    * visit_date : timestamp
+    * visit_type : enum('OPD','IPD','EMERGENCY')
+    * department_id : uuid <<FK>>
+    * doctor_id : uuid <<FK>>
+    chief_complaint : text
+    diagnosis : text
+    * status : enum('REGISTERED','IN_CONSULTATION','COMPLETED','CANCELLED')
+    * created_at : timestamp
+    * updated_at : timestamp
+}
+
+entity "departments" as departments {
+    * id : uuid <<PK>>
+    * hospital_id : uuid
+    --
+    * name : varchar(100)
+    * code : varchar(50)
+    description : text
+    * is_active : boolean
+    * created_at : timestamp
+    * updated_at : timestamp
+}
+
+entity "sub_departments" as sub_departments {
+    * id : uuid <<PK>>
+    * department_id : uuid <<FK>>
+    --
+    * name : varchar(100)
+    * code : varchar(50)
+    description : text
+    * is_active : boolean
+    * created_at : timestamp
+    * updated_at : timestamp
+}
+
+entity "consultations" as consultations {
+    * id : uuid <<PK>>
+    * medical_record_id : uuid <<FK>>
+    * doctor_id : uuid <<FK>>
+    --
+    * consultation_date : timestamp
+    symptoms : text
+    diagnosis : text
+    prescription : jsonb
+    notes : text
+    follow_up_date : date
+    * created_at : timestamp
+}
+
+entity "orders" as orders {
+    * id : uuid <<PK>>
+    * medical_record_id : uuid <<FK>>
+    --
+    * order_type : enum('LAB','RADIOLOGY','PHARMACY','PROCEDURE')
+    * service_id : uuid
+    * quantity : integer
+    instructions : text
+    * status : enum('PENDING','IN_PROGRESS','COMPLETED','CANCELLED')
+    * ordered_by : uuid <<FK>>
+    * ordered_at : timestamp
+    completed_at : timestamp
+}
+
+entity "bills" as bills {
+    * id : uuid <<PK>>
+    * medical_record_id : uuid <<FK>>
+    * patient_id : uuid <<FK>>
+    --
+    * bill_number : varchar(50) <<UK>>
+    * bill_date : timestamp
+    * total_amount : decimal(10,2)
+    discount : decimal(10,2)
+    tax : decimal(10,2)
+    * net_amount : decimal(10,2)
+    * status : enum('DRAFT','PENDING','PAID','PARTIALLY_PAID','CANCELLED')
+    * created_at : timestamp
+    * updated_at : timestamp
+}
+
+entity "bill_line_items" as bill_line_items {
+    * id : uuid <<PK>>
+    * bill_id : uuid <<FK>>
+    --
+    * item_type : enum('CONSULTATION','LAB','RADIOLOGY','PHARMACY','PROCEDURE')
+    * item_id : uuid
+    * description : varchar(255)
+    * quantity : integer
+    * unit_price : decimal(10,2)
+    * amount : decimal(10,2)
+}
+
+entity "payments" as payments {
+    * id : uuid <<PK>>
+    * bill_id : uuid <<FK>>
+    --
+    * payment_date : timestamp
+    * amount : decimal(10,2)
+    * payment_mode : enum('CASH','CARD','UPI','NET_BANKING')
+    transaction_id : varchar(100)
+    * status : enum('PENDING','SUCCESS','FAILED','REFUNDED')
+    * created_at : timestamp
+}
+
+entity "pharmacies" as pharmacies {
+    * id : uuid <<PK>>
+    * hospital_id : uuid
+    --
+    * name : varchar(100)
+    * type : enum('MAIN','SUB')
+    parent_pharmacy_id : uuid <<FK>>
+    * is_active : boolean
+    * created_at : timestamp
+}
+
+entity "medicines" as medicines {
+    * id : uuid <<PK>>
+    --
+    * name : varchar(255)
+    * generic_name : varchar(255)
+    * manufacturer : varchar(255)
+    * dosage_form : varchar(100)
+    * strength : varchar(50)
+    * unit : varchar(20)
+    * created_at : timestamp
+}
+
+entity "inventory_items" as inventory_items {
+    * id : uuid <<PK>>
+    * pharmacy_id : uuid <<FK>>
+    * medicine_id : uuid <<FK>>
+    --
+    * batch_number : varchar(100)
+    * quantity : integer
+    * unit_price : decimal(10,2)
+    * expiry_date : date
+    * reorder_level : integer
+    * created_at : timestamp
+    * updated_at : timestamp
+}
+
+entity "dispensing" as dispensing {
+    * id : uuid <<PK>>
+    * order_id : uuid <<FK>>
+    * pharmacy_id : uuid <<FK>>
+    --
+    * dispensed_by : uuid <<FK>>
+    * dispensed_at : timestamp
+    items : jsonb
+}
+
+entity "lab_tests" as lab_tests {
+    * id : uuid <<PK>>
+    --
+    * name : varchar(255)
+    * code : varchar(50) <<UK>>
+    * department_id : uuid <<FK>>
+    * price : decimal(10,2)
+    * sample_type : varchar(100)
+    * turnaround_time : integer
+    * created_at : timestamp
+}
+
+entity "lab_orders" as lab_orders {
+    * id : uuid <<PK>>
+    * order_id : uuid <<FK>>
+    * test_id : uuid <<FK>>
+    --
+    sample_collected_at : timestamp
+    result : jsonb
+    * status : enum('PENDING','SAMPLE_COLLECTED','IN_PROGRESS','COMPLETED','CANCELLED')
+    technician_id : uuid <<FK>>
+    completed_at : timestamp
+}
+
+entity "radiology_tests" as radiology_tests {
+    * id : uuid <<PK>>
+    --
+    * name : varchar(255)
+    * code : varchar(50) <<UK>>
+    * sub_department_id : uuid <<FK>>
+    * price : decimal(10,2)
+    * modality : varchar(100)
+    * created_at : timestamp
+}
+
+entity "radiology_orders" as radiology_orders {
+    * id : uuid <<PK>>
+    * order_id : uuid <<FK>>
+    * test_id : uuid <<FK>>
+    --
+    images : text[]
+    report : text
+    * status : enum('PENDING','IN_PROGRESS','COMPLETED','CANCELLED')
+    radiologist_id : uuid <<FK>>
+    completed_at : timestamp
+}
+
+entity "roasters" as roasters {
+    * id : uuid <<PK>>
+    * hospital_id : uuid
+    * department_id : uuid <<FK>>
+    * user_id : uuid <<FK>>
+    --
+    * date : date
+    * shift : enum('MORNING','AFTERNOON','EVENING','NIGHT')
+    * start_time : time
+    * end_time : time
+    * status : enum('SCHEDULED','PRESENT','ABSENT','ON_LEAVE')
+    * created_at : timestamp
+}
+
+' ============= Audit Database Entities =============
+entity "audit_logs" as audit_logs {
+    * id : uuid <<PK>>
+    * hospital_id : uuid
+    * user_id : uuid
+    --
+    * action : varchar(100)
+    * resource : varchar(100)
+    * resource_id : uuid
+    old_value : jsonb
+    new_value : jsonb
+    * ip_address : varchar(50)
+    * user_agent : text
+    * timestamp : timestamp
+}
+
+' ============= Relationships =============
+
+' Platform relationships
+hospitals ||--o{ feature_flags : "hospitals.id -> feature_flags.hospital_id"
+hospitals ||--o{ users : "hospitals.id -> users.hospital_id"
+users ||--o{ sessions : "users.id -> sessions.user_id"
+users }o--|| permissions : "users.role -> permissions.role"
+
+' Hospital database relationships
+patients ||--o{ medical_records : "patients.id -> medical_records.patient_id"
+medical_records ||--o| bills : "medical_records.id -> bills.medical_record_id"
+medical_records ||--o{ orders : "medical_records.id -> orders.medical_record_id"
+medical_records ||--o| consultations : "medical_records.id -> consultations.medical_record_id"
+
+departments ||--o{ sub_departments : "departments.id -> sub_departments.department_id"
+departments ||--o{ medical_records : "departments.id -> medical_records.department_id"
+departments ||--o{ lab_tests : "departments.id -> lab_tests.department_id"
+departments ||--o{ roasters : "departments.id -> roasters.department_id"
+
+sub_departments ||--o{ radiology_tests : "sub_departments.id -> radiology_tests.sub_department_id"
+
+users ||--o{ medical_records : "users.id -> medical_records.doctor_id"
+users ||--o{ consultations : "users.id -> consultations.doctor_id"
+users ||--o{ orders : "users.id -> orders.ordered_by"
+users ||--o{ roasters : "users.id -> roasters.user_id"
+users ||--o{ dispensing : "users.id -> dispensing.dispensed_by"
+users ||--o{ lab_orders : "users.id -> lab_orders.technician_id"
+users ||--o{ radiology_orders : "users.id -> radiology_orders.radiologist_id"
+
+bills ||--o{ bill_line_items : "bills.id -> bill_line_items.bill_id"
+bills ||--o{ payments : "bills.id -> payments.bill_id"
+
+orders ||--o| lab_orders : "orders.id -> lab_orders.order_id"
+orders ||--o| radiology_orders : "orders.id -> radiology_orders.order_id"
+orders ||--o| dispensing : "orders.id -> dispensing.order_id"
+
+lab_tests ||--o{ lab_orders : "lab_tests.id -> lab_orders.test_id"
+radiology_tests ||--o{ radiology_orders : "radiology_tests.id -> radiology_orders.test_id"
+
+pharmacies ||--o{ inventory_items : "pharmacies.id -> inventory_items.pharmacy_id"
+pharmacies ||--o{ pharmacies : "pharmacies.id -> pharmacies.parent_pharmacy_id"
+pharmacies ||--o{ dispensing : "pharmacies.id -> dispensing.pharmacy_id"
+
+medicines ||--o{ inventory_items : "medicines.id -> inventory_items.medicine_id"
+
+@enduml

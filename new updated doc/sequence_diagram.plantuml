@@ -1,0 +1,572 @@
+@startuml Hospital Management System Sequence Diagrams
+
+' ============= Sequence 1: Patient Registration & MR Generation =============
+title Sequence 1: Patient Registration & MR Generation
+
+actor Receptionist
+participant "Next.js BFF" as BFF
+participant "API Gateway" as Gateway
+participant "Auth Service" as Auth
+participant "Patient Service" as Patient
+participant "Hospital DB" as DB
+participant "Redis Cache" as Redis
+participant "Audit Service" as Audit
+
+Receptionist -> BFF: POST /api/patients/register
+note right
+    Input: {
+        "hospital_id": "uuid",
+        "first_name": "John",
+        "last_name": "Doe",
+        "date_of_birth": "1990-01-01",
+        "gender": "MALE",
+        "phone": "+1234567890",
+        "email": "john@example.com",
+        "address": "123 Main St"
+    }
+end note
+
+BFF -> Gateway: Forward request with JWT token
+Gateway -> Auth: Validate token & permissions
+Auth -> Redis: Check session cache
+Redis --> Auth: Session valid
+Auth --> Gateway: User authorized
+note right
+    Output: {
+        "user_id": "uuid",
+        "hospital_id": "uuid",
+        "role": "RECEPTIONIST",
+        "permissions": ["patient:create"]
+    }
+end note
+
+Gateway -> Patient: POST /patients
+Patient -> DB: Check if patient exists (phone/email)
+DB --> Patient: No existing patient
+
+Patient -> Patient: Generate MR number
+note right
+    MR Format: {hospital_code}-MR-{sequence}
+    Example: H001-MR-00001
+end note
+
+Patient -> DB: INSERT INTO patients
+note right
+    INSERT: {
+        "id": "uuid",
+        "hospital_id": "uuid",
+        "mr_number": "H001-MR-00001",
+        "first_name": "John",
+        "last_name": "Doe",
+        "date_of_birth": "1990-01-01",
+        "gender": "MALE",
+        "phone": "+1234567890",
+        "email": "john@example.com",
+        "address": "123 Main St",
+        "created_at": "2025-12-29T10:00:00Z"
+    }
+end note
+
+DB --> Patient: Patient created
+
+Patient -> Audit: Publish audit event
+note right
+    Event: {
+        "action": "patient_created",
+        "resource": "patient",
+        "resource_id": "uuid",
+        "user_id": "uuid",
+        "hospital_id": "uuid"
+    }
+end note
+
+Patient --> Gateway: Return patient data
+Gateway --> BFF: Return response
+BFF --> Receptionist: Display patient & MR number
+note right
+    Output: {
+        "id": "uuid",
+        "mr_number": "H001-MR-00001",
+        "first_name": "John",
+        "last_name": "Doe",
+        "created_at": "2025-12-29T10:00:00Z"
+    }
+end note
+
+@enduml
+
+' ============= Sequence 2: Doctor Consultation with Orders =============
+@startuml
+title Sequence 2: Doctor Consultation with Orders
+
+actor Doctor
+participant "Next.js BFF" as BFF
+participant "API Gateway" as Gateway
+participant "Clinical Service" as Clinical
+participant "Billing Service" as Billing
+participant "Hospital DB" as DB
+participant "RabbitMQ" as Queue
+participant "Audit Service" as Audit
+
+Doctor -> BFF: POST /api/consultations
+note right
+    Input: {
+        "medical_record_id": "uuid",
+        "symptoms": "Fever, cough",
+        "diagnosis": "Upper respiratory infection",
+        "prescription": {
+            "medicines": [
+                {"name": "Paracetamol", "dosage": "500mg", "frequency": "3 times daily"}
+            ]
+        },
+        "orders": [
+            {"type": "LAB", "test_id": "uuid", "instructions": "Fasting required"},
+            {"type": "PHARMACY", "medicine_id": "uuid", "quantity": 10}
+        ]
+    }
+end note
+
+BFF -> Gateway: Forward request
+Gateway -> Clinical: POST /consultations
+
+Clinical -> DB: BEGIN TRANSACTION
+
+Clinical -> DB: INSERT INTO consultations
+note right
+    INSERT: {
+        "id": "uuid",
+        "medical_record_id": "uuid",
+        "doctor_id": "uuid",
+        "consultation_date": "2025-12-29T10:30:00Z",
+        "symptoms": "Fever, cough",
+        "diagnosis": "Upper respiratory infection",
+        "prescription": {...}
+    }
+end note
+
+DB --> Clinical: Consultation created
+
+loop For each order
+    Clinical -> DB: INSERT INTO orders
+    note right
+        INSERT: {
+            "id": "uuid",
+            "medical_record_id": "uuid",
+            "order_type": "LAB",
+            "service_id": "uuid",
+            "quantity": 1,
+            "instructions": "Fasting required",
+            "status": "PENDING",
+            "ordered_by": "uuid",
+            "ordered_at": "2025-12-29T10:30:00Z"
+        }
+    end note
+    
+    DB --> Clinical: Order created
+    
+    Clinical -> Queue: Publish order_created event
+    note right
+        Event: {
+            "order_id": "uuid",
+            "order_type": "LAB",
+            "medical_record_id": "uuid"
+        }
+    end note
+end
+
+Clinical -> DB: UPDATE medical_records SET status = 'IN_CONSULTATION'
+Clinical -> DB: COMMIT TRANSACTION
+
+Clinical -> Billing: POST /bills/calculate
+note right
+    Input: {
+        "medical_record_id": "uuid",
+        "items": [
+            {"type": "CONSULTATION", "amount": 500},
+            {"type": "LAB", "test_id": "uuid"},
+            {"type": "PHARMACY", "medicine_id": "uuid", "quantity": 10}
+        ]
+    }
+end note
+
+Billing -> DB: Calculate total from services
+Billing --> Clinical: Bill preview
+note right
+    Output: {
+        "total_amount": 1500,
+        "items": [
+            {"description": "Consultation", "amount": 500},
+            {"description": "CBC Test", "amount": 300},
+            {"description": "Paracetamol 500mg x10", "amount": 700}
+        ]
+    }
+end note
+
+Clinical -> Audit: Publish audit event
+Clinical --> Gateway: Return consultation data
+Gateway --> BFF: Return response
+BFF --> Doctor: Display consultation & orders
+note right
+    Output: {
+        "consultation_id": "uuid",
+        "orders": [
+            {"id": "uuid", "type": "LAB", "status": "PENDING"},
+            {"id": "uuid", "type": "PHARMACY", "status": "PENDING"}
+        ],
+        "estimated_bill": 1500
+    }
+end note
+
+@enduml
+
+' ============= Sequence 3: Lab Order Processing =============
+@startuml
+title Sequence 3: Lab Order Processing
+
+actor "Lab Technician" as Tech
+participant "Next.js BFF" as BFF
+participant "API Gateway" as Gateway
+participant "Lab Service" as Lab
+participant "Hospital DB" as DB
+participant "Object Storage" as S3
+participant "RabbitMQ" as Queue
+participant "Notification Service" as Notification
+
+Tech -> BFF: GET /api/lab/pending-orders
+BFF -> Gateway: Forward request
+Gateway -> Lab: GET /lab-orders?status=PENDING
+
+Lab -> DB: SELECT * FROM orders WHERE order_type='LAB' AND status='PENDING'
+DB --> Lab: Return pending orders
+Lab --> Gateway: Return orders list
+Gateway --> BFF: Return response
+BFF --> Tech: Display pending orders
+
+Tech -> BFF: POST /api/lab/collect-sample
+note right
+    Input: {
+        "order_id": "uuid",
+        "sample_collected_at": "2025-12-29T11:00:00Z"
+    }
+end note
+
+BFF -> Gateway: Forward request
+Gateway -> Lab: POST /lab-orders/{id}/collect-sample
+
+Lab -> DB: UPDATE orders SET status='IN_PROGRESS'
+Lab -> DB: UPDATE lab_orders SET sample_collected_at='2025-12-29T11:00:00Z'
+DB --> Lab: Updated
+
+Lab -> Queue: Publish sample_collected event
+Lab --> Gateway: Return success
+Gateway --> BFF: Return response
+BFF --> Tech: Sample collection confirmed
+
+' ... Processing test ...
+
+Tech -> BFF: POST /api/lab/upload-result
+note right
+    Input: {
+        "order_id": "uuid",
+        "result": {
+            "hemoglobin": 14.5,
+            "wbc_count": 8000,
+            "platelet_count": 250000
+        },
+        "report_file": <File>
+    }
+end note
+
+BFF -> Gateway: Forward request with file
+Gateway -> Lab: POST /lab-orders/{id}/result
+
+Lab -> S3: Upload report PDF
+note right
+    Upload: {
+        "bucket": "hospital-reports",
+        "key": "lab/{hospital_id}/{order_id}/report.pdf",
+        "file": <binary>
+    }
+end note
+
+S3 --> Lab: Return file URL
+note right
+    Output: {
+        "url": "https://s3.../report.pdf"
+    }
+end note
+
+Lab -> DB: UPDATE lab_orders SET result={...}, status='COMPLETED'
+Lab -> DB: UPDATE orders SET status='COMPLETED', completed_at='2025-12-29T12:00:00Z'
+DB --> Lab: Updated
+
+Lab -> Queue: Publish order_completed event
+note right
+    Event: {
+        "order_id": "uuid",
+        "order_type": "LAB",
+        "medical_record_id": "uuid"
+    }
+end note
+
+Queue -> Notification: Consume event
+Notification -> DB: Get patient & doctor details
+Notification -> Notification: Send SMS/Email to patient
+note right
+    Message: "Your lab results are ready. 
+    Please collect from hospital."
+end note
+
+Lab --> Gateway: Return success
+Gateway --> BFF: Return response
+BFF --> Tech: Result uploaded successfully
+
+@enduml
+
+' ============= Sequence 4: Consolidated Billing & Payment =============
+@startuml
+title Sequence 4: Consolidated Billing & Payment
+
+actor "Billing Staff" as Staff
+participant "Next.js BFF" as BFF
+participant "API Gateway" as Gateway
+participant "Billing Service" as Billing
+participant "Clinical Service" as Clinical
+participant "Lab Service" as Lab
+participant "Pharmacy Service" as Pharmacy
+participant "Hospital DB" as DB
+participant "Payment Gateway" as PG
+participant "Audit Service" as Audit
+
+Staff -> BFF: GET /api/bills/generate/{medical_record_id}
+BFF -> Gateway: Forward request
+Gateway -> Billing: GET /bills/generate/{medical_record_id}
+
+Billing -> Clinical: GET /consultations?medical_record_id={id}
+Clinical -> DB: SELECT * FROM consultations WHERE medical_record_id={id}
+DB --> Clinical: Return consultation
+Clinical --> Billing: Return consultation fee
+note right
+    Output: {
+        "consultation_fee": 500
+    }
+end note
+
+Billing -> Lab: GET /lab-orders?medical_record_id={id}
+Lab -> DB: SELECT * FROM lab_orders WHERE medical_record_id={id}
+DB --> Lab: Return lab orders
+Lab --> Billing: Return lab charges
+note right
+    Output: {
+        "lab_charges": [
+            {"test_name": "CBC", "amount": 300}
+        ]
+    }
+end note
+
+Billing -> Pharmacy: GET /dispensing?medical_record_id={id}
+Pharmacy -> DB: SELECT * FROM dispensing WHERE medical_record_id={id}
+DB --> Pharmacy: Return dispensing records
+Pharmacy --> Billing: Return pharmacy charges
+note right
+    Output: {
+        "pharmacy_charges": [
+            {"medicine": "Paracetamol 500mg x10", "amount": 700}
+        ]
+    }
+end note
+
+Billing -> Billing: Calculate total bill
+Billing -> DB: INSERT INTO bills
+note right
+    INSERT: {
+        "id": "uuid",
+        "medical_record_id": "uuid",
+        "patient_id": "uuid",
+        "bill_number": "B-2025-00001",
+        "bill_date": "2025-12-29T14:00:00Z",
+        "total_amount": 1500,
+        "discount": 0,
+        "tax": 0,
+        "net_amount": 1500,
+        "status": "PENDING"
+    }
+end note
+
+Billing -> DB: INSERT INTO bill_line_items (multiple)
+note right
+    INSERT: [
+        {"bill_id": "uuid", "item_type": "CONSULTATION", "amount": 500},
+        {"bill_id": "uuid", "item_type": "LAB", "amount": 300},
+        {"bill_id": "uuid", "item_type": "PHARMACY", "amount": 700}
+    ]
+end note
+
+DB --> Billing: Bill created
+Billing --> Gateway: Return bill
+Gateway --> BFF: Return response
+BFF --> Staff: Display consolidated bill
+note right
+    Output: {
+        "bill_id": "uuid",
+        "bill_number": "B-2025-00001",
+        "patient_name": "John Doe",
+        "mr_number": "H001-MR-00001",
+        "items": [
+            {"description": "Consultation", "amount": 500},
+            {"description": "CBC Test", "amount": 300},
+            {"description": "Paracetamol 500mg x10", "amount": 700}
+        ],
+        "total_amount": 1500,
+        "net_amount": 1500
+    }
+end note
+
+Staff -> BFF: POST /api/payments/process
+note right
+    Input: {
+        "bill_id": "uuid",
+        "amount": 1500,
+        "payment_mode": "CARD",
+        "card_details": {...}
+    }
+end note
+
+BFF -> Gateway: Forward request
+Gateway -> Billing: POST /payments
+
+alt Payment Mode: CARD
+    Billing -> PG: Process card payment
+    note right
+        Request: {
+            "amount": 1500,
+            "currency": "USD",
+            "card_number": "****1234",
+            "cvv": "***"
+        }
+    end note
+    
+    PG --> Billing: Payment successful
+    note right
+        Output: {
+            "transaction_id": "TXN123456",
+            "status": "SUCCESS"
+        }
+    end note
+else Payment Mode: CASH
+    Billing -> Billing: Record cash payment
+end
+
+Billing -> DB: INSERT INTO payments
+note right
+    INSERT: {
+        "id": "uuid",
+        "bill_id": "uuid",
+        "payment_date": "2025-12-29T14:05:00Z",
+        "amount": 1500,
+        "payment_mode": "CARD",
+        "transaction_id": "TXN123456",
+        "status": "SUCCESS"
+    }
+end note
+
+Billing -> DB: UPDATE bills SET status='PAID'
+DB --> Billing: Updated
+
+Billing -> Audit: Publish payment audit event
+note right
+    Event: {
+        "action": "payment_processed",
+        "resource": "payment",
+        "resource_id": "uuid",
+        "amount": 1500,
+        "payment_mode": "CARD"
+    }
+end note
+
+Billing -> Billing: Generate invoice PDF
+Billing --> Gateway: Return payment confirmation
+Gateway --> BFF: Return response
+BFF --> Staff: Display payment success & invoice
+note right
+    Output: {
+        "payment_id": "uuid",
+        "transaction_id": "TXN123456",
+        "status": "SUCCESS",
+        "invoice_url": "https://s3.../invoice.pdf"
+    }
+end note
+
+@enduml
+
+' ============= Sequence 5: Feature Flag Verification =============
+@startuml
+title Sequence 5: Feature Flag Verification
+
+actor User
+participant "Next.js BFF" as BFF
+participant "API Gateway" as Gateway
+participant "Auth Service" as Auth
+participant "Platform Service" as Platform
+participant "Redis Cache" as Redis
+participant "Platform DB" as DB
+
+User -> BFF: GET /api/pharmacy/inventory
+note right
+    User wants to access Pharmacy module
+end note
+
+BFF -> Gateway: Forward request with JWT
+Gateway -> Auth: Validate token
+Auth -> Redis: Get session
+Redis --> Auth: Session valid
+
+Auth -> Platform: Check feature flag
+note right
+    Request: {
+        "hospital_id": "uuid",
+        "module": "PHARMACY"
+    }
+end note
+
+Platform -> Redis: Get cached feature flags
+note right
+    Cache Key: "feature_flags:{hospital_id}"
+end note
+
+alt Cache Hit
+    Redis --> Platform: Return cached flags
+    note right
+        Output: {
+            "PHARMACY": true,
+            "LAB": true,
+            "RADIOLOGY": false
+        }
+    end note
+else Cache Miss
+    Platform -> DB: SELECT * FROM feature_flags WHERE hospital_id={id}
+    DB --> Platform: Return feature flags
+    Platform -> Redis: Cache feature flags (TTL: 1 hour)
+end
+
+Platform -> Platform: Check if PHARMACY is enabled
+
+alt Feature Enabled
+    Platform --> Auth: Feature allowed
+    Auth --> Gateway: Authorization granted
+    Gateway -> BFF: Forward to service
+    BFF --> User: Return pharmacy data
+else Feature Disabled
+    Platform --> Auth: Feature disabled
+    Auth --> Gateway: Authorization denied
+    note right
+        Output: {
+            "error": "FEATURE_DISABLED",
+            "message": "Pharmacy module is not enabled for this hospital"
+        }
+    end note
+    Gateway --> BFF: Return error
+    BFF --> User: Display error message
+end
+
+@enduml

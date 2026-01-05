@@ -1,0 +1,598 @@
+@startuml Hospital Management System Class Diagram
+
+' ============= Platform Service Models =============
+package "Platform Service" {
+    class Hospital {
+        +id: UUID
+        +name: string
+        +code: string
+        +address: string
+        +phone: string
+        +email: string
+        +database_name: string
+        +status: HospitalStatus
+        +created_at: datetime
+        +updated_at: datetime
+        --
+        +create(): Hospital
+        +update(data: HospitalUpdateDTO): Hospital
+        +delete(): boolean
+        +getFeatureFlags(): FeatureFlag[]
+    }
+
+    class FeatureFlag {
+        +id: UUID
+        +hospital_id: UUID
+        +module_name: ModuleType
+        +is_enabled: boolean
+        +config: JSON
+        +created_at: datetime
+        +updated_at: datetime
+        --
+        +enable(): boolean
+        +disable(): boolean
+        +isEnabled(): boolean
+        +getConfig(): JSON
+    }
+
+    enum ModuleType {
+        OPD
+        IPD
+        PHARMACY
+        INVENTORY
+        LAB
+        RADIOLOGY
+        REPORTS
+        DEPARTMENTS
+    }
+
+    enum HospitalStatus {
+        ACTIVE
+        INACTIVE
+        SUSPENDED
+    }
+}
+
+' ============= Auth Service Models =============
+package "Auth Service" {
+    class User {
+        +id: UUID
+        +hospital_id: UUID
+        +email: string
+        +password_hash: string
+        +first_name: string
+        +last_name: string
+        +phone: string
+        +role: UserRole
+        +department_id: UUID | null
+        +sub_department_id: UUID | null
+        +is_active: boolean
+        +created_at: datetime
+        +updated_at: datetime
+        --
+        +authenticate(password: string): boolean
+        +generateTokens(): TokenPair
+        +hasPermission(permission: string): boolean
+        +getPermissions(): Permission[]
+    }
+
+    class Permission {
+        +id: UUID
+        +role: UserRole
+        +resource: string
+        +action: PermissionAction
+        +scope: PermissionScope
+        --
+        +check(user: User, resource: string, action: string): boolean
+    }
+
+    class Session {
+        +id: UUID
+        +user_id: UUID
+        +access_token: string
+        +refresh_token: string
+        +expires_at: datetime
+        +created_at: datetime
+        --
+        +validate(): boolean
+        +refresh(): TokenPair
+        +revoke(): boolean
+    }
+
+    enum UserRole {
+        MASTER_ADMIN
+        SUPER_ADMIN
+        HOSPITAL_ADMIN
+        DOCTOR
+        NURSE
+        RECEPTIONIST
+        PHARMACIST
+        LAB_TECHNICIAN
+        RADIOLOGIST
+        BILLING_STAFF
+    }
+
+    enum PermissionAction {
+        CREATE
+        READ
+        UPDATE
+        DELETE
+        EXECUTE
+    }
+
+    enum PermissionScope {
+        PLATFORM
+        HOSPITAL
+        DEPARTMENT
+        SUB_DEPARTMENT
+        SELF
+    }
+
+    class TokenPair {
+        +access_token: string
+        +refresh_token: string
+        +expires_in: number
+    }
+}
+
+' ============= Patient Service Models =============
+package "Patient Service" {
+    class Patient {
+        +id: UUID
+        +hospital_id: UUID
+        +mr_number: string
+        +first_name: string
+        +last_name: string
+        +date_of_birth: date
+        +gender: Gender
+        +phone: string
+        +email: string
+        +address: string
+        +blood_group: string
+        +emergency_contact: string
+        +created_at: datetime
+        +updated_at: datetime
+        --
+        +create(): Patient
+        +update(data: PatientUpdateDTO): Patient
+        +getMedicalRecords(): MedicalRecord[]
+        +generateMRNumber(): string
+    }
+
+    class MedicalRecord {
+        +id: UUID
+        +patient_id: UUID
+        +mr_number: string
+        +visit_date: datetime
+        +visit_type: VisitType
+        +department_id: UUID
+        +doctor_id: UUID
+        +chief_complaint: string
+        +diagnosis: string
+        +status: RecordStatus
+        +created_at: datetime
+        +updated_at: datetime
+        --
+        +create(): MedicalRecord
+        +update(data: MedicalRecordUpdateDTO): MedicalRecord
+        +getOrders(): Order[]
+        +getBill(): Bill
+    }
+
+    enum Gender {
+        MALE
+        FEMALE
+        OTHER
+    }
+
+    enum VisitType {
+        OPD
+        IPD
+        EMERGENCY
+    }
+
+    enum RecordStatus {
+        REGISTERED
+        IN_CONSULTATION
+        COMPLETED
+        CANCELLED
+    }
+}
+
+' ============= Clinical Service Models =============
+package "Clinical Service" {
+    class Department {
+        +id: UUID
+        +hospital_id: UUID
+        +name: string
+        +code: string
+        +description: string
+        +is_active: boolean
+        +created_at: datetime
+        +updated_at: datetime
+        --
+        +create(): Department
+        +update(data: DepartmentUpdateDTO): Department
+        +getSubDepartments(): SubDepartment[]
+    }
+
+    class SubDepartment {
+        +id: UUID
+        +department_id: UUID
+        +name: string
+        +code: string
+        +description: string
+        +is_active: boolean
+        +created_at: datetime
+        +updated_at: datetime
+        --
+        +create(): SubDepartment
+        +update(data: SubDepartmentUpdateDTO): SubDepartment
+        +getStaff(): User[]
+    }
+
+    class Consultation {
+        +id: UUID
+        +medical_record_id: UUID
+        +doctor_id: UUID
+        +consultation_date: datetime
+        +symptoms: string
+        +diagnosis: string
+        +prescription: JSON
+        +notes: string
+        +follow_up_date: date | null
+        +created_at: datetime
+        --
+        +create(): Consultation
+        +createOrders(orders: OrderDTO[]): Order[]
+        +generatePrescription(): Prescription
+    }
+
+    class Order {
+        +id: UUID
+        +medical_record_id: UUID
+        +order_type: OrderType
+        +service_id: UUID
+        +quantity: number
+        +instructions: string
+        +status: OrderStatus
+        +ordered_by: UUID
+        +ordered_at: datetime
+        +completed_at: datetime | null
+        --
+        +create(): Order
+        +updateStatus(status: OrderStatus): boolean
+        +complete(result: JSON): boolean
+    }
+
+    enum OrderType {
+        LAB
+        RADIOLOGY
+        PHARMACY
+        PROCEDURE
+    }
+
+    enum OrderStatus {
+        PENDING
+        IN_PROGRESS
+        COMPLETED
+        CANCELLED
+    }
+}
+
+' ============= Billing Service Models =============
+package "Billing Service" {
+    class Bill {
+        +id: UUID
+        +medical_record_id: UUID
+        +patient_id: UUID
+        +bill_number: string
+        +bill_date: datetime
+        +total_amount: decimal
+        +discount: decimal
+        +tax: decimal
+        +net_amount: decimal
+        +status: BillStatus
+        +created_at: datetime
+        +updated_at: datetime
+        --
+        +create(): Bill
+        +addLineItem(item: BillLineItemDTO): BillLineItem
+        +calculate(): decimal
+        +generateInvoice(): Invoice
+    }
+
+    class BillLineItem {
+        +id: UUID
+        +bill_id: UUID
+        +item_type: ItemType
+        +item_id: UUID
+        +description: string
+        +quantity: number
+        +unit_price: decimal
+        +amount: decimal
+        --
+        +create(): BillLineItem
+    }
+
+    class Payment {
+        +id: UUID
+        +bill_id: UUID
+        +payment_date: datetime
+        +amount: decimal
+        +payment_mode: PaymentMode
+        +transaction_id: string
+        +status: PaymentStatus
+        +created_at: datetime
+        --
+        +create(): Payment
+        +process(): boolean
+        +refund(amount: decimal): Payment
+    }
+
+    enum BillStatus {
+        DRAFT
+        PENDING
+        PAID
+        PARTIALLY_PAID
+        CANCELLED
+    }
+
+    enum ItemType {
+        CONSULTATION
+        LAB
+        RADIOLOGY
+        PHARMACY
+        PROCEDURE
+    }
+
+    enum PaymentMode {
+        CASH
+        CARD
+        UPI
+        NET_BANKING
+    }
+
+    enum PaymentStatus {
+        PENDING
+        SUCCESS
+        FAILED
+        REFUNDED
+    }
+}
+
+' ============= Pharmacy Service Models =============
+package "Pharmacy Service" {
+    class Pharmacy {
+        +id: UUID
+        +hospital_id: UUID
+        +name: string
+        +type: PharmacyType
+        +parent_pharmacy_id: UUID | null
+        +is_active: boolean
+        +created_at: datetime
+        --
+        +create(): Pharmacy
+        +getInventory(): InventoryItem[]
+        +transferStock(to: Pharmacy, items: StockTransferDTO[]): boolean
+    }
+
+    class InventoryItem {
+        +id: UUID
+        +pharmacy_id: UUID
+        +medicine_id: UUID
+        +batch_number: string
+        +quantity: number
+        +unit_price: decimal
+        +expiry_date: date
+        +reorder_level: number
+        +created_at: datetime
+        +updated_at: datetime
+        --
+        +create(): InventoryItem
+        +updateQuantity(quantity: number): boolean
+        +isExpired(): boolean
+        +isLowStock(): boolean
+    }
+
+    class Medicine {
+        +id: UUID
+        +name: string
+        +generic_name: string
+        +manufacturer: string
+        +dosage_form: string
+        +strength: string
+        +unit: string
+        +created_at: datetime
+        --
+        +create(): Medicine
+        +search(query: string): Medicine[]
+    }
+
+    class Dispensing {
+        +id: UUID
+        +order_id: UUID
+        +pharmacy_id: UUID
+        +dispensed_by: UUID
+        +dispensed_at: datetime
+        +items: JSON
+        --
+        +create(): Dispensing
+        +updateInventory(): boolean
+    }
+
+    enum PharmacyType {
+        MAIN
+        SUB
+    }
+}
+
+' ============= Lab Service Models =============
+package "Lab Service" {
+    class LabTest {
+        +id: UUID
+        +name: string
+        +code: string
+        +department_id: UUID
+        +price: decimal
+        +sample_type: string
+        +turnaround_time: number
+        +created_at: datetime
+        --
+        +create(): LabTest
+        +search(query: string): LabTest[]
+    }
+
+    class LabOrder {
+        +id: UUID
+        +order_id: UUID
+        +test_id: UUID
+        +sample_collected_at: datetime | null
+        +result: JSON | null
+        +status: LabOrderStatus
+        +technician_id: UUID | null
+        +completed_at: datetime | null
+        --
+        +create(): LabOrder
+        +collectSample(): boolean
+        +uploadResult(result: JSON): boolean
+    }
+
+    enum LabOrderStatus {
+        PENDING
+        SAMPLE_COLLECTED
+        IN_PROGRESS
+        COMPLETED
+        CANCELLED
+    }
+}
+
+' ============= Radiology Service Models =============
+package "Radiology Service" {
+    class RadiologyTest {
+        +id: UUID
+        +name: string
+        +code: string
+        +sub_department_id: UUID
+        +price: decimal
+        +modality: string
+        +created_at: datetime
+        --
+        +create(): RadiologyTest
+        +search(query: string): RadiologyTest[]
+    }
+
+    class RadiologyOrder {
+        +id: UUID
+        +order_id: UUID
+        +test_id: UUID
+        +images: string[]
+        +report: string | null
+        +status: RadiologyOrderStatus
+        +radiologist_id: UUID | null
+        +completed_at: datetime | null
+        --
+        +create(): RadiologyOrder
+        +uploadImages(images: File[]): boolean
+        +uploadReport(report: string): boolean
+    }
+
+    enum RadiologyOrderStatus {
+        PENDING
+        IN_PROGRESS
+        COMPLETED
+        CANCELLED
+    }
+}
+
+' ============= Staff Service Models =============
+package "Staff Service" {
+    class Roaster {
+        +id: UUID
+        +hospital_id: UUID
+        +department_id: UUID
+        +user_id: UUID
+        +date: date
+        +shift: Shift
+        +start_time: time
+        +end_time: time
+        +status: RoasterStatus
+        +created_at: datetime
+        --
+        +create(): Roaster
+        +update(data: RoasterUpdateDTO): Roaster
+        +markAttendance(): boolean
+    }
+
+    enum Shift {
+        MORNING
+        AFTERNOON
+        EVENING
+        NIGHT
+    }
+
+    enum RoasterStatus {
+        SCHEDULED
+        PRESENT
+        ABSENT
+        ON_LEAVE
+    }
+}
+
+' ============= Audit Service Models =============
+package "Audit Service" {
+    class AuditLog {
+        +id: UUID
+        +hospital_id: UUID
+        +user_id: UUID
+        +action: string
+        +resource: string
+        +resource_id: UUID
+        +old_value: JSON | null
+        +new_value: JSON | null
+        +ip_address: string
+        +user_agent: string
+        +timestamp: datetime
+        --
+        +create(): AuditLog
+        +search(filters: AuditSearchDTO): AuditLog[]
+    }
+}
+
+' ============= Relationships =============
+
+Hospital "1" -- "0..*" FeatureFlag
+Hospital "1" -- "0..*" User
+Hospital "1" -- "0..*" Patient
+Hospital "1" -- "0..*" Department
+
+User "1" -- "0..*" Permission
+User "1" -- "0..*" Session
+
+Patient "1" -- "0..*" MedicalRecord
+MedicalRecord "1" -- "0..1" Bill
+MedicalRecord "1" -- "0..*" Order
+MedicalRecord "1" -- "0..1" Consultation
+
+Department "1" -- "0..*" SubDepartment
+Department "1" -- "0..*" User
+
+Consultation "1" -- "0..*" Order
+
+Order "1" -- "0..1" LabOrder
+Order "1" -- "0..1" RadiologyOrder
+Order "1" -- "0..1" Dispensing
+
+Bill "1" -- "0..*" BillLineItem
+Bill "1" -- "0..*" Payment
+
+Pharmacy "1" -- "0..*" InventoryItem
+Pharmacy "1" -- "0..*" Pharmacy : parent-child
+InventoryItem "0..*" -- "1" Medicine
+
+LabTest "1" -- "0..*" LabOrder
+RadiologyTest "1" -- "0..*" RadiologyOrder
+
+User "1" -- "0..*" Roaster
+
+@enduml

@@ -1,0 +1,203 @@
+@startuml Hospital Management System Architecture
+
+!define RECTANGLE class
+
+skinparam componentStyle rectangle
+skinparam linetype ortho
+
+package "Client Layer" {
+    [Web Browser] as browser
+    [Admin Dashboard] as admin_ui
+    [Hospital Dashboard] as hospital_ui
+}
+
+package "Next.js BFF Layer" {
+    [Next.js Server] as nextjs
+    [API Routes] as api_routes
+    [SSR Engine] as ssr
+}
+
+package "API Gateway" {
+    [Kong/Nginx Gateway] as gateway
+    [Auth Middleware] as auth_middleware
+    [Rate Limiter] as rate_limiter
+    [Request Router] as router
+}
+
+package "Core Microservices" {
+    [Platform Service] as platform_svc
+    [Auth Service] as auth_svc
+    [Patient Service] as patient_svc
+    [Clinical Service] as clinical_svc
+    [Billing Service] as billing_svc
+    [Pharmacy Service] as pharmacy_svc
+    [Lab Service] as lab_svc
+    [Radiology Service] as radiology_svc
+    [Staff Service] as staff_svc
+    [Audit Service] as audit_svc
+    [Notification Service] as notification_svc
+}
+
+package "Data Layer" {
+    database "Platform DB\n(PostgreSQL)" as platform_db
+    database "Hospital-1 DB\n(PostgreSQL)" as hospital1_db
+    database "Hospital-2 DB\n(PostgreSQL)" as hospital2_db
+    database "Hospital-N DB\n(PostgreSQL)" as hospitaln_db
+    database "Audit DB\n(PostgreSQL)" as audit_db
+}
+
+package "Cache & Queue Layer" {
+    [Redis Cache] as redis
+    [RabbitMQ] as rabbitmq
+}
+
+package "Storage Layer" {
+    [Object Storage\n(S3/MinIO)] as object_storage
+}
+
+package "External Services" {
+    [Payment Gateway\n(Stripe/Razorpay)] as payment_gateway
+    [SMS Gateway] as sms_gateway
+    [Email Service] as email_service
+}
+
+' Client to BFF connections
+browser --> nextjs
+admin_ui --> nextjs
+hospital_ui --> nextjs
+
+' BFF internal connections
+nextjs --> api_routes
+nextjs --> ssr
+api_routes --> gateway
+
+' Gateway connections
+gateway --> auth_middleware
+gateway --> rate_limiter
+gateway --> router
+
+' Gateway to Services
+router --> platform_svc
+router --> auth_svc
+router --> patient_svc
+router --> clinical_svc
+router --> billing_svc
+router --> pharmacy_svc
+router --> lab_svc
+router --> radiology_svc
+router --> staff_svc
+router --> audit_svc
+router --> notification_svc
+
+' Services to Databases
+platform_svc --> platform_db
+platform_svc --> hospital1_db
+platform_svc --> hospital2_db
+platform_svc --> hospitaln_db
+
+auth_svc --> platform_db
+auth_svc --> redis
+
+patient_svc --> hospital1_db
+patient_svc --> hospital2_db
+patient_svc --> hospitaln_db
+
+clinical_svc --> hospital1_db
+clinical_svc --> hospital2_db
+clinical_svc --> hospitaln_db
+
+billing_svc --> hospital1_db
+billing_svc --> hospital2_db
+billing_svc --> hospitaln_db
+
+pharmacy_svc --> hospital1_db
+pharmacy_svc --> hospital2_db
+pharmacy_svc --> hospitaln_db
+
+lab_svc --> hospital1_db
+lab_svc --> hospital2_db
+lab_svc --> hospitaln_db
+
+radiology_svc --> hospital1_db
+radiology_svc --> hospital2_db
+radiology_svc --> hospitaln_db
+
+staff_svc --> hospital1_db
+staff_svc --> hospital2_db
+staff_svc --> hospitaln_db
+
+audit_svc --> audit_db
+
+' Services to Cache
+platform_svc --> redis
+patient_svc --> redis
+clinical_svc --> redis
+billing_svc --> redis
+pharmacy_svc --> redis
+
+' Services to Message Queue
+clinical_svc --> rabbitmq
+billing_svc --> rabbitmq
+pharmacy_svc --> rabbitmq
+lab_svc --> rabbitmq
+radiology_svc --> rabbitmq
+notification_svc --> rabbitmq
+audit_svc --> rabbitmq
+
+' Services to Storage
+lab_svc --> object_storage
+radiology_svc --> object_storage
+patient_svc --> object_storage
+
+' Services to External Services
+billing_svc --> payment_gateway
+notification_svc --> sms_gateway
+notification_svc --> email_service
+
+' All services to Audit
+platform_svc ..> audit_svc : audit events
+auth_svc ..> audit_svc : audit events
+patient_svc ..> audit_svc : audit events
+clinical_svc ..> audit_svc : audit events
+billing_svc ..> audit_svc : audit events
+pharmacy_svc ..> audit_svc : audit events
+lab_svc ..> audit_svc : audit events
+radiology_svc ..> audit_svc : audit events
+staff_svc ..> audit_svc : audit events
+
+note right of platform_db
+  Stores:
+  - Hospitals
+  - Feature Flags
+  - Users & Roles
+  - Global Configuration
+end note
+
+note right of hospital1_db
+  Each hospital has isolated DB:
+  - Patients & MR
+  - Departments
+  - Clinical Records
+  - Bills & Payments
+  - Inventory
+  - Staff Roasters
+end note
+
+note right of redis
+  Caches:
+  - Feature Flags
+  - Session Tokens
+  - User Permissions
+  - Frequently Accessed Data
+end note
+
+note right of rabbitmq
+  Event Queues:
+  - Order Created
+  - Bill Generated
+  - Payment Processed
+  - Audit Events
+  - Notifications
+end note
+
+@enduml

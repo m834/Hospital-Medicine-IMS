@@ -1,0 +1,261 @@
+@startuml Hospital Management System UI Navigation
+
+[*] --> Login
+
+state "Login" as Login {
+    [*] --> LoginForm
+    LoginForm --> Authenticating : Submit credentials
+    Authenticating --> RoleSelection : Success
+    Authenticating --> LoginForm : Failed
+}
+
+state "Role Selection" as RoleSelection {
+    [*] --> SelectRole
+    SelectRole --> MasterAdminDashboard : Master Admin
+    SelectRole --> SuperAdminDashboard : Super Admin
+    SelectRole --> HospitalAdminDashboard : Hospital Admin
+    SelectRole --> ClinicalDashboard : Clinical Staff
+}
+
+' ============= Master Admin Navigation =============
+state "Master Admin Dashboard" as MasterAdminDashboard {
+    [*] --> GenericDashboard
+    
+    state "Generic Dashboard" as GenericDashboard {
+        [*] --> PlatformOverview
+        PlatformOverview : - Total hospitals
+        PlatformOverview : - Active users
+        PlatformOverview : - System health
+    }
+    
+    GenericDashboard --> HospitalManagement : Manage Hospitals
+    GenericDashboard --> UserManagement : Manage Users
+    GenericDashboard --> HospitalSelection : Select Hospital
+    
+    state "Hospital Management" as HospitalManagement {
+        [*] --> HospitalList
+        HospitalList --> CreateHospital : Create New
+        HospitalList --> EditHospital : Edit
+        HospitalList --> FeatureAllocation : Configure Features
+        CreateHospital --> HospitalList : Save
+        EditHospital --> HospitalList : Save
+        
+        state "Feature Allocation" as FeatureAllocation {
+            [*] --> FeatureList
+            FeatureList : - Enable/Disable OPD
+            FeatureList : - Enable/Disable IPD
+            FeatureList : - Enable/Disable Pharmacy
+            FeatureList : - Enable/Disable Lab
+            FeatureList : - Enable/Disable Radiology
+            FeatureList --> FeatureList : Toggle Feature
+        }
+        FeatureAllocation --> HospitalList : Back
+    }
+    HospitalManagement --> GenericDashboard : Back
+    
+    state "User Management" as UserManagement {
+        [*] --> UserList
+        UserList --> CreateUser : Create New
+        UserList --> EditUser : Edit
+        UserList --> AssignRole : Assign Role
+        CreateUser --> UserList : Save
+        EditUser --> UserList : Save
+        AssignRole --> UserList : Save
+    }
+    UserManagement --> GenericDashboard : Back
+    
+    state "Hospital Selection" as HospitalSelection {
+        [*] --> SelectHospital
+        SelectHospital --> HospitalDashboard : Select
+    }
+    
+    state "Hospital Dashboard" as HospitalDashboard {
+        [*] --> HospitalOverview
+        HospitalOverview : - Patient count
+        HospitalOverview : - Revenue
+        HospitalOverview : - Department stats
+        HospitalOverview --> DepartmentView : View Departments
+        HospitalOverview --> PatientView : View Patients
+        HospitalOverview --> ReportsView : View Reports
+    }
+    HospitalDashboard --> GenericDashboard : Back to Platform
+}
+
+' ============= Super Admin Navigation =============
+state "Super Admin Dashboard" as SuperAdminDashboard {
+    [*] --> SuperGenericDashboard
+    
+    state "Super Generic Dashboard" as SuperGenericDashboard {
+        [*] --> PlatformAnalytics
+        PlatformAnalytics : - Cross-hospital metrics
+        PlatformAnalytics : - Performance indicators
+    }
+    
+    SuperGenericDashboard --> SuperHospitalSelection : Select Hospital
+    
+    state "Super Hospital Selection" as SuperHospitalSelection {
+        [*] --> ViewHospitalList
+        ViewHospitalList --> SuperHospitalDashboard : Select (Read-only)
+    }
+    
+    state "Super Hospital Dashboard" as SuperHospitalDashboard {
+        [*] --> ViewHospitalData
+        ViewHospitalData : - View patients (read-only)
+        ViewHospitalData : - View departments (read-only)
+        ViewHospitalData : - View reports (read-only)
+    }
+    SuperHospitalDashboard --> SuperGenericDashboard : Back
+}
+
+' ============= Hospital Admin Navigation =============
+state "Hospital Admin Dashboard" as HospitalAdminDashboard {
+    [*] --> HospitalHome
+    
+    state "Hospital Home" as HospitalHome {
+        [*] --> AdminOverview
+        AdminOverview : - Today's appointments
+        AdminOverview : - Staff on duty
+        AdminOverview : - Inventory alerts
+    }
+    
+    HospitalHome --> DepartmentManagement : Manage Departments
+    HospitalHome --> StaffManagement : Manage Staff
+    HospitalHome --> InventoryManagement : Manage Inventory
+    
+    state "Department Management" as DepartmentManagement {
+        [*] --> DepartmentList
+        DepartmentList --> CreateDepartment : Create
+        DepartmentList --> EditDepartment : Edit
+        DepartmentList --> SubDepartmentManagement : Manage Sub-Departments
+        
+        state "Sub-Department Management" as SubDepartmentManagement {
+            [*] --> SubDepartmentList
+            SubDepartmentList --> CreateSubDepartment : Create
+            SubDepartmentList --> EditSubDepartment : Edit
+        }
+        SubDepartmentManagement --> DepartmentList : Back
+    }
+    DepartmentManagement --> HospitalHome : Back
+    
+    state "Staff Management" as StaffManagement {
+        [*] --> StaffList
+        StaffList --> CreateStaff : Create
+        StaffList --> EditStaff : Edit
+        StaffList --> RoasterManagement : Manage Roasters
+        
+        state "Roaster Management" as RoasterManagement {
+            [*] --> RoasterCalendar
+            RoasterCalendar --> CreateRoaster : Create Shift
+            RoasterCalendar --> EditRoaster : Edit Shift
+        }
+        RoasterManagement --> StaffList : Back
+    }
+    StaffManagement --> HospitalHome : Back
+    
+    state "Inventory Management" as InventoryManagement {
+        [*] --> InventoryList
+        InventoryList : - View stock levels
+        InventoryList : - Low stock alerts
+        InventoryList --> AddStock : Add Stock
+        InventoryList --> TransferStock : Transfer Stock
+    }
+    InventoryManagement --> HospitalHome : Back
+}
+
+' ============= Clinical Staff Navigation =============
+state "Clinical Dashboard" as ClinicalDashboard {
+    [*] --> ClinicalHome
+    
+    state "Clinical Home" as ClinicalHome {
+        [*] --> QuickActions
+        QuickActions : - Register Patient (Quick)
+        QuickActions : - Search Patient (Quick)
+        QuickActions : - View Queue (Quick)
+    }
+    
+    ClinicalHome --> PatientRegistration : Register Patient
+    ClinicalHome --> PatientSearch : Search Patient
+    ClinicalHome --> PatientQueue : View Queue
+    
+    state "Patient Registration" as PatientRegistration {
+        [*] --> RegistrationForm
+        RegistrationForm --> PaymentCollection : Collect Fee
+        PaymentCollection --> MRGeneration : Generate MR
+        MRGeneration --> RegistrationForm : Complete
+    }
+    PatientRegistration --> ClinicalHome : Back
+    
+    state "Patient Search" as PatientSearch {
+        [*] --> SearchForm
+        SearchForm --> PatientDetails : Select Patient
+        
+        state "Patient Details" as PatientDetails {
+            [*] --> ViewHistory
+            ViewHistory : - Previous visits
+            ViewHistory : - Medical records
+            ViewHistory --> StartConsultation : Start Consultation
+        }
+    }
+    PatientSearch --> ClinicalHome : Back
+    
+    state "Patient Queue" as PatientQueue {
+        [*] --> QueueList
+        QueueList --> ConsultationFlow : Select Patient
+        
+        state "Consultation Flow" as ConsultationFlow {
+            [*] --> ConsultationForm
+            ConsultationForm --> CreateOrders : Create Orders
+            CreateOrders --> ViewBill : View Estimated Bill
+            ViewBill --> ConsultationForm : Complete
+        }
+    }
+    PatientQueue --> ClinicalHome : Back
+    
+    ClinicalHome --> LabWorkflow : Lab Orders
+    ClinicalHome --> PharmacyWorkflow : Pharmacy
+    ClinicalHome --> BillingWorkflow : Billing
+    
+    state "Lab Workflow" as LabWorkflow {
+        [*] --> PendingLabOrders
+        PendingLabOrders --> CollectSample : Collect Sample
+        PendingLabOrders --> UploadResult : Upload Result
+    }
+    LabWorkflow --> ClinicalHome : Back
+    
+    state "Pharmacy Workflow" as PharmacyWorkflow {
+        [*] --> PendingPrescriptions
+        PendingPrescriptions --> DispenseMedicine : Dispense
+    }
+    PharmacyWorkflow --> ClinicalHome : Back
+    
+    state "Billing Workflow" as BillingWorkflow {
+        [*] --> PendingBills
+        PendingBills --> GenerateBill : Generate Bill
+        GenerateBill --> ProcessPayment : Process Payment
+        ProcessPayment --> PrintInvoice : Print Invoice
+    }
+    BillingWorkflow --> ClinicalHome : Back
+}
+
+' Back to Login
+MasterAdminDashboard --> Login : Logout
+SuperAdminDashboard --> Login : Logout
+HospitalAdminDashboard --> Login : Logout
+ClinicalDashboard --> Login : Logout
+
+note right of QuickActions
+    High-frequency functions
+    surfaced at top level:
+    - Patient registration
+    - Patient search
+    - Queue view
+end note
+
+note right of GenericDashboard
+    Clear navigation:
+    - Max 3 levels deep
+    - Back button at every level
+    - Breadcrumbs for context
+end note
+
+@enduml
