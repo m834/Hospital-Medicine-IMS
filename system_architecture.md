@@ -1,4 +1,33 @@
 Medicines Management System (M-IMS) - System Design Document
+
+## 2026-01-08 Project Update: Hybrid Migration & Priorities
+
+Summary:
+- **Decision:** Adopt the Hybrid approach — preserve the working monolith (pharmacy & core services) and implement new clinical/billing/lab/radiology modules inside the monolith first; selectively extract microservices later.
+- **Preserve:** Existing pharmacy, issuance, transfers, PO/GRN, FIFO, and offline sync placeholders.
+- **Immediate priorities:** Fix frontend token validation, add feature flags, implement granular RBAC, harden auth token flows, and begin Clinical module design.
+
+Key references (generated during analysis):
+- HYBRID migration plan: [HYBRID_MIGRATION_TODO.md](HYBRID_MIGRATION_TODO.md)
+- Immediate tasks: [NEXT_2_WEEKS_PRIORITY.md](NEXT_2_WEEKS_PRIORITY.md)
+- Project analysis summary: [PROJECT_ANALYSIS_SUMMARY.md](PROJECT_ANALYSIS_SUMMARY.md)
+- Documentation index: [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)
+
+Code references:
+- Database schema: [mims/backend/prisma/schema.prisma](mims/backend/prisma/schema.prisma)
+- Backend modules: [mims/backend/src/app.module.ts](mims/backend/src/app.module.ts)
+- Frontend app routes: [mims/frontend/src/app](mims/frontend/src/app)
+
+Decision log:
+- Keep monolith for Phase 1–2 to avoid disrupting production pharmacy operations; plan microservice extraction (auth, sync, reporting) in Phase 4+ as capacity allows.
+
+Next actions:
+- Start Week 1 fixes from [NEXT_2_WEEKS_PRIORITY.md](NEXT_2_WEEKS_PRIORITY.md).
+- Team to confirm migration milestones in [HYBRID_MIGRATION_TODO.md](HYBRID_MIGRATION_TODO.md).
+
+Document Version: 1.1
+Date: 2026-01-08
+Author: Architecture Team (updated)
 Phase 1: Inventory & Patient Issuance
 1. Implementation Approach
 1.1 Core Architecture Strategy

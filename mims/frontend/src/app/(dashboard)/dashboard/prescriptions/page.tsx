@@ -58,11 +58,13 @@ export default function PrescriptionsPage() {
   const [page, setPage] = useState(1);
   const limit = 50;
 
+  const currentHospitalId = user?.hospitalId || selectedHospital?.id;
+
   useEffect(() => {
-    if (selectedHospital?.id) {
+    if (currentHospitalId) {
       fetchPrescriptions();
     }
-  }, [selectedHospital, searchNR, statusFilter, page]);
+  }, [currentHospitalId, searchNR, statusFilter, page]);
 
   const fetchPrescriptions = async () => {
     try {
@@ -72,12 +74,24 @@ export default function PrescriptionsPage() {
         limit: Number(limit) 
       };
       
+      // Include hospitalId from user or selected hospital
+      if (currentHospitalId) {
+        params.hospitalId = currentHospitalId;
+      }
+      
       if (searchNR) {
         params.nrNumber = searchNR;
       }
       
       if (statusFilter) {
         params.status = statusFilter;
+      }
+
+      // Validate hospitalId before making request
+      if (!params.hospitalId) {
+        console.warn('No hospital selected. Please select a hospital from the dropdown.');
+        setLoading(false);
+        return;
       }
 
       const response = await api.get('/prescriptions', { params });

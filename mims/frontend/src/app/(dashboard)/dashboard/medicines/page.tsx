@@ -39,6 +39,7 @@ import api from '@/lib/api';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { useAuthStore } from '@/stores/auth.store';
 import { UserRole } from '@/lib/constants';
+import { canModifyResources } from '@/lib/permissions';
 import { CreateMedicineModal } from '@/components/modals/create-medicine-modal';
 import { EditMedicineModal } from '@/components/modals/edit-medicine-modal';
 
@@ -96,8 +97,12 @@ export default function MedicinesPage() {
     UserRole.MAIN_PHARMACY_MANAGER,
     UserRole.SUB_PHARMACY_MANAGER,
   ].includes(user?.role as UserRole);
+  
+  // Check if user can update/delete (only MASTER_ADMIN)
+  const canModify = user?.role ? canModifyResources(user.role as UserRole) : false;
 
   // Determine current hospital for operations
+  const currentHospitalId = user?.hospitalId || selectedHospital?.id;
   const currentHospital = selectedHospital || (user?.hospitalId ? {
     id: user.hospitalId,
     name: 'My Hospital',
@@ -105,20 +110,39 @@ export default function MedicinesPage() {
   } : null);
 
   useEffect(() => {
-    fetchMedicines();
-  }, [selectedHospital, user]);
+    if (currentHospitalId) {
+      fetchMedicines();
+    }
+  }, [currentHospitalId, user]);
 
   const fetchMedicines = async () => {
     setLoading(true);
     try {
-      const response = await api.get('/medicines');
+      const params: any = { limit: 200, status: 'ACTIVE' };
+      
+      // Include hospitalId
+      if (currentHospitalId) {
+        params.hospitalId = currentHospitalId;
+      }
+      
+      if (!params.hospitalId) {
+        console.warn('No hospital selected. Please select a hospital from the dropdown.');
+        setLoading(false);
+        return;
+      }
+      
+      const response = await api.get('/medicines', { params });
       // Handle paginated response
       const medicineList = response.data?.data || response.data || [];
       setMedicines(medicineList);
 
       // Fetch stats
       try {
-        const statsResponse = await api.get('/medicines/stats');
+        const statsParams: any = {};
+        if (currentHospitalId) {
+          statsParams.hospitalId = currentHospitalId;
+        }
+        const statsResponse = await api.get('/medicines/stats', { params: statsParams });
         setStats(statsResponse.data);
       } catch (err) {
         console.error('Failed to fetch stats:', err);
@@ -371,7 +395,7 @@ export default function MedicinesPage() {
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
-                        {canManage && (
+                        {canManage && canModify && (
                           <>
                             <Button
                               variant="ghost"

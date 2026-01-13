@@ -1,12 +1,16 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { CacheService } from '../../common/services/cache.service';
 import { CreateTransferRequestDto } from './dto/create-transfer-request.dto';
 import { SearchTransferRequestDto } from './dto/search-transfer-request.dto';
 import { TransferStatus, BatchStatus } from '@prisma/client';
 
 @Injectable()
 export class TransfersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cacheService: CacheService,
+  ) {}
 
   async create(createDto: CreateTransferRequestDto, hospitalId: string) {
     // Validate pharmacies exist and belong to same hospital
@@ -92,6 +96,9 @@ export class TransfersService {
       },
     });
 
+    // Invalidate cache
+    await this.invalidateCache(hospitalId);
+
     return transferRequest;
   }
 
@@ -103,6 +110,13 @@ export class TransfersService {
       limit = 100,
       page = 1,
     } = searchDto;
+
+    // Cache key based on search parameters
+    const cacheKey = `transfers:${hospitalId || 'all'}:${JSON.stringify(searchDto)}`;
+    const cached = await this.cacheService.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
 
     const where: any = {};
 
@@ -174,7 +188,7 @@ export class TransfersService {
       this.prisma.transferRequest.count({ where }),
     ]);
 
-    return {
+    const result = {
       data: transfers,
       meta: {
         total,
@@ -183,6 +197,11 @@ export class TransfersService {
         totalPages: Math.ceil(total / limit),
       },
     };
+
+    // Cache for 5 minutes (increased from 2 minutes)
+    await this.cacheService.set(cacheKey, result, 5 * 60 * 1000);
+
+    return result;
   }
 
   async findOne(id: string, hospitalId?: string) {
@@ -298,6 +317,9 @@ export class TransfersService {
       },
     });
 
+    // Invalidate cache
+    await this.invalidateCache(transfer.hospitalId);
+
     return updatedTransfer;
   }
 
@@ -352,6 +374,9 @@ export class TransfersService {
         },
       },
     });
+
+    // Invalidate cache
+    await this.invalidateCache(transfer.hospitalId);
 
     return updatedTransfer;
   }
@@ -482,6 +507,9 @@ export class TransfersService {
         },
       },
     });
+
+    // Invalidate cache
+    await this.invalidateCache(transfer.hospitalId);
 
     return updatedTransfer;
   }
@@ -626,6 +654,9 @@ export class TransfersService {
       },
     });
 
+    // Invalidate cache
+    await this.invalidateCache(transfer.hospitalId);
+
     return updatedTransfer;
   }
 
@@ -735,5 +766,13 @@ export class TransfersService {
       batchesDeleted,
       transfer: await this.findOne(id),
     };
+  }
+
+  /**
+   * Invalidate transfer caches for a hospital
+   */
+  private async invalidateCache(hospitalId: string): Promise<void> {
+    await this.cacheService.deletePattern(`transfers:${hospitalId}:.*`);
+    await this.cacheService.deletePattern(`transfers:all:.*`);
   }
 }

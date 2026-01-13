@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Hospital, Users, Pill, FileText, BarChart3,
   Settings, UserCog, Building2, PackagePlus, ArrowLeftRight,
   AlertCircle, Syringe, HeartPulse, Activity, ChevronLeft, ChevronRight,
-  Store,
+  Store, Flag, Shield,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -24,7 +24,7 @@ const menuItems: MenuItem[] = [
     label: 'Dashboard', 
     href: '/dashboard', 
     icon: LayoutDashboard, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.DOCTOR, UserRole.DOCTOR_ASSISTANT, UserRole.REGISTRATION_STAFF, UserRole.PHARMACY_STAFF, UserRole.AUDITOR] 
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.DEPARTMENT_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.DOCTOR, UserRole.DOCTOR_ASSISTANT, UserRole.REGISTRATION_STAFF, UserRole.PHARMACY_STAFF, UserRole.AUDITOR, UserRole.LAB_TECHNICIAN, UserRole.RADIOLOGIST, UserRole.NURSE, UserRole.BILLING_STAFF, UserRole.RECEPTIONIST] 
   },
   
   // Super Admin Exclusive
@@ -32,19 +32,25 @@ const menuItems: MenuItem[] = [
     label: 'Hospitals', 
     href: '/dashboard/hospitals', 
     icon: Hospital, 
-    roles: [UserRole.SUPER_ADMIN] 
+    roles: [UserRole.SUPER_ADMIN, UserRole.MASTER_ADMIN] 
   },
   { 
     label: 'System Users', 
     href: '/dashboard/users', 
     icon: UserCog, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN] 
+    roles: [UserRole.SUPER_ADMIN, UserRole.MASTER_ADMIN, UserRole.HOSPITAL_ADMIN] 
+  },
+  {
+    label: 'Departments',
+    href: '/admin/departments',
+    icon: Building2,
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.DEPARTMENT_ADMIN]
   },
   { 
     label: 'Pharmacies', 
     href: '/dashboard/pharmacies', 
     icon: Store, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MAIN_PHARMACY_MANAGER] 
+    roles: [UserRole.SUPER_ADMIN, UserRole.MASTER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MAIN_PHARMACY_MANAGER] 
   },
   
   // Pharmacy Management - SUPER_ADMIN has access to everything
@@ -111,6 +117,22 @@ const menuItems: MenuItem[] = [
     href: '/dashboard/analytics', 
     icon: Activity, 
     roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.AUDITOR] 
+  },
+  
+  // Feature Flags - Admin only
+  { 
+    label: 'Feature Flags', 
+    href: '/admin/feature-flags', 
+    icon: Flag, 
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN] 
+  },
+  
+  // Permissions - Admin only
+  { 
+    label: 'Permissions', 
+    href: '/admin/permissions', 
+    icon: Shield, 
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN] 
   },
   
   // Settings - SUPER_ADMIN has full access

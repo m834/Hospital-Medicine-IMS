@@ -32,7 +32,9 @@ import api from '@/lib/api';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { useAuthStore } from '@/stores/auth.store';
 import { UserRole } from '@/lib/constants';
+import { canModifyResources } from '@/lib/permissions';
 import { EditUserModal } from '@/components/modals/edit-user-modal';
+import { AddUserModal } from '@/components/modals/add-user-modal';
 
 interface User {
   id: string;
@@ -75,6 +77,7 @@ export default function UsersPage() {
   const [viewUserModal, setViewUserModal] = useState<User | null>(null);
   const [editUserModal, setEditUserModal] = useState<User | null>(null);
   const [deleteUserModal, setDeleteUserModal] = useState<User | null>(null);
+  const [addUserModal, setAddUserModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Get selected hospital from store (for Super Admin)
@@ -82,6 +85,7 @@ export default function UsersPage() {
   const { user } = useAuthStore();
 
   const isSuperAdmin = user?.role === UserRole.SUPER_ADMIN;
+  const canModify = user?.role ? canModifyResources(user.role as UserRole) : false;
 
   useEffect(() => {
     fetchUsers();
@@ -229,7 +233,7 @@ export default function UsersPage() {
               : 'Manage users in your hospital'}
           </p>
         </div>
-        <Button>
+        <Button onClick={() => setAddUserModal(true)}>
           <UserPlus className="w-4 h-4 mr-2" />
           Add User
         </Button>
@@ -362,20 +366,24 @@ export default function UsersPage() {
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => setEditUserModal(user)}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => setDeleteUserModal(user)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {canModify && (
+                        <>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => setEditUserModal(user)}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => setDeleteUserModal(user)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -458,6 +466,22 @@ export default function UsersPage() {
         user={editUserModal}
         onClose={() => setEditUserModal(null)}
         onUserUpdated={fetchUsers}
+      />
+
+      {/* Add User Modal */}
+      <AddUserModal
+        isOpen={addUserModal}
+        hospital={
+          isSuperAdmin
+            ? selectedHospital
+              ? { id: selectedHospital.id, name: selectedHospital.name, code: selectedHospital.code || '' }
+              : null
+            : user?.hospitalId
+            ? { id: user.hospitalId, name: (user as any).hospitalName || 'My Hospital', code: '' }
+            : null
+        }
+        onClose={() => setAddUserModal(false)}
+        onUserAdded={fetchUsers}
       />
 
       {/* Delete User Confirmation */}

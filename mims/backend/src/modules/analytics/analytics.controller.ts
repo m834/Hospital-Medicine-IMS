@@ -4,11 +4,30 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
+import { UserRole } from '@prisma/client';
 
 @Controller('analytics')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
+
+  /**
+   * Get cache statistics for performance monitoring
+   */
+  @Get('performance/cache-stats')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN)
+  getCacheStats() {
+    return this.analyticsService.getCacheStats();
+  }
+
+  /**
+   * Get system health metrics
+   */
+  @Get('performance/system-health')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN)
+  getSystemHealth() {
+    return this.analyticsService.getSystemHealth();
+  }
 
   /**
    * Get dashboard overview with key metrics

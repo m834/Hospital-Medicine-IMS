@@ -29,6 +29,7 @@ model Hospital {
 
   // Relations
   users              User[]
+  departments        Department[]
   pharmacies         Pharmacy[]
   patients           Patient[]
   medicines          Medicine[]
@@ -43,14 +44,60 @@ model Hospital {
   auditLogs          AuditLog[]
   syncOperations     SyncOperation[]
   systemConfigs      SystemConfig[]
+  featureFlags       FeatureFlag[]
 
   @@map("hospitals")
 }
 
+model Department {
+  id          String            @id @default(uuid())
+  hospitalId  String            @map("hospital_id")
+  name        String            // e.g., "Radiology", "Cardiology", "Emergency"
+  code        String            // e.g., "RAD", "CARD", "EMER"
+  description String?
+  status      DepartmentStatus  @default(ACTIVE)
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  // Relations
+  hospital       Hospital        @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  subDepartments SubDepartment[]
+  users          User[]          @relation("DepartmentUsers")
+  departmentAdmins User[]        @relation("DepartmentAdmins")
+
+  @@unique([hospitalId, code]) // Unique department code per hospital
+  @@index([hospitalId])
+  @@index([status])
+  @@map("departments")
+}
+
+model SubDepartment {
+  id           String               @id @default(uuid())
+  departmentId String               @map("department_id")
+  name         String               // e.g., "X-ray", "Ultrasound", "CT Scan"
+  code         String               // e.g., "XRAY", "US", "CT"
+  description  String?
+  status       SubDepartmentStatus  @default(ACTIVE)
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+
+  // Relations
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  users      User[]     @relation("SubDepartmentUsers")
+
+  @@unique([departmentId, code]) // Unique sub-department code per department
+  @@index([departmentId])
+  @@index([status])
+  @@map("sub_departments")
+}
+
 model User {
   id               String     @id @default(uuid())
-  hospitalId       String?    @map("hospital_id") // NULL for SUPER_ADMIN, required for all other roles
+  hospitalId       String?    @map("hospital_id") // NULL for SUPER_ADMIN and MASTER_ADMIN, required for all other roles
   pharmacyId       String?    @map("pharmacy_id")
+  departmentId     String?    @map("department_id") // Department assignment for department-scoped users
+  subDepartmentId  String?    @map("sub_department_id") // Sub-department assignment for specialized users
+  managedDepartmentId String? @map("managed_department_id") // For DEPARTMENT_ADMIN role
   email            String     @unique
   passwordHash     String     @map("password_hash")
   fullName         String     @map("full_name")
@@ -69,6 +116,9 @@ model User {
   // Relations
   hospital               Hospital?           @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   pharmacy               Pharmacy?           @relation(fields: [pharmacyId], references: [id], onDelete: SetNull)
+  department             Department?         @relation("DepartmentUsers", fields: [departmentId], references: [id], onDelete: SetNull)
+  subDepartment          SubDepartment?      @relation("SubDepartmentUsers", fields: [subDepartmentId], references: [id], onDelete: SetNull)
+  managedDepartment      Department?         @relation("DepartmentAdmins", fields: [managedDepartmentId], references: [id], onDelete: SetNull)
   patientsRegistered     Patient[]           @relation("RegisteredBy")
   attendingPatients      Patient[]           @relation("AttendingDoctor")
   prescriptions          Prescription[]
@@ -84,6 +134,8 @@ model User {
 
   @@index([hospitalId])
   @@index([pharmacyId])
+  @@index([departmentId])
+  @@index([subDepartmentId])
   @@index([email])
   @@index([role])
   @@map("users")
@@ -190,7 +242,11 @@ model Medicine {
 
   @@index([hospitalId])
   @@index([name])
+  @@index([genericName])
+  @@index([form])
+  @@index([manufacturer])
   @@index([status])
+  @@index([hospitalId, status]) // Composite for common queries
   @@map("medicines")
 }
 
@@ -249,6 +305,11 @@ model StockBatch {
   @@index([expiryDate])
   @@index([status])
   @@index([receivedDate])
+  @@index([pharmacyId, medicineId]) // Composite for inventory queries
+  @@index([pharmacyId, status]) // Composite for active stock
+  @@index([pharmacyId, medicineId, status]) // Triple composite for filtered inventory
+  @@index([pharmacyId, expiryDate]) // For expiry alerts
+  @@index([medicineId, expiryDate, status]) // For medicine-specific expiry queries
   @@map("stock_batches")
 }
 
@@ -517,6 +578,11 @@ model TransferRequest {
   @@index([fromPharmacyId])
   @@index([toPharmacyId])
   @@index([status])
+  @@index([hospitalId, status]) // Composite for common queries
+  @@index([createdAt]) // For sorting by date
+  @@index([fromPharmacyId, status]) // For source pharmacy filtering
+  @@index([toPharmacyId, status]) // For destination pharmacy filtering
+  @@index([hospitalId, createdAt]) // For hospital-specific date queries
   @@map("transfer_requests")
 }
 
@@ -663,8 +729,10 @@ enum HospitalStatus {
 }
 
 enum UserRole {
-  SUPER_ADMIN
-  HOSPITAL_ADMIN
+  MASTER_ADMIN           // Highest privilege - Full CRUD on all resources
+  SUPER_ADMIN            // Read + Create only (no update/delete)
+  HOSPITAL_ADMIN         // Hospital-scoped, Read + Create only
+  DEPARTMENT_ADMIN       // Department-scoped management
   MAIN_PHARMACY_MANAGER
   SUB_PHARMACY_MANAGER
   DOCTOR
@@ -672,6 +740,11 @@ enum UserRole {
   REGISTRATION_STAFF
   PHARMACY_STAFF
   AUDITOR
+  LAB_TECHNICIAN
+  RADIOLOGIST
+  NURSE
+  BILLING_STAFF
+  RECEPTIONIST
 }
 
 enum UserStatus {
@@ -679,7 +752,15 @@ enum UserStatus {
   INACTIVE
   SUSPENDED
 }
+enum DepartmentStatus {
+  ACTIVE
+  INACTIVE
+}
 
+enum SubDepartmentStatus {
+  ACTIVE
+  INACTIVE
+}
 enum PharmacyType {
   MAIN
   SUB
@@ -820,4 +901,64 @@ enum SyncStatus {
   SYNCED
   CONFLICT
   FAILED
+}
+
+// ============================================
+// FEATURE FLAGS
+// ============================================
+
+model FeatureFlag {
+  id          String   @id @default(uuid())
+  hospitalId  String?  @map("hospital_id") // NULL = global flag
+  key         String   // e.g., "clinical_module", "billing_module"
+  enabled     Boolean  @default(false)
+  description String?
+  metadata    Json?    // Additional config: { rolloutPercent: 50, allowedRoles: [...] }
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  hospital Hospital? @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+
+  @@unique([hospitalId, key]) // Unique per hospital (or global if null)
+  @@index([key])
+  @@index([hospitalId])
+  @@map("feature_flags")
+}
+
+// ============================================
+// PERMISSIONS & RBAC
+// ============================================
+
+model Permission {
+  id          String   @id @default(uuid())
+  resource    String   // e.g., "medicines", "inventory", "patients", "transfers"
+  action      String   // e.g., "read", "write", "delete", "approve"
+  scope       String   @default("all") // e.g., "all", "own_pharmacy", "own_department"
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  rolePermissions RolePermission[]
+
+  @@unique([resource, action, scope]) // Unique permission
+  @@index([resource])
+  @@index([action])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String   @id @default(uuid())
+  role         UserRole
+  permissionId String   @map("permission_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([role, permissionId]) // Prevent duplicate role-permission mapping
+  @@index([role])
+  @@index([permissionId])
+  @@map("role_permissions")
 }

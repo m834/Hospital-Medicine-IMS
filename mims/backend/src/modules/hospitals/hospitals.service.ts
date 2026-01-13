@@ -274,9 +274,10 @@ export class HospitalsService {
       throw new BadRequestException('Cannot create SUPER_ADMIN users via hospital user endpoint');
     }
 
-    // Allowed hospital roles
-    const allowedRoles = [
+    // Allowed hospital roles (exclude MASTER_ADMIN and SUPER_ADMIN)
+    const allowedRoles: UserRole[] = [
       UserRole.HOSPITAL_ADMIN,
+      UserRole.DEPARTMENT_ADMIN,
       UserRole.MAIN_PHARMACY_MANAGER,
       UserRole.SUB_PHARMACY_MANAGER,
       UserRole.DOCTOR,
@@ -284,9 +285,14 @@ export class HospitalsService {
       UserRole.REGISTRATION_STAFF,
       UserRole.PHARMACY_STAFF,
       UserRole.AUDITOR,
+      UserRole.LAB_TECHNICIAN,
+      UserRole.RADIOLOGIST,
+      UserRole.NURSE,
+      UserRole.BILLING_STAFF,
+      UserRole.RECEPTIONIST,
     ];
 
-    if (!allowedRoles.includes(createUserDto.role)) {
+    if (!allowedRoles.includes(createUserDto.role as UserRole)) {
       throw new BadRequestException(`Invalid role. Allowed roles: ${allowedRoles.join(', ')}`);
     }
 

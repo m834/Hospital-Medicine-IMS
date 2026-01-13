@@ -1,18 +1,225 @@
 # Role-Based Access Control (RBAC) Implementation Guide
 
+**Last Updated:** January 10, 2026  
+**Version:** 2.0 - Permission-Based Authorization
+
 ## Overview
 
-The Hospital Medicine IMS now includes a comprehensive Role-Based Access Control system with:
+The Hospital Medicine IMS includes a comprehensive Role-Based Access Control system with fine-grained permission-based authorization:
 
-- ✅ **9 User Roles**: SUPER_ADMIN, HOSPITAL_ADMIN, MAIN_PHARMACY_MANAGER, SUB_PHARMACY_MANAGER, DOCTOR, DOCTOR_ASSISTANT, REGISTRATION_STAFF, PHARMACY_STAFF, AUDITOR
-- ✅ **Role-Specific Dashboards**: Each role has a dedicated dashboard with relevant widgets and actions
-- ✅ **Sectioned Sidebar**: Organized navigation with collapsible sections
-- ✅ **Reusable Widgets**: StatsCard, QuickActionsWidget, AlertsWidget, RecentActivityWidget
-- ✅ **Permission Helpers**: Utility functions for granular permission checks
+- ✅ **14 User Roles**: SUPER_ADMIN, HOSPITAL_ADMIN, pharmacy roles, clinical roles, diagnostic roles, and support staff
+- ✅ **60+ Permissions**: Resource-action-scope based permissions (e.g., `medicines:read:all`)
+- ✅ **Role-Permission Matrix**: Flexible mapping of permissions to roles
+- ✅ **Permission Caching**: Redis-backed caching for performance
+- ✅ **@RequirePermission Decorator**: Guard for route-level authorization
+- ✅ **Admin UI**: Visual permission management interface
+- ✅ **Role-Specific Dashboards**: Each role has a dedicated dashboard
 
 ---
 
-## Architecture
+## New Roles (Added Jan 2026)
+
+### Clinical & Diagnostic Roles
+- **LAB_TECHNICIAN**: Manages lab test orders, sample collection, and result entry (4 permissions)
+- **RADIOLOGIST**: Manages radiology orders, image uploads, and reports (4 permissions)
+- **NURSE**: Patient care with access to records and medication information (7 permissions)
+
+### Support Staff Roles
+- **BILLING_STAFF**: Handles billing, payment processing, and invoices (4 permissions)
+- **RECEPTIONIST**: Front desk operations and patient registration (2 permissions)
+
+---
+
+## Permission System Architecture
+
+### 1. Permission Model
+
+Each permission has three components:
+
+```typescript
+{
+  resource: string;  // e.g., "medicines", "inventory", "patients"
+  action: string;    // e.g., "read", "write", "delete", "approve"
+  scope: string;     // e.g., "all", "own", "own_pharmacy", "own_department"
+}
+```
+
+**Example Permissions:**
+- `medicines:read:all` - View all medicines
+- `inventory:write:own_pharmacy` - Manage own pharmacy inventory
+- `transfers:approve:all` - Approve any transfer request
+- `prescriptions:write:own` - Create own prescriptions only
+
+### 2. Role-Permission Matrix
+
+Permissions are assigned to roles via `RolePermission` junction table:
+
+| Role | Permission Count | Access Level |
+|------|------------------|--------------|
+| SUPER_ADMIN | 49 | Full system access |
+| HOSPITAL_ADMIN | 31 | Hospital-wide admin |
+| MAIN_PHARMACY_MANAGER | 19 | Main pharmacy + approvals |
+| SUB_PHARMACY_MANAGER | 12 | Own pharmacy only |
+| DOCTOR | 9 | Prescriptions + patient care |
+| LAB_TECHNICIAN | 4 | Lab operations |
+| RADIOLOGIST | 4 | Radiology operations |
+| NURSE | 7 | Patient care |
+| BILLING_STAFF | 4 | Billing operations |
+| RECEPTIONIST | 2 | Patient registration |
+
+**See:** `/backend/prisma/seeds/seed-permissions.ts` for complete mappings
+
+---
+
+## Backend Implementation
+
+### 1. Using @RequirePermission Decorator
+
+```typescript
+import { RequirePermission } from '../auth/decorators/require-permission.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+
+@Controller('medicines')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class MedicinesController {
+  
+  @Get()
+  @RequirePermission('medicines', 'read')
+  async findAll() {
+    // Anyone with medicines:read permission can access
+  }
+  
+  @Post()
+  @RequirePermission('medicines', 'write', 'all')
+  async create() {
+    // Only users with medicines:write:all can create
+  }
+  
+  @Delete(':id')
+  @RequirePermission('medicines', 'delete', 'all')
+  async delete() {
+    // Only users with medicines:delete:all can delete
+  }
+}
+```
+
+### 2. Checking Permissions Programmatically
+
+```typescript
+import { PermissionsService } from '../permissions/permissions.service';
+
+@Injectable()
+export class SomeService {
+  constructor(private permissionsService: PermissionsService) {}
+  
+  async doSomething(user: User) {
+    // Check if user has permission
+    const canWrite = await this.permissionsService.hasPermission(
+      user.role,
+      'medicines',
+      'write',
+      'all'
+    );
+    
+    if (!canWrite) {
+      throw new ForbiddenException('Insufficient permissions');
+    }
+    
+    // Proceed with operation
+  }
+}
+```
+
+### 3. Permission API Endpoints
+
+**Base URL:** `/api/v1/permissions`
+
+| Endpoint | Method | Description | Roles |
+|----------|--------|-------------|-------|
+| `/` | GET | List all permissions | SUPER_ADMIN, HOSPITAL_ADMIN |
+| `/` | POST | Create new permission | SUPER_ADMIN, HOSPITAL_ADMIN |
+| `/:id` | GET | Get permission details | SUPER_ADMIN, HOSPITAL_ADMIN |
+| `/:id` | PUT | Update permission | SUPER_ADMIN, HOSPITAL_ADMIN |
+| `/:id` | DELETE | Delete permission | SUPER_ADMIN |
+| `/assign` | POST | Assign permission to role | SUPER_ADMIN, HOSPITAL_ADMIN |
+| `/role/:role/permission/:permissionId` | DELETE | Remove permission from role | SUPER_ADMIN, HOSPITAL_ADMIN |
+| `/role/:role` | GET | Get permissions for role | SUPER_ADMIN, HOSPITAL_ADMIN, AUDITOR |
+| `/check/:role` | GET | Check specific permission | SUPER_ADMIN, HOSPITAL_ADMIN, AUDITOR |
+| `/user/:userId` | GET | Get user's permissions | SUPER_ADMIN, HOSPITAL_ADMIN, AUDITOR |
+| `/matrix/all` | GET | Get complete role-permission matrix | SUPER_ADMIN, HOSPITAL_ADMIN |
+
+---
+
+## Frontend Implementation
+
+### 1. Role Constants and Helpers
+
+```typescript
+import { UserRole, ROLE_LABELS } from '@/lib/constants';
+import {
+  ROLE_DESCRIPTIONS,
+  ROLE_PERMISSION_COUNTS,
+  ROLE_CATEGORIES,
+  getRoleBadgeClass,
+} from '@/lib/roles';
+
+// Display role badge
+<span className={getRoleBadgeClass(user.role)}>
+  {ROLE_LABELS[user.role]}
+</span>
+
+// Show role description
+<p>{ROLE_DESCRIPTIONS[user.role]}</p>
+
+// Group roles by category
+{Object.entries(ROLE_CATEGORIES).map(([category, roles]) => (
+  <div key={category}>
+    <h3>{category}</h3>
+    {roles.map(role => <RoleCard key={role} role={role} />)}
+  </div>
+))}
+```
+
+### 2. Permission Management UI
+
+Access the admin UI at: `/admin/permissions`
+
+**Features:**
+- View all roles grouped by category (System, Administration, Pharmacy, Clinical, etc.)
+- Click any role to see its permissions
+- Permissions grouped by resource
+- Summary statistics (total roles, permissions, resources, actions)
+- Color-coded role badges for visual distinction
+
+**Screenshot:**
+```
+┌─────────────────────────────────────────┐
+│ 🛡️  Role Permissions                    │
+│ View and manage RBAC permissions        │
+├─────────────────────────────────────────┤
+│ System Roles          Pharmacy Roles    │
+│ ┌─────────────┐       ┌──────────────┐ │
+│ │ SUPER_ADMIN │       │ MAIN_PHARM.. │ │
+│ │ 49 perms    │       │ 19 perms     │ │
+│ └─────────────┘       └──────────────┘ │
+├─────────────────────────────────────────┤
+│ 📋 Permissions for SUPER_ADMIN          │
+│                                          │
+│ Medicines                                │
+│ ├─ Read (all)                           │
+│ ├─ Write (all)                          │
+│ └─ Delete (all)                         │
+│                                          │
+│ Inventory                                │
+│ ├─ Read (all)                           │
+│ ├─ Write (all)                          │
+│ └─ Delete (all)                         │
+└─────────────────────────────────────────┘
+```
+
+---
+
+## Architecture (Legacy - Still Supported)
 
 ### 1. RBAC Configuration (`/frontend/src/lib/rbac-config.ts`)
 

@@ -193,9 +193,14 @@ export default function ReceiveStockPage() {
     try {
       const params: any = { limit: 200, status: 'ACTIVE' };
       
-      // For SUPER_ADMIN, include hospitalId if hospital is selected
-      if (user?.role === 'SUPER_ADMIN' && selectedHospital?.id) {
-        params.hospitalId = selectedHospital.id;
+      // Add hospitalId if available
+      if (currentHospitalId) {
+        params.hospitalId = currentHospitalId;
+      }
+      
+      if (!params.hospitalId) {
+        console.warn('No hospital selected');
+        return;
       }
       
       const response = await api.get('/medicines', { params });
@@ -212,9 +217,14 @@ export default function ReceiveStockPage() {
     try {
       const params: any = {};
       
-      // For SUPER_ADMIN, include hospitalId if hospital is selected
-      if (user?.role === 'SUPER_ADMIN' && selectedHospital?.id) {
-        params.hospitalId = selectedHospital.id;
+      // Add hospitalId if available
+      if (currentHospitalId) {
+        params.hospitalId = currentHospitalId;
+      }
+      
+      if (!params.hospitalId) {
+        console.warn('No hospital selected');
+        return;
       }
       
       const response = await api.get('/pharmacies', { params });
@@ -231,9 +241,19 @@ export default function ReceiveStockPage() {
   const fetchRecentBatches = async () => {
     setLoadingData(true);
     try {
-      const response = await api.get('/inventory/batches', {
-        params: { limit: 10, sortBy: 'receivedDate', sortOrder: 'desc' },
-      });
+      const params: any = { limit: 10, sortBy: 'receivedDate', sortOrder: 'desc' };
+      
+      if (currentHospitalId) {
+        params.hospitalId = currentHospitalId;
+      }
+      
+      if (!params.hospitalId) {
+        console.warn('No hospital selected');
+        setLoadingData(false);
+        return;
+      }
+      
+      const response = await api.get('/inventory/batches', { params });
       const batches = response.data?.data || response.data || [];
       setRecentBatches(batches);
     } catch (error) {

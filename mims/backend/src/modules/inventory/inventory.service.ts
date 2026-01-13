@@ -122,7 +122,7 @@ export class InventoryService {
     });
 
     // Invalidate cache when new stock is added
-    this.cacheService.deletePattern(`inventory:.*:${hospitalId}:.*`);
+    await this.invalidateCache(hospitalId);
 
     return stockBatch;
   }
@@ -237,6 +237,13 @@ export class InventoryService {
       sortOrder = 'asc',
     } = searchDto;
 
+    // Cache key based on search parameters
+    const cacheKey = `inventory:${hospitalId || 'all'}:${JSON.stringify(searchDto)}`;
+    const cached = await this.cacheService.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const where: any = {};
     
     // Only add hospitalId if provided
@@ -295,7 +302,7 @@ export class InventoryService {
       this.prisma.stockBatch.count({ where }),
     ]);
 
-    return {
+    const result = {
       data: batches,
       meta: {
         total,
@@ -304,6 +311,11 @@ export class InventoryService {
         totalPages: Math.ceil(total / limit),
       },
     };
+
+    // Cache for 3 minutes
+    await this.cacheService.set(cacheKey, result, 3 * 60 * 1000);
+
+    return result;
   }
 
   async findOne(id: string, hospitalId: string) {
@@ -353,7 +365,7 @@ export class InventoryService {
     });
 
     // Invalidate cache when stock is updated
-    this.cacheService.deletePattern(`inventory:.*:${hospitalId}:.*`);
+    await this.invalidateCache(hospitalId);
 
     return updated;
   }
@@ -371,7 +383,7 @@ export class InventoryService {
     });
 
     // Invalidate cache when batch is deleted
-    this.cacheService.deletePattern(`inventory:.*:${hospitalId}:.*`);
+    await this.invalidateCache(hospitalId);
 
     return deleted;
   }
@@ -615,5 +627,13 @@ export class InventoryService {
     }
 
     return pharmacy;
+  }
+
+  /**
+   * Invalidate inventory caches for a hospital
+   */
+  private async invalidateCache(hospitalId: string): Promise<void> {
+    await this.cacheService.deletePattern(`inventory:${hospitalId}:.*`);
+    await this.cacheService.deletePattern(`inventory:all:.*`);
   }
 }

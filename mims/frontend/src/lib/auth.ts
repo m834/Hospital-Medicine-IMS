@@ -182,49 +182,66 @@ export async function validateToken(): Promise<boolean> {
  */
 export async function refreshAccessToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
-
   const refreshToken = getRefreshToken();
   if (!refreshToken) {
     console.error('[Auth] No refresh token found');
     return null;
   }
 
-  try {
-    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ refreshToken }),
-    });
+  // Prevent concurrent refresh calls - return the same promise to all callers
+  if ((globalThis as any).__mims_refresh_promise) {
+    return (globalThis as any).__mims_refresh_promise as Promise<string | null>;
+  }
 
-    if (!response.ok) {
-      console.error('[Auth] Token refresh failed:', response.status);
-      clearAuthTokens();
-      return null;
-    }
+  (globalThis as any).__mims_refresh_promise = (async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refreshToken }),
+      });
 
-    const data = await response.json();
-
-    // Store new access token
-    if (data.accessToken) {
-      localStorage.setItem(AUTH_TOKENS.ACCESS_TOKEN, data.accessToken);
-
-      // Update expiry
-      const decodedToken = decodeJWT(data.accessToken);
-      if (decodedToken?.exp) {
-        localStorage.setItem(AUTH_TOKENS.TOKEN_EXPIRY, decodedToken.exp.toString());
+      if (!response.ok) {
+        console.error('[Auth] Token refresh failed:', response.status);
+        clearAuthTokens();
+        return null;
       }
 
-      return data.accessToken;
-    }
+      const data = await response.json();
 
-    return null;
-  } catch (error) {
-    console.error('[Auth] Token refresh error:', error);
-    clearAuthTokens();
-    return null;
-  }
+      // Store new tokens if present
+      if (data.accessToken) {
+        localStorage.setItem(AUTH_TOKENS.ACCESS_TOKEN, data.accessToken);
+
+        // Update expiry
+        const decodedToken = decodeJWT(data.accessToken);
+        if (decodedToken?.exp) {
+          localStorage.setItem(AUTH_TOKENS.TOKEN_EXPIRY, decodedToken.exp.toString());
+        }
+      }
+
+      if (data.refreshToken) {
+        localStorage.setItem(AUTH_TOKENS.REFRESH_TOKEN, data.refreshToken);
+      }
+
+      if (data.user) {
+        localStorage.setItem(AUTH_TOKENS.USER_DATA, JSON.stringify(data.user));
+      }
+
+      return data.accessToken ?? null;
+    } catch (error) {
+      console.error('[Auth] Token refresh error:', error);
+      clearAuthTokens();
+      return null;
+    } finally {
+      // clear the shared promise
+      delete (globalThis as any).__mims_refresh_promise;
+    }
+  })();
+
+  return (globalThis as any).__mims_refresh_promise as Promise<string | null>;
 }
 
 /**

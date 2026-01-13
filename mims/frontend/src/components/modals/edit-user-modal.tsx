@@ -74,14 +74,20 @@ interface EditUserModalProps {
 }
 
 const USER_ROLES = [
-  { value: 'HOSPITAL_ADMIN', label: 'Hospital Admin', requiresPharmacy: false },
-  { value: 'MAIN_PHARMACY_MANAGER', label: 'Main Pharmacy Manager', requiresPharmacy: true, pharmacyType: 'MAIN' },
-  { value: 'SUB_PHARMACY_MANAGER', label: 'Sub-Pharmacy Manager', requiresPharmacy: true, pharmacyType: 'SUB' },
-  { value: 'DOCTOR', label: 'Doctor', requiresPharmacy: false },
-  { value: 'DOCTOR_ASSISTANT', label: 'Doctor Assistant', requiresPharmacy: false },
-  { value: 'REGISTRATION_STAFF', label: 'Registration Staff', requiresPharmacy: false },
-  { value: 'PHARMACY_STAFF', label: 'Pharmacy Staff', requiresPharmacy: true },
-  { value: 'AUDITOR', label: 'Auditor', requiresPharmacy: false },
+  { value: 'HOSPITAL_ADMIN', label: 'Hospital Admin', requiresPharmacy: false, requiresDepartment: false },
+  { value: 'DEPARTMENT_ADMIN', label: 'Department Admin', requiresPharmacy: false, requiresDepartment: true, managedDepartment: true },
+  { value: 'MAIN_PHARMACY_MANAGER', label: 'Main Pharmacy Manager', requiresPharmacy: true, pharmacyType: 'MAIN', requiresDepartment: false },
+  { value: 'SUB_PHARMACY_MANAGER', label: 'Sub-Pharmacy Manager', requiresPharmacy: true, pharmacyType: 'SUB', requiresDepartment: false },
+  { value: 'DOCTOR', label: 'Doctor', requiresPharmacy: false, requiresDepartment: true },
+  { value: 'DOCTOR_ASSISTANT', label: 'Doctor Assistant', requiresPharmacy: false, requiresDepartment: true },
+  { value: 'NURSE', label: 'Nurse', requiresPharmacy: false, requiresDepartment: true },
+  { value: 'REGISTRATION_STAFF', label: 'Registration Staff', requiresPharmacy: false, requiresDepartment: false },
+  { value: 'PHARMACY_STAFF', label: 'Pharmacy Staff', requiresPharmacy: true, requiresDepartment: false },
+  { value: 'AUDITOR', label: 'Auditor', requiresPharmacy: false, requiresDepartment: false },
+  { value: 'LAB_TECHNICIAN', label: 'Lab Technician', requiresPharmacy: false, requiresDepartment: true },
+  { value: 'RADIOLOGIST', label: 'Radiologist', requiresPharmacy: false, requiresDepartment: true },
+  { value: 'BILLING_STAFF', label: 'Billing Staff', requiresPharmacy: false, requiresDepartment: false },
+  { value: 'RECEPTIONIST', label: 'Receptionist', requiresPharmacy: false, requiresDepartment: false },
 ];
 
 const USER_STATUSES = [
@@ -98,14 +104,34 @@ const editUserSchema = z.object({
   role: z.string().min(1, 'Role is required'),
   status: z.string().min(1, 'Status is required'),
   pharmacyId: z.string().optional(),
+  departmentId: z.string().optional(),
+  subDepartmentId: z.string().optional(),
+  managedDepartmentId: z.string().optional(),
 });
 
 type EditUserFormData = z.infer<typeof editUserSchema>;
+
+interface Department {
+  id: string;
+  name: string;
+  code: string;
+  status: string;
+}
+
+interface SubDepartment {
+  id: string;
+  name: string;
+  code: string;
+  status: string;
+}
 
 export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalProps) {
   const [loading, setLoading] = useState(false);
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
   const [loadingPharmacies, setLoadingPharmacies] = useState(false);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [subDepartments, setSubDepartments] = useState<SubDepartment[]>([]);
+  const [loadingDepartments, setLoadingDepartments] = useState(false);
 
   const form = useForm<EditUserFormData>({
     resolver: zodResolver(editUserSchema),
@@ -116,12 +142,18 @@ export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalPro
       role: '',
       status: '',
       pharmacyId: '',
+      departmentId: '',
+      subDepartmentId: '',
+      managedDepartmentId: '',
     },
   });
 
   const selectedRole = form.watch('role');
+  const selectedDepartmentId = form.watch('departmentId');
   const roleConfig = USER_ROLES.find((r) => r.value === selectedRole);
   const requiresPharmacy = roleConfig?.requiresPharmacy || false;
+  const requiresDepartment = roleConfig?.requiresDepartment || false;
+  const requiresManagedDepartment = roleConfig?.managedDepartment || false;
 
   useEffect(() => {
     if (user) {
@@ -133,10 +165,19 @@ export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalPro
         role: user.role,
         status: user.status,
         pharmacyId: user.pharmacyId || '',
+        departmentId: (user as any).departmentId || '',
+        subDepartmentId: (user as any).subDepartmentId || '',
+        managedDepartmentId: (user as any).managedDepartmentId || '',
       });
 
-      // Fetch pharmacies for the user's hospital
+      // Fetch pharmacies and departments for the user's hospital
       fetchPharmacies(user.hospitalId);
+      fetchDepartments(user.hospitalId);
+      
+      // Fetch sub-departments if user has a department
+      if ((user as any).departmentId) {
+        fetchSubDepartments((user as any).departmentId);
+      }
     }
   }, [user]);
 
@@ -162,6 +203,29 @@ export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalPro
     }
   };
 
+  const fetchDepartments = async (hospitalId: string) => {
+    setLoadingDepartments(true);
+    try {
+      const response = await api.get(`/departments?hospitalId=${hospitalId}`);
+      setDepartments((response.data || []).filter((d: Department) => d.status === 'ACTIVE'));
+    } catch (err) {
+      console.error('Failed to fetch departments:', err);
+      setDepartments([]);
+    } finally {
+      setLoadingDepartments(false);
+    }
+  };
+
+  const fetchSubDepartments = async (departmentId: string) => {
+    try {
+      const response = await api.get(`/sub-departments?departmentId=${departmentId}`);
+      setSubDepartments((response.data || []).filter((sd: SubDepartment) => sd.status === 'ACTIVE'));
+    } catch (err) {
+      console.error('Failed to fetch sub-departments:', err);
+      setSubDepartments([]);
+    }
+  };
+
   // Re-fetch pharmacies when role changes
   useEffect(() => {
     if (user?.hospitalId && selectedRole) {
@@ -171,8 +235,25 @@ export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalPro
       if (!requiresPharmacy) {
         form.setValue('pharmacyId', '');
       }
+      
+      // Clear department selections if role doesn't require them
+      if (!requiresDepartment && !requiresManagedDepartment) {
+        form.setValue('departmentId', '');
+        form.setValue('subDepartmentId', '');
+        form.setValue('managedDepartmentId', '');
+      }
     }
   }, [selectedRole]);
+
+  // Fetch sub-departments when department changes
+  useEffect(() => {
+    if (selectedDepartmentId) {
+      fetchSubDepartments(selectedDepartmentId);
+    } else {
+      setSubDepartments([]);
+      form.setValue('subDepartmentId', '');
+    }
+  }, [selectedDepartmentId]);
 
   const onSubmit = async (data: EditUserFormData) => {
     if (!user) return;
@@ -192,6 +273,18 @@ export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalPro
         updateData.pharmacyId = data.pharmacyId;
       } else {
         updateData.pharmacyId = null;
+      }
+
+      // Include department fields if role requires them
+      if (requiresDepartment && data.departmentId) {
+        updateData.departmentId = data.departmentId;
+        updateData.subDepartmentId = data.subDepartmentId || null;
+      } else if (requiresManagedDepartment && data.managedDepartmentId) {
+        updateData.managedDepartmentId = data.managedDepartmentId;
+      } else {
+        updateData.departmentId = null;
+        updateData.subDepartmentId = null;
+        updateData.managedDepartmentId = null;
       }
 
       await api.patch(`/users/${user.id}`, updateData);
@@ -340,6 +433,133 @@ export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalPro
                       {roleConfig?.pharmacyType 
                         ? `Select a ${roleConfig.pharmacyType} pharmacy`
                         : 'Select the pharmacy this user will manage'}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {/* Department Assignment (conditional, not for managed department) */}
+            {requiresDepartment && !requiresManagedDepartment && (
+              <>
+                <FormField
+                  control={form.control}
+                  name="departmentId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Department</FormLabel>
+                      <Select 
+                        onValueChange={field.onChange} 
+                        value={field.value}
+                        disabled={loadingDepartments}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={
+                              loadingDepartments 
+                                ? "Loading departments..." 
+                                : "Select a department"
+                            } />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {departments.length === 0 ? (
+                            <SelectItem value="none" disabled>
+                              No departments available
+                            </SelectItem>
+                          ) : (
+                            departments.map((dept) => (
+                              <SelectItem key={dept.id} value={dept.id}>
+                                {dept.name} ({dept.code})
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        Select the department this user belongs to
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="subDepartmentId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Sub-Department (Optional)</FormLabel>
+                      <Select 
+                        onValueChange={field.onChange} 
+                        value={field.value}
+                        disabled={!selectedDepartmentId || subDepartments.length === 0}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={
+                              !selectedDepartmentId
+                                ? "Select department first"
+                                : subDepartments.length === 0
+                                ? "No sub-departments"
+                                : "Select a sub-department"
+                            } />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {subDepartments.map((subDept) => (
+                            <SelectItem key={subDept.id} value={subDept.id}>
+                              {subDept.name} ({subDept.code})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
+            )}
+
+            {/* Managed Department (for DEPARTMENT_ADMIN) */}
+            {requiresManagedDepartment && (
+              <FormField
+                control={form.control}
+                name="managedDepartmentId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Managed Department</FormLabel>
+                    <Select 
+                      onValueChange={field.onChange} 
+                      value={field.value}
+                      disabled={loadingDepartments}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={
+                            loadingDepartments 
+                              ? "Loading departments..." 
+                              : "Select department to manage"
+                          } />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {departments.length === 0 ? (
+                          <SelectItem value="none" disabled>
+                            No departments available
+                          </SelectItem>
+                        ) : (
+                          departments.map((dept) => (
+                            <SelectItem key={dept.id} value={dept.id}>
+                              {dept.name} ({dept.code})
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      This user will manage the selected department
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

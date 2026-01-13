@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
 // Import common modules
 import { CommonModule } from './common/common.module';
+import { PerformanceInterceptor } from './common/interceptors/performance.interceptor';
 
 // Import feature modules
 import { AuthModule } from './modules/auth/auth.module';
@@ -20,6 +21,10 @@ import { UsersModule } from './modules/users/users.module';
 import { TransfersModule } from './modules/transfers/transfers.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
+import { PermissionsModule } from './modules/permissions/permissions.module';
+import { DepartmentsModule } from './modules/departments/departments.module';
+import { SubDepartmentsModule } from './modules/sub-departments/sub-departments.module';
 
 // Import configuration
 import { DatabaseModule } from './database/database.module';
@@ -64,11 +69,19 @@ import appConfig from './config/app.config';
     TransfersModule,
     ReportsModule,
     AnalyticsModule,
+    FeatureFlagsModule,
+    PermissionsModule,
+    DepartmentsModule,
+    SubDepartmentsModule,
   ],
   providers: [
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: PerformanceInterceptor,
     },
   ],
 })

@@ -15,6 +15,9 @@ import { DeleteHospitalDialog } from '@/components/modals/delete-hospital-dialog
 import { HospitalUsersModal } from '@/components/modals/hospital-users-modal';
 import api from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { canModifyResources } from '@/lib/permissions';
+import { useAuthStore } from '@/stores/auth.store';
+import { UserRole } from '@/lib/constants';
 
 interface Hospital {
   id: string;
@@ -43,6 +46,8 @@ export default function HospitalsPage() {
   const [isUsersModalOpen, setIsUsersModalOpen] = useState(false);
   const [selectedHospital, setSelectedHospital] = useState<Hospital | null>(null);
   const [mounted, setMounted] = useState(false);
+  const { user } = useAuthStore();
+  const canModify = user?.role ? canModifyResources(user.role as UserRole) : false;
 
   // Avoid hydration mismatch
   useEffect(() => {
@@ -246,18 +251,20 @@ export default function HospitalsPage() {
 
               {/* Actions */}
               <div className="mt-4 flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => {
-                    setSelectedHospital(hospital);
-                    setIsEditModalOpen(true);
-                  }}
-                >
-                  <Edit className="mr-2 h-4 w-4" />
-                  Edit
-                </Button>
+                {canModify && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => {
+                      setSelectedHospital(hospital);
+                      setIsEditModalOpen(true);
+                    }}
+                  >
+                    <Edit className="mr-2 h-4 w-4" />
+                    Edit
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -270,16 +277,18 @@ export default function HospitalsPage() {
                   <Users className="mr-2 h-4 w-4" />
                   Users
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedHospital(hospital);
-                    setIsDeleteDialogOpen(true);
-                  }}
-                >
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
+                {canModify && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedHospital(hospital);
+                      setIsDeleteDialogOpen(true);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                )}
               </div>
             </div>
           ))}

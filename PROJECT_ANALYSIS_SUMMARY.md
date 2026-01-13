@@ -27,8 +27,9 @@ You have already built a **production-ready pharmacy inventory management system
 | **Lab Service** | ❌ 0% Complete | Lab tests, orders, results - NEW |
 | **Radiology Service** | ❌ 0% Complete | Imaging, reports - NEW |
 | **Staff Roaster** | ❌ 0% Complete | Scheduling - NEW |
-| **Notification Service** | ❌ 0% Complete | Email/SMS - NEW |
+| **Notification Service** | ❌ 0% Complete | Email/SMS/ push - NEW |
 | **Microservices Architecture** | ❌ 0% Complete | Currently monolith (OK for now) |
+| **Chat system between the users like whatsapp** | ❌ 0% Complete |  |
 
 ---
 

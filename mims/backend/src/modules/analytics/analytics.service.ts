@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/database/prisma.service';
+import { CacheService } from '../../common/services/cache.service';
 import { AnalyticsQueryDto, TimePeriod } from './dto/analytics-query.dto';
 
 @Injectable()
 export class AnalyticsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cacheService: CacheService,
+  ) {}
 
   /**
    * Get comprehensive dashboard overview
@@ -708,5 +712,43 @@ export class AnalyticsService {
       [TimePeriod.CUSTOM]: 'Custom Period',
     };
     return labels[period] || 'Last 30 Days';
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getCacheStats() {
+    const stats = this.cacheService.getStats();
+    return {
+      ...stats,
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    };
+  }
+
+  /**
+   * Get system health metrics
+   */
+  getSystemHealth() {
+    const memoryUsage = process.memoryUsage();
+    const cacheStats = this.cacheService.getStats();
+
+    return {
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      memory: {
+        rss: `${(memoryUsage.rss / 1024 / 1024).toFixed(2)} MB`,
+        heapTotal: `${(memoryUsage.heapTotal / 1024 / 1024).toFixed(2)} MB`,
+        heapUsed: `${(memoryUsage.heapUsed / 1024 / 1024).toFixed(2)} MB`,
+        external: `${(memoryUsage.external / 1024 / 1024).toFixed(2)} MB`,
+      },
+      cache: cacheStats,
+      node: {
+        version: process.version,
+        platform: process.platform,
+        arch: process.arch,
+      },
+    };
   }
 }

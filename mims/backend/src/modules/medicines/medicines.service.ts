@@ -43,7 +43,7 @@ export class MedicinesService {
     });
 
     // Invalidate all medicine caches for this hospital
-    this.cacheService.deletePattern(`medicines:${hospitalId}:.*`);
+    await this.cacheService.deletePattern(`medicines:${hospitalId}:.*`);
 
     return medicine;
   }
@@ -66,7 +66,7 @@ export class MedicinesService {
     const cacheKey = `medicines:${hospitalId || 'all'}:${JSON.stringify(searchDto)}`;
     
     // Try to get from cache
-    const cached = this.cacheService.get(cacheKey);
+    const cached = await this.cacheService.get(cacheKey);
     if (cached) {
       return cached;
     }
@@ -135,7 +135,7 @@ export class MedicinesService {
     };
 
     // Cache the result for 5 minutes
-    this.cacheService.set(cacheKey, result, 5 * 60 * 1000);
+    await this.cacheService.set(cacheKey, result, 5 * 60 * 1000);
 
     return result;
   }
@@ -195,9 +195,9 @@ export class MedicinesService {
 
     // Invalidate all medicine caches for this hospital
     if (medicine.hospitalId) {
-      this.cacheService.deletePattern(`medicines:${medicine.hospitalId}:.*`);
+      await this.cacheService.deletePattern(`medicines:${medicine.hospitalId}:.*`);
     }
-    this.cacheService.deletePattern(`medicines:all:.*`);
+    await this.cacheService.deletePattern(`medicines:all:.*`);
 
     return updated;
   }
@@ -225,9 +225,9 @@ export class MedicinesService {
 
     // Invalidate all medicine caches for this hospital
     if (medicine.hospitalId) {
-      this.cacheService.deletePattern(`medicines:${medicine.hospitalId}:.*`);
+      await this.cacheService.deletePattern(`medicines:${medicine.hospitalId}:.*`);
     }
-    this.cacheService.deletePattern(`medicines:all:.*`);
+    await this.cacheService.deletePattern(`medicines:all:.*`);
 
     return discontinued;
   }
@@ -236,7 +236,7 @@ export class MedicinesService {
     const cacheKey = `medicines:stats:${hospitalId || 'all'}`;
     
     // Try to get from cache
-    const cached = this.cacheService.get(cacheKey);
+    const cached = await this.cacheService.get(cacheKey);
     if (cached) {
       return cached;
     }
@@ -267,7 +267,7 @@ export class MedicinesService {
     };
 
     // Cache the result for 5 minutes
-    this.cacheService.set(cacheKey, result, 5 * 60 * 1000);
+    await this.cacheService.set(cacheKey, result, 5 * 60 * 1000);
 
     return result;
   }

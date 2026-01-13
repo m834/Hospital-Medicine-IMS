@@ -16,8 +16,10 @@ export const AUTH_TOKENS = {
 
 // User Roles
 export enum UserRole {
+  MASTER_ADMIN = 'MASTER_ADMIN',
   SUPER_ADMIN = 'SUPER_ADMIN',
   HOSPITAL_ADMIN = 'HOSPITAL_ADMIN',
+  DEPARTMENT_ADMIN = 'DEPARTMENT_ADMIN',
   MAIN_PHARMACY_MANAGER = 'MAIN_PHARMACY_MANAGER',
   SUB_PHARMACY_MANAGER = 'SUB_PHARMACY_MANAGER',
   DOCTOR = 'DOCTOR',
@@ -25,12 +27,19 @@ export enum UserRole {
   REGISTRATION_STAFF = 'REGISTRATION_STAFF',
   PHARMACY_STAFF = 'PHARMACY_STAFF',
   AUDITOR = 'AUDITOR',
+  LAB_TECHNICIAN = 'LAB_TECHNICIAN',
+  RADIOLOGIST = 'RADIOLOGIST',
+  NURSE = 'NURSE',
+  BILLING_STAFF = 'BILLING_STAFF',
+  RECEPTIONIST = 'RECEPTIONIST',
 }
 
 // Dashboard Routes by Role
 export const ROLE_DASHBOARDS: Record<UserRole, string> = {
+  [UserRole.MASTER_ADMIN]: '/dashboard/master-admin',
   [UserRole.SUPER_ADMIN]: '/dashboard/super-admin',
   [UserRole.HOSPITAL_ADMIN]: '/dashboard/hospital-admin',
+  [UserRole.DEPARTMENT_ADMIN]: '/dashboard/department-admin',
   [UserRole.MAIN_PHARMACY_MANAGER]: '/dashboard/main-pharmacy',
   [UserRole.SUB_PHARMACY_MANAGER]: '/dashboard/sub-pharmacy',
   [UserRole.DOCTOR]: '/dashboard/doctor',
@@ -38,6 +47,31 @@ export const ROLE_DASHBOARDS: Record<UserRole, string> = {
   [UserRole.REGISTRATION_STAFF]: '/dashboard/registration',
   [UserRole.PHARMACY_STAFF]: '/dashboard/pharmacy',
   [UserRole.AUDITOR]: '/dashboard/auditor',
+  [UserRole.LAB_TECHNICIAN]: '/dashboard/lab-technician',
+  [UserRole.RADIOLOGIST]: '/dashboard/radiologist',
+  [UserRole.NURSE]: '/dashboard/nurse',
+  [UserRole.BILLING_STAFF]: '/dashboard/billing',
+  [UserRole.RECEPTIONIST]: '/dashboard/receptionist',
+};
+
+// Role Display Names
+export const ROLE_LABELS: Record<UserRole, string> = {
+  [UserRole.MASTER_ADMIN]: 'Master Admin',
+  [UserRole.SUPER_ADMIN]: 'Super Admin',
+  [UserRole.HOSPITAL_ADMIN]: 'Hospital Admin',
+  [UserRole.DEPARTMENT_ADMIN]: 'Department Admin',
+  [UserRole.MAIN_PHARMACY_MANAGER]: 'Main Pharmacy Manager',
+  [UserRole.SUB_PHARMACY_MANAGER]: 'Sub Pharmacy Manager',
+  [UserRole.DOCTOR]: 'Doctor',
+  [UserRole.DOCTOR_ASSISTANT]: 'Doctor Assistant',
+  [UserRole.REGISTRATION_STAFF]: 'Registration Staff',
+  [UserRole.PHARMACY_STAFF]: 'Pharmacy Staff',
+  [UserRole.AUDITOR]: 'Auditor',
+  [UserRole.LAB_TECHNICIAN]: 'Lab Technician',
+  [UserRole.RADIOLOGIST]: 'Radiologist',
+  [UserRole.NURSE]: 'Nurse',
+  [UserRole.BILLING_STAFF]: 'Billing Staff',
+  [UserRole.RECEPTIONIST]: 'Receptionist',
 };
 
 // Pagination

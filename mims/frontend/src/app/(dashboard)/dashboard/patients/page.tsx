@@ -115,9 +115,16 @@ export default function PatientsPage() {
     try {
       const params: any = { limit: 100, page: 1 };
       
-      // For SUPER_ADMIN, include hospitalId in params if hospital is selected
-      if (isSuperAdmin && selectedHospital?.id) {
-        params.hospitalId = selectedHospital.id;
+      // Include hospitalId - either from user's hospital or selected hospital
+      if (currentHospitalId) {
+        params.hospitalId = currentHospitalId;
+      }
+      
+      // If no hospitalId available, don't make the request
+      if (!params.hospitalId) {
+        console.warn('No hospital selected. Please select a hospital from the dropdown.');
+        setLoading(false);
+        return;
       }
       
       const response = await api.get('/patients', { params });

@@ -39,6 +39,7 @@ import api from '@/lib/api';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { useAuthStore } from '@/stores/auth.store';
 import { UserRole } from '@/lib/constants';
+import { canModifyResources } from '@/lib/permissions';
 import { CreatePharmacyModal } from '@/components/modals/create-pharmacy-modal';
 import { EditPharmacyModal } from '@/components/modals/edit-pharmacy-modal';
 
@@ -94,6 +95,7 @@ export default function PharmaciesPage() {
   const { user } = useAuthStore();
 
   const isSuperAdmin = user?.role === UserRole.SUPER_ADMIN;
+  const canModify = user?.role ? canModifyResources(user.role) : false;
 
   // Determine current hospital for create modal
   const currentHospital = selectedHospital || (user?.hospitalId ? {
@@ -374,20 +376,24 @@ export default function PharmaciesPage() {
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => setEditPharmacyModal(pharmacy)}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => setDeletePharmacyModal(pharmacy)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {canModify && (
+                        <>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => setEditPharmacyModal(pharmacy)}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => setDeletePharmacyModal(pharmacy)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

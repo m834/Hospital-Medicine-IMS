@@ -31,7 +31,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // PERFORMANCE OPTIMIZATION: Cache user data to avoid DB hit on every request
     // Cache for 2 minutes - balances performance vs data freshness
     const cacheKey = `user:auth:${payload.sub}`;
-    const cachedUser = this.cacheService.get<any>(cacheKey);
+    const cachedUser = await this.cacheService.get<any>(cacheKey);
     
     if (cachedUser) {
       // Verify user is still active (even from cache)
@@ -61,7 +61,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     // Cache for 2 minutes (120,000ms)
-    this.cacheService.set(cacheKey, user, 120000);
+    await this.cacheService.set(cacheKey, user, 120000);
 
     return user;
   }

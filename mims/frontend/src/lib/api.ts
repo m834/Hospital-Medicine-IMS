@@ -42,20 +42,21 @@ api.interceptors.response.use(
       _retry?: boolean;
     };
 
-    // Handle 401 Unauthorized
+    // Handle 401 Unauthorized - attempt a single refresh and retry queued requests
     if (error.response?.status === 401 && originalRequest) {
-      console.error('[API] 401 Unauthorized - Token invalid or expired');
+      console.warn('[API] 401 Unauthorized - Token invalid or expired');
 
-      // Try to refresh token (if not already retrying)
       if (!originalRequest._retry) {
         originalRequest._retry = true;
 
         try {
           const newAccessToken = await refreshAccessToken();
 
-          if (newAccessToken && originalRequest.headers) {
-            // Retry original request with new token
-            originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+          if (newAccessToken) {
+            if (originalRequest.headers) {
+              // Support both header shapes
+              (originalRequest.headers as any).Authorization = `Bearer ${newAccessToken}`;
+            }
             return api(originalRequest);
           }
         } catch (refreshError) {
@@ -119,3 +120,5 @@ export function getErrorMessage(error: unknown): string {
 
   return 'An unknown error occurred';
 }
+
+export { api };

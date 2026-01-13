@@ -87,11 +87,20 @@ export default function TransfersPage() {
   const fetchTransfers = async () => {
     setLoading(true);
     try {
-      const response = await api.get('/transfers', {
-        params: {
-          limit: 100,
-        },
-      });
+      const params: any = { limit: 100 };
+      
+      // Add hospitalId if available
+      if (currentHospitalId) {
+        params.hospitalId = currentHospitalId;
+      }
+      
+      if (!params.hospitalId) {
+        console.warn('No hospital selected');
+        setLoading(false);
+        return;
+      }
+      
+      const response = await api.get('/transfers', { params });
       const transferList = response.data?.data || response.data || [];
       
       // Filter based on user's pharmacy

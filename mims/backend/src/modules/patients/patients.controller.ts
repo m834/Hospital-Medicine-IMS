@@ -45,6 +45,11 @@ export class PatientsController {
   findAll(@Query() searchDto: SearchPatientsDto, @CurrentUser() user: any) {
     // For SUPER_ADMIN, use hospitalId from query params or user's hospitalId
     const hospitalId = searchDto.hospitalId || user.hospitalId;
+    
+    if (!hospitalId) {
+      throw new BadRequestException('Hospital ID is required');
+    }
+    
     return this.patientsService.findAll(searchDto, hospitalId);
   }
 
@@ -53,6 +58,11 @@ export class PatientsController {
   getStats(@Query('hospitalId') hospitalId: string, @CurrentUser() user: any) {
     // For SUPER_ADMIN, use hospitalId from query params or user's hospitalId
     const targetHospitalId = hospitalId || user.hospitalId;
+    
+    if (!targetHospitalId) {
+      throw new BadRequestException('Hospital ID is required');
+    }
+    
     return this.patientsService.getStats(targetHospitalId);
   }
 
@@ -60,6 +70,11 @@ export class PatientsController {
   @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR', 'DOCTOR_ASSISTANT', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER', 'PHARMACY_STAFF')
   findByNRNumber(@Param('nrNumber') nrNumber: string, @Query('hospitalId') hospitalId: string, @CurrentUser() user: any) {
     const targetHospitalId = hospitalId || user.hospitalId;
+    
+    if (!targetHospitalId) {
+      throw new BadRequestException('Hospital ID is required');
+    }
+    
     return this.patientsService.findByNRNumber(nrNumber, targetHospitalId);
   }
 
@@ -67,6 +82,11 @@ export class PatientsController {
   @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR', 'DOCTOR_ASSISTANT', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER', 'PHARMACY_STAFF')
   findOne(@Param('id') id: string, @Query('hospitalId') hospitalId: string, @CurrentUser() user: any) {
     const targetHospitalId = hospitalId || user.hospitalId;
+    
+    if (!targetHospitalId) {
+      throw new BadRequestException('Hospital ID is required');
+    }
+    
     return this.patientsService.findOne(id, targetHospitalId);
   }
 
@@ -77,6 +97,10 @@ export class PatientsController {
     @Body() updatePatientDto: UpdatePatientDto,
     @CurrentUser() user: any,
   ) {
+    if (!user.hospitalId) {
+      throw new BadRequestException('Hospital ID is required');
+    }
+    
     return this.patientsService.update(id, updatePatientDto, user.hospitalId);
   }
 

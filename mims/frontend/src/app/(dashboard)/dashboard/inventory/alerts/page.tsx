@@ -88,9 +88,20 @@ export default function StockAlertsPage() {
     try {
       const params: any = { limit: 200 };  // Max allowed by backend validation
       
+      // Add hospitalId if available
+      if (currentHospitalId) {
+        params.hospitalId = currentHospitalId;
+      }
+      
       // For non-admin users with a pharmacy, ALWAYS filter by their pharmacy
       if (!isSuperAdmin && !isHospitalAdmin && !isMainManager && userPharmacyId) {
         params.pharmacyId = userPharmacyId;
+      }
+      
+      if (!params.hospitalId) {
+        console.warn('No hospital selected');
+        setLoading(false);
+        return;
       }
       
       // Backend has a max limit of 200, so we need to fetch in pages

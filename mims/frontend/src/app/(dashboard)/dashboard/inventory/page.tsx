@@ -186,6 +186,11 @@ export default function InventoryDashboardPage() {
     try {
       const params: any = { limit: 100 };
       
+      // Add hospitalId if available
+      if (currentHospitalId) {
+        params.hospitalId = currentHospitalId;
+      }
+      
       // For non-admin users with a pharmacy, ALWAYS filter by their pharmacy
       if (!isSuperAdmin && !isHospitalAdmin && !isMainManager && userPharmacyId) {
         params.pharmacyId = userPharmacyId;
@@ -199,6 +204,11 @@ export default function InventoryDashboardPage() {
       if (selectedStorage !== 'all') params.storageType = selectedStorage;
       if (searchQuery) params.search = searchQuery;
 
+      if (!params.hospitalId) {
+        console.warn('No hospital selected');
+        return;
+      }
+
       const response = await api.get('/inventory/batches', { params });
       const batches = response.data?.data || response.data || [];
       setStockBatches(batches);
@@ -209,7 +219,15 @@ export default function InventoryDashboardPage() {
 
   const fetchMedicines = async () => {
     try {
-      const response = await api.get('/medicines');
+      const params: any = {};
+      if (currentHospitalId) {
+        params.hospitalId = currentHospitalId;
+      }
+      if (!params.hospitalId) {
+        console.warn('No hospital selected');
+        return;
+      }
+      const response = await api.get('/medicines', { params });
       const medicineList = response.data?.data || response.data || [];
       setMedicines(medicineList.filter((m: any) => m.status === 'ACTIVE'));
     } catch (error) {
@@ -219,7 +237,15 @@ export default function InventoryDashboardPage() {
 
   const fetchPharmacies = async () => {
     try {
-      const response = await api.get('/pharmacies');
+      const params: any = {};
+      if (currentHospitalId) {
+        params.hospitalId = currentHospitalId;
+      }
+      if (!params.hospitalId) {
+        console.warn('No hospital selected');
+        return;
+      }
+      const response = await api.get('/pharmacies', { params });
       setPharmacies(response.data || []);
     } catch (error) {
       console.error('Error fetching pharmacies:', error);
