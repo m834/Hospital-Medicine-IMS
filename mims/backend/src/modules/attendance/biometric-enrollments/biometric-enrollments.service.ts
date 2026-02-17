@@ -14,11 +14,15 @@ import {
   QueryEnrollmentsDto,
   UpdateEnrollmentMetadataDto,
 } from './dto/biometric-enrollment.dto';
+import { EncryptionService } from '@/common/services/encryption.service';
 import * as crypto from 'crypto';
 
 @Injectable()
 export class BiometricEnrollmentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private encryptionService: EncryptionService,
+  ) {}
 
   /**
    * Start a new biometric enrollment process
@@ -346,39 +350,18 @@ export class BiometricEnrollmentsService {
   }
 
   /**
-   * Encrypt biometric data (AES-256-CBC)
+   * Encrypt biometric data using AES-256-GCM
+   * SECURITY: Uses authenticated encryption with integrity verification
    */
   private encryptBiometric(data: string): string {
-    const algorithm = 'aes-256-cbc';
-    const key = crypto
-      .createHash('sha256')
-      .update(process.env.BIOMETRIC_ENCRYPTION_KEY || 'default-key')
-      .digest();
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(algorithm, key, iv);
-
-    let encrypted = cipher.update(data, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-
-    return iv.toString('hex') + ':' + encrypted;
+    return this.encryptionService.encrypt(data);
   }
 
   /**
-   * Decrypt biometric data (AES-256-CBC)
+   * Decrypt biometric data
+   * SECURITY: Verifies authentication tag to prevent tampering
    */
   private decryptBiometric(encryptedData: string): string {
-    const algorithm = 'aes-256-cbc';
-    const key = crypto
-      .createHash('sha256')
-      .update(process.env.BIOMETRIC_ENCRYPTION_KEY || 'default-key')
-      .digest();
-    const parts = encryptedData.split(':');
-    const iv = Buffer.from(parts[0], 'hex');
-    const decipher = crypto.createDecipheriv(algorithm, key, iv);
-
-    let decrypted = decipher.update(parts[1], 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-
-    return decrypted;
+    return this.encryptionService.decrypt(encryptedData);
   }
 }
