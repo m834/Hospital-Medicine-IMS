@@ -4,6 +4,7 @@ import { BiometricEnrollmentsModule } from './biometric-enrollments/biometric-en
 import { AttendanceRecordsModule } from './attendance-records/attendance-records.module';
 import { ShiftsModule } from './shifts/shifts.module';
 import { LeavesModule } from './leaves/leaves.module';
+import { DeviceSyncModule } from './device-sync/device-sync.module';
 
 @Module({
   imports: [
@@ -12,8 +13,8 @@ import { LeavesModule } from './leaves/leaves.module';
     AttendanceRecordsModule,
     ShiftsModule,
     LeavesModule,
-    // DeviceSyncModule (Task 11-12),
+    DeviceSyncModule,
   ],
-  exports: [BiometricDevicesModule, BiometricEnrollmentsModule, AttendanceRecordsModule, ShiftsModule, LeavesModule],
+  exports: [BiometricDevicesModule, BiometricEnrollmentsModule, AttendanceRecordsModule, ShiftsModule, LeavesModule, DeviceSyncModule],
 })
 export class AttendanceModule {}
