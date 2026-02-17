@@ -220,25 +220,36 @@ export class ShiftsService {
 
   /**
    * Get employee shift history
+   * OPTIMIZED: Uses cursor pagination
    */
   async getEmployeeShiftHistory(
     hospitalId: string,
     employeeId: string,
-    query?: QueryEmployeeShiftsDto,
+    query?: QueryEmployeeShiftsDto & { cursor?: string },
   ): Promise<EmployeeShift[]> {
-    const { startDate, endDate, skip = 0, take = 10 } = query || {};
+    const { startDate, endDate, skip = 0, take = 10, cursor } = query || {};
+
+    const where: any = {
+      userId: employeeId,
+      hospitalId,
+      ...(startDate &&
+        endDate && {
+          effectiveFrom: { gte: new Date(startDate) },
+          effectiveTo: { lte: new Date(endDate) },
+        }),
+    };
+
+    // OPTIMIZATION: Cursor-based pagination
+    if (cursor) {
+      where.effectiveFrom = {
+        ...where.effectiveFrom,
+        lt: new Date(cursor),
+      };
+    }
 
     return this.prisma.employeeShift.findMany({
-      where: {
-        userId: employeeId,
-        hospitalId,
-        ...(startDate &&
-          endDate && {
-            effectiveFrom: { gte: new Date(startDate) },
-            effectiveTo: { lte: new Date(endDate) },
-          }),
-      },
-      skip,
+      where,
+      skip: cursor ? 0 : skip,
       take,
       orderBy: { effectiveFrom: 'desc' },
       include: { shift: true },

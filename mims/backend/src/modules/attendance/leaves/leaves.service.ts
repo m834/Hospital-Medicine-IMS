@@ -91,23 +91,44 @@ export class LeavesService {
     return leave;
   }
 
-  async queryLeaveRequests(hospitalId: string, query?: QueryLeaveRequestsDto): Promise<Leave[]> {
-    const { status, leaveTypeId, fromDate, toDate, employeeId, skip = 0, take = 10 } = query || {};
+  async queryLeaveRequests(
+    hospitalId: string,
+    query?: QueryLeaveRequestsDto & { cursor?: string },
+  ): Promise<Leave[]> {
+    const {
+      status,
+      leaveTypeId,
+      fromDate,
+      toDate,
+      employeeId,
+      skip = 0,
+      take = 10,
+      cursor,
+    } = query || {};
 
-    return this.prisma.leave.findMany({
-      where: {
-        hospitalId,
-        ...(status && { status }),
-        ...(leaveTypeId && { leaveTypeId }),
-        ...(employeeId && { userId: employeeId }),
-        ...(fromDate && toDate && {
+    const where: any = {
+      hospitalId,
+      ...(status && { status }),
+      ...(leaveTypeId && { leaveTypeId }),
+      ...(employeeId && { userId: employeeId }),
+      ...(fromDate &&
+        toDate && {
           startDate: { gte: new Date(fromDate) },
           endDate: { lte: new Date(toDate) },
         }),
-      },
-      skip,
+    };
+
+    // OPTIMIZATION: Cursor-based pagination
+    if (cursor) {
+      where.appliedDate = { lt: new Date(cursor) };
+    }
+
+    return this.prisma.leave.findMany({
+      where,
+      skip: cursor ? 0 : skip,
       take,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { appliedDate: 'desc' },
+      // OPTIMIZATION: Minimal related data fetching to reduce N+1
       include: {
         leaveType: true,
         user: true,

@@ -73,22 +73,44 @@ export class DeviceSyncService {
 
   /**
    * Query sync logs with filtering
+   * OPTIMIZED: Uses cursor pagination
    */
-  async querySyncLogs(hospitalId: string, query?: QuerySyncLogsDto): Promise<DeviceSyncLog[]> {
-    const { deviceId, status, fromDate, toDate, skip = 0, take = 10 } = query || {};
+  async querySyncLogs(
+    hospitalId: string,
+    query?: QuerySyncLogsDto & { cursor?: string },
+  ): Promise<DeviceSyncLog[]> {
+    const {
+      deviceId,
+      status,
+      fromDate,
+      toDate,
+      skip = 0,
+      take = 10,
+      cursor,
+    } = query || {};
+
+    const where: any = {
+      hospitalId,
+      ...(deviceId && { deviceId }),
+      ...(status && { status }),
+      ...(fromDate &&
+        toDate && {
+          syncStartTime: { gte: new Date(fromDate) },
+          syncEndTime: { lte: new Date(toDate) },
+        }),
+    };
+
+    // OPTIMIZATION: Cursor-based pagination
+    if (cursor) {
+      where.syncStartTime = {
+        ...where.syncStartTime,
+        lt: new Date(cursor),
+      };
+    }
 
     return this.prisma.deviceSyncLog.findMany({
-      where: {
-        hospitalId,
-        ...(deviceId && { deviceId }),
-        ...(status && { status }),
-        ...(fromDate &&
-          toDate && {
-            syncStartTime: { gte: new Date(fromDate) },
-            syncEndTime: { lte: new Date(toDate) },
-          }),
-      },
-      skip,
+      where,
+      skip: cursor ? 0 : skip,
       take,
       orderBy: { syncStartTime: 'desc' },
       include: { device: true },
