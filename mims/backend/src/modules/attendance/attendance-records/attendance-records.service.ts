@@ -1,0 +1,481 @@
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { PrismaService } from '@/database/prisma.service';
+import { AttendanceRecord, AttendanceStatus, Prisma } from '@prisma/client';
+import {
+  MarkAttendanceDto,
+  CorrectAttendanceDto,
+  QueryAttendanceDto,
+  AttendanceSummaryDto,
+  MonthlyAttendanceDto,
+  AttendanceLeaveCheckDto,
+  BulkMarkAttendanceDto,
+  AttendanceReportDto,
+} from './dto/attendance-records.dto';
+
+@Injectable()
+export class AttendanceRecordsService {
+  constructor(private prisma: PrismaService) {}
+
+  /**
+   * Mark attendance for an employee
+   */
+  async markAttendance(
+    hospitalId: string,
+    dto: MarkAttendanceDto,
+  ): Promise<AttendanceRecord> {
+    // Verify employee exists
+    const employee = await this.prisma.user.findUnique({
+      where: { id: dto.employeeId },
+    });
+
+    if (!employee || employee.hospitalId !== hospitalId) {
+      throw new NotFoundException(`Employee ${dto.employeeId} not found`);
+    }
+
+    // Check if attendance already marked for this date
+    const existingRecord = await this.prisma.attendanceRecord.findFirst({
+      where: {
+        userId: dto.employeeId,
+        hospitalId,
+        attendanceDate: new Date(dto.attendanceDate),
+      },
+    });
+
+    if (existingRecord) {
+      throw new BadRequestException(
+        'Attendance already marked for this date',
+      );
+    }
+
+    // Check for active leaves on this date
+    const activeLeave = await this.prisma.leave.findFirst({
+      where: {
+        userId: dto.employeeId,
+        hospitalId,
+        startDate: { lte: new Date(dto.attendanceDate) },
+        endDate: { gte: new Date(dto.attendanceDate) },
+        status: 'APPROVED',
+      },
+    });
+
+    // Calculate attendance status
+    const status = this.calculateAttendanceStatus(
+      new Date(dto.checkInTime),
+      dto.checkOutTime ? new Date(dto.checkOutTime) : undefined,
+      activeLeave,
+    );
+
+    return this.prisma.attendanceRecord.create({
+      data: {
+        userId: dto.employeeId,
+        hospitalId,
+        attendanceDate: new Date(dto.attendanceDate),
+        checkInTime: new Date(dto.checkInTime),
+        checkOutTime: dto.checkOutTime ? new Date(dto.checkOutTime) : null,
+        status,
+        workingHours: new Prisma.Decimal(
+          this.calculateWorkingHours(
+            new Date(dto.checkInTime),
+            dto.checkOutTime ? new Date(dto.checkOutTime) : undefined,
+          ),
+        ),
+        isManualEntry: dto.isManualMark || false,
+        remarks: dto.notes,
+        lateByMinutes: this.calculateLateMinutes(new Date(dto.checkInTime)),
+        earlyDepartureMinutes: dto.checkOutTime ? this.calculateEarlyMinutes(new Date(dto.checkOutTime)) : 0,
+      },
+    });
+  }
+
+  /**
+   * Get attendance record by ID
+   */
+  async getAttendanceRecord(
+    hospitalId: string,
+    recordId: string,
+  ): Promise<AttendanceRecord> {
+    const record = await this.prisma.attendanceRecord.findFirst({
+      where: {
+        id: recordId,
+        hospitalId,
+      },
+    });
+
+    if (!record) {
+      throw new NotFoundException(`Attendance record ${recordId} not found`);
+    }
+
+    return record;
+  }
+
+  /**
+   * Query attendance records with filtering
+   */
+  async queryAttendanceRecords(
+    hospitalId: string,
+    query?: QueryAttendanceDto,
+  ): Promise<AttendanceRecord[]> {
+    const {
+      employeeId,
+      departmentId,
+      startDate,
+      endDate,
+      status,
+      skip = 0,
+      take = 10,
+    } = query || {};
+
+    // Build where conditions
+    const where: any = { hospitalId };
+
+    if (employeeId) {
+      where.userId = employeeId;
+    }
+
+    if (departmentId) {
+      // Need to join with user to filter by department
+      where.user = { departmentId };
+    }
+
+    if (startDate && endDate) {
+      where.attendanceDate = {
+        gte: new Date(startDate),
+        lte: new Date(endDate),
+      };
+    }
+
+    if (status) {
+      where.status = status;
+    }
+
+    return this.prisma.attendanceRecord.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { attendanceDate: 'desc' },
+      include: { user: true },
+    });
+  }
+
+  /**
+   * Get employee attendance history
+   */
+  async getEmployeeAttendanceHistory(
+    hospitalId: string,
+    employeeId: string,
+    limit: number = 30,
+  ): Promise<AttendanceRecord[]> {
+    return this.prisma.attendanceRecord.findMany({
+      where: {
+        userId: employeeId,
+        hospitalId,
+      },
+      take: limit,
+      orderBy: { attendanceDate: 'desc' },
+    });
+  }
+
+  /**
+   * Correct attendance record
+   */
+  async correctAttendance(
+    hospitalId: string,
+    recordId: string,
+    dto: CorrectAttendanceDto,
+  ): Promise<AttendanceRecord> {
+    const record = await this.getAttendanceRecord(hospitalId, recordId);
+
+    // Recalculate working hours if times provided
+    let workingHours: Prisma.Decimal = record.workingHours;
+    if (dto.correctedCheckInTime && dto.correctedCheckOutTime) {
+      workingHours = new Prisma.Decimal(
+        this.calculateWorkingHours(
+          new Date(dto.correctedCheckInTime),
+          new Date(dto.correctedCheckOutTime),
+        ),
+      );
+    }
+
+    return this.prisma.attendanceRecord.update({
+      where: { id: recordId },
+      data: {
+        status: dto.status,
+        checkInTime: dto.correctedCheckInTime
+          ? new Date(dto.correctedCheckInTime)
+          : record.checkInTime,
+        checkOutTime: dto.correctedCheckOutTime
+          ? new Date(dto.correctedCheckOutTime)
+          : record.checkOutTime,
+        workingHours,
+        correctionReason: dto.reason,
+        manuallyMarkedBy: dto.approvedBy,
+      },
+    });
+  }
+
+  /**
+   * Get daily attendance summary for hospital/department
+   */
+  async getDailySummary(
+    hospitalId: string,
+    dto: AttendanceSummaryDto,
+  ): Promise<any> {
+    const date = new Date(dto.date || new Date());
+
+    const where: any = {
+      hospitalId,
+      attendanceDate: {
+        gte: new Date(date.setHours(0, 0, 0, 0)),
+        lte: new Date(date.setHours(23, 59, 59, 999)),
+      },
+    };
+
+    if (dto.departmentId) {
+      where.user = { departmentId: dto.departmentId };
+    }
+
+    const records = await this.prisma.attendanceRecord.findMany({
+      where,
+      include: { user: true },
+    });
+
+    const summary = {
+      date: date,
+      total: records.length,
+      present: records.filter((r) => r.status === AttendanceStatus.PRESENT).length,
+      absent: records.filter((r) => r.status === AttendanceStatus.ABSENT).length,
+      late: records.filter((r) => r.lateByMinutes > 0).length,
+      halfDay: records.filter((r) => r.status === AttendanceStatus.HALF_DAY).length,
+      leave: records.filter((r) => r.status === AttendanceStatus.ON_LEAVE).length,
+      records,
+    };
+
+    return summary;
+  }
+
+  /**
+   * Get monthly attendance summary for employee
+   */
+  async getMonthlyAttendance(
+    hospitalId: string,
+    dto: MonthlyAttendanceDto,
+  ): Promise<any> {
+    const startDate = new Date(dto.year, dto.month - 1, 1);
+    const endDate = new Date(dto.year, dto.month, 0);
+
+    const records = await this.prisma.attendanceRecord.findMany({
+      where: {
+        userId: dto.employeeId,
+        hospitalId,
+        attendanceDate: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+    });
+
+    const summary = {
+      employeeId: dto.employeeId,
+      month: dto.month,
+      year: dto.year,
+      total: records.length,
+      present: records.filter((r) => r.status === AttendanceStatus.PRESENT).length,
+      absent: records.filter((r) => r.status === AttendanceStatus.ABSENT).length,
+      late: records.filter((r) => r.lateByMinutes > 0).length,
+      halfDay: records.filter((r) => r.status === AttendanceStatus.HALF_DAY).length,
+      leave: records.filter((r) => r.status === AttendanceStatus.ON_LEAVE).length,
+      totalWorkingHours: records.reduce(
+        (sum, r) => sum + parseFloat(r.workingHours.toString()),
+        0,
+      ),
+      records,
+    };
+
+    return summary;
+  }
+
+  /**
+   * Check if date has approved leave
+   */
+  async checkLeaveOnDate(
+    hospitalId: string,
+    dto: AttendanceLeaveCheckDto,
+  ): Promise<any> {
+    const leave = await this.prisma.leave.findFirst({
+      where: {
+        userId: dto.employeeId,
+        hospitalId,
+        startDate: { lte: new Date(dto.date) },
+        endDate: { gte: new Date(dto.date) },
+        status: 'APPROVED',
+      },
+    });
+
+    return {
+      hasLeave: !!leave,
+      leaveType: leave?.leaveTypeId,
+      leaveId: leave?.id,
+    };
+  }
+
+  /**
+   * Bulk mark attendance for multiple employees
+   */
+  async bulkMarkAttendance(
+    hospitalId: string,
+    dto: BulkMarkAttendanceDto,
+  ): Promise<any> {
+    const results = [];
+
+    for (const employeeId of dto.employeeIds) {
+      try {
+        const record = await this.markAttendance(hospitalId, {
+          employeeId,
+          attendanceDate: dto.date,
+          checkInTime: dto.date,
+          status: dto.status,
+          notes: dto.notes,
+        } as MarkAttendanceDto);
+
+        results.push({ employeeId, success: true, record });
+      } catch (error) {
+        results.push({ employeeId, success: false, error: error.message });
+      }
+    }
+
+    return {
+      total: dto.employeeIds.length,
+      successful: results.filter((r) => r.success).length,
+      failed: results.filter((r) => !r.success).length,
+      results,
+    };
+  }
+
+  /**
+   * Get attendance report
+   */
+  async getAttendanceReport(
+    hospitalId: string,
+    dto: AttendanceReportDto,
+  ): Promise<any> {
+    const where: any = { hospitalId };
+
+    if (dto.departmentId) {
+      where.user = { departmentId: dto.departmentId };
+    }
+
+    if (dto.startDate && dto.endDate) {
+      where.attendanceDate = {
+        gte: new Date(dto.startDate),
+        lte: new Date(dto.endDate),
+      };
+    }
+
+    const records = await this.prisma.attendanceRecord.findMany({
+      where,
+      include: { user: true },
+    });
+
+    const report = {
+      period: { startDate: dto.startDate, endDate: dto.endDate },
+      totalRecords: records.length,
+      byStatus: {
+        PRESENT: records.filter((r) => r.status === AttendanceStatus.PRESENT).length,
+        ABSENT: records.filter((r) => r.status === AttendanceStatus.ABSENT).length,
+        HALF_DAY: records.filter((r) => r.status === AttendanceStatus.HALF_DAY).length,
+        ON_LEAVE: records.filter((r) => r.status === AttendanceStatus.ON_LEAVE).length,
+        LATE: records.filter((r) => r.lateByMinutes > 0).length,
+      },
+      averageWorkingHours:
+        records.length > 0
+          ? records.reduce(
+              (sum, r) => sum + parseFloat(r.workingHours.toString()),
+              0,
+            ) / records.length
+          : 0,
+      ...(dto.reportType === 'DETAILED' && { records }),
+    };
+
+    return report;
+  }
+
+  /**
+   * Calculate attendance status based on check-in time and leaves
+   */
+  private calculateAttendanceStatus(
+    checkInTime: Date,
+    checkOutTime?: Date,
+    activeLeave?: any,
+  ): AttendanceStatus {
+    if (activeLeave) {
+      return AttendanceStatus.ON_LEAVE;
+    }
+
+    const gracePeriod = 15; // minutes - from config
+    const halfDayThreshold = 240; // minutes (4 hours)
+
+    const isLate = checkInTime.getHours() * 60 + checkInTime.getMinutes() > gracePeriod;
+
+    if (!checkOutTime) {
+      return AttendanceStatus.PRESENT;
+    }
+
+    const workingMinutes =
+      (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60);
+
+    if (workingMinutes < halfDayThreshold) {
+      return AttendanceStatus.HALF_DAY;
+    }
+
+    return AttendanceStatus.PRESENT;
+  }
+
+  /**
+   * Calculate working hours in decimal
+   */
+  private calculateWorkingHours(checkInTime: Date, checkOutTime?: Date): number {
+    if (!checkOutTime) return 0;
+
+    const diffMs = checkOutTime.getTime() - checkInTime.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    return parseFloat((Math.round(diffHours * 100) / 100).toFixed(2));
+  }
+
+  /**
+   * Calculate late minutes
+   */
+  private calculateLateMinutes(checkInTime: Date): number {
+    const gracePeriod = 15; // minutes - from config
+    const shiftStartMinutes = 8 * 60; // 8:00 AM default
+    const checkInMinutes = checkInTime.getHours() * 60 + checkInTime.getMinutes();
+    const lateMinutes = checkInMinutes - (shiftStartMinutes + gracePeriod);
+
+    return lateMinutes > 0 ? lateMinutes : 0;
+  }
+
+  /**
+   * Calculate early departure minutes
+   */
+  private calculateEarlyMinutes(checkOutTime: Date): number {
+    const shiftEndMinutes = 16 * 60; // 4:00 PM default
+    const checkOutMinutes = checkOutTime.getHours() * 60 + checkOutTime.getMinutes();
+    const earlyMinutes = shiftEndMinutes - checkOutMinutes;
+
+    return earlyMinutes > 0 ? earlyMinutes : 0;
+  }
+
+  /**
+   * Check if check-in is late (after grace period)
+   */
+  private isLate(checkInTime: Date): boolean {
+    return this.calculateLateMinutes(checkInTime) > 0;
+  }
+
+  /**
+   * Check if check-out is early
+   */
+  private isEarlyCheckOut(checkOutTime: Date): boolean {
+    return this.calculateEarlyMinutes(checkOutTime) > 0;
+  }
+}
