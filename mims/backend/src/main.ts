@@ -40,23 +40,44 @@ async function bootstrap() {
 
   // Swagger documentation
   const config = new DocumentBuilder()
-    .setTitle('M-IMS API')
-    .setDescription('Hospital Medicine Inventory Management System API')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .addTag('auth', 'Authentication endpoints')
-    .addTag('patients', 'Patient management')
-    .addTag('medicines', 'Medicine catalog')
-    .addTag('inventory', 'Inventory management')
-    .addTag('prescriptions', 'Prescription management')
-    .addTag('issuance', 'Medicine issuance')
-    .addTag('transfers', 'Inter-pharmacy transfers')
-    .addTag('reports', 'Reports and analytics')
-    .addTag('sync', 'Offline sync operations')
+    .setTitle('Hospital Medicine IMS - Attendance Module API')
+    .setDescription('Comprehensive REST API for Hospital Attendance Management System with biometric device integration, employee enrollment, shift management, and leave tracking')
+    .setVersion('1.0.0')
+    .setContact('Hospital IT Support', '', 'support@hospital.local')
+    .setLicense('Proprietary', '')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'Enter your JWT token',
+      },
+      'access-token',
+    )
+    // Biometric Devices
+    .addTag('Biometric Devices', 'Device registration, management, and monitoring')
+    .addTag('Device Status', 'Real-time device status and connectivity monitoring')
+    // Biometric Enrollments
+    .addTag('Biometric Enrollments', 'Employee biometric enrollment and template management')
+    .addTag('Enrollment Templates', 'Fingerprint, face, and iris template storage')
+    // Attendance Records
+    .addTag('Attendance Records', 'Mark attendance, corrections, and history')
+    .addTag('Attendance Reports', 'Attendance analytics and reporting')
+    // Shifts
+    .addTag('Shift Management', 'Shift creation, assignment, and roster management')
+    .addTag('Shift Templates', 'Reusable shift patterns and rotations')
+    // Leaves
+    .addTag('Leave Management', 'Leave applications, approvals, and balance tracking')
+    .addTag('Leave Types', 'Leave type definitions and policies')
+    // Device Sync
+    .addTag('Device Synchronization', 'Real-time device sync and batch operations')
+    .addTag('Sync Logs', 'Device synchronization logs and statistics')
+    // System
+    .addTag('System Configuration', 'Attendance configuration and system settings')
     .build();
     
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  SwaggerModule.setup('api-docs', app, document);
 
   const port = configService.get('PORT') || 3001;
   await app.listen(port);

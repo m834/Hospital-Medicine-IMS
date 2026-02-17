@@ -11,7 +11,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiBody, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { CurrentHospital } from '@/common/decorators/current-hospital.decorator';
@@ -31,9 +31,9 @@ import {
 } from './dto/leaves.dto';
 
 @ApiTags('Leave Management')
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/leaves')
+@Controller('leaves')
 export class LeavesController {
   constructor(private leavesService: LeavesService) {}
 

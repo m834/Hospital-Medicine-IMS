@@ -11,7 +11,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiBody, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { CurrentHospital } from '@/common/decorators/current-hospital.decorator';
@@ -28,10 +28,10 @@ import {
   RemoveEmployeeShiftDto,
 } from './dto/shifts.dto';
 
-@ApiTags('Shifts Management')
-@ApiBearerAuth()
+@ApiTags('Shift Management')
+@ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/shifts')
+@Controller('shifts')
 export class ShiftsController {
   constructor(private shiftsService: ShiftsService) {}
 

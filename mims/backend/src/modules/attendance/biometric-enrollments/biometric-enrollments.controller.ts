@@ -29,7 +29,7 @@ import { EnrollmentType } from '@prisma/client';
 @ApiTags('Biometric Enrollments')
 @Controller('biometric-enrollments')
 @UseGuards(JwtAuthGuard)
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 export class BiometricEnrollmentsController {
   constructor(private readonly enrollmentService: BiometricEnrollmentsService) {}
 

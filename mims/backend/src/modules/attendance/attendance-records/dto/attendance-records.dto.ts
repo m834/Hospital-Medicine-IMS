@@ -9,45 +9,78 @@ import {
   Min,
   Max,
 } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AttendanceStatus } from '@prisma/client';
 
 export class MarkAttendanceDto {
+  @ApiProperty({
+    description: 'Employee ID',
+    example: 'emp-123456',
+  })
   @IsString()
   @IsNotEmpty()
   employeeId: string;
 
+  @ApiProperty({
+    description: 'Attendance date (ISO 8601 format)',
+    example: '2026-02-17',
+  })
   @IsDateString()
   @IsNotEmpty()
   attendanceDate: string;
 
+  @ApiProperty({
+    description: 'Check-in time (ISO 8601 format)',
+    example: '2026-02-17T09:00:00Z',
+  })
   @IsDateString()
   @IsNotEmpty()
   checkInTime: string;
 
+  @ApiPropertyOptional({
+    description: 'Check-out time (ISO 8601 format)',
+    example: '2026-02-17T17:30:00Z',
+  })
   @IsOptional()
   @IsDateString()
   checkOutTime?: string;
 
+  @ApiPropertyOptional({
+    description: 'Additional notes about attendance',
+    example: 'Left early for medical appointment',
+  })
   @IsOptional()
   @IsString()
   notes?: string;
 
+  @ApiPropertyOptional({
+    description: 'Whether this is a manual mark (not from device)',
+    example: false,
+  })
   @IsOptional()
   @IsBoolean()
   isManualMark?: boolean;
 }
 
 export class CorrectAttendanceDto {
+  @ApiProperty({
+    enum: AttendanceStatus,
+    description: 'Corrected attendance status',
+    example: 'PRESENT',
+  })
   @IsEnum(AttendanceStatus)
   @IsNotEmpty()
   status: AttendanceStatus;
 
+  @ApiPropertyOptional({
+    description: 'Corrected check-in time',
+    example: '2026-02-17T09:00:00Z',
+  })
   @IsOptional()
   @IsDateString()
   correctedCheckInTime?: string;
 
-  @IsOptional()
-  @IsDateString()
+  @ApiPropertyOptional()
   correctedCheckOutTime?: string;
 
   @IsString()

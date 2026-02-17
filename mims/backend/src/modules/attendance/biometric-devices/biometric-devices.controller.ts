@@ -25,16 +25,38 @@ import { CurrentHospital } from '@/common/decorators/current-hospital.decorator'
 @ApiTags('Biometric Devices')
 @Controller('biometric-devices')
 @UseGuards(JwtAuthGuard)
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 export class BiometricDevicesController {
   constructor(private readonly deviceService: BiometricDevicesService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Register a new biometric device' })
+  @ApiOperation({
+    summary: 'Register a new biometric device',
+    description: 'Register a new biometric device at a hospital location. Supports fingerprint, face, and iris recognition devices.',
+    operationId: 'registerBiometricDevice',
+  })
   @ApiResponse({
     status: 201,
     description: 'Device registered successfully',
+    schema: {
+      example: {
+        id: 'dev-12345678',
+        name: 'Device 1 - Reception',
+        deviceType: 'FINGERPRINT',
+        status: 'ACTIVE',
+        isOnline: true,
+        createdAt: '2026-02-17T10:30:00Z',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid device data',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - JWT token missing or invalid',
   })
   async registerDevice(
     @CurrentHospital() hospitalId: string,
@@ -44,11 +66,25 @@ export class BiometricDevicesController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all biometric devices' })
+  @ApiOperation({
+    summary: 'Get all biometric devices',
+    description: 'Retrieve all biometric devices registered at the hospital with optional filtering',
+  })
   @ApiResponse({
     status: 200,
     description: 'Devices retrieved successfully',
     isArray: true,
+    schema: {
+      example: [
+        {
+          id: 'dev-12345678',
+          name: 'Device 1 - Reception',
+          deviceType: 'FINGERPRINT',
+          status: 'ACTIVE',
+          isOnline: true,
+        },
+      ],
+    },
   })
   async getDevices(
     @CurrentHospital() hospitalId: string,

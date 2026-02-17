@@ -11,7 +11,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { CurrentHospital } from '@/common/decorators/current-hospital.decorator';
 import { DeviceSyncService } from './device-sync.service';
@@ -29,9 +29,9 @@ import {
 } from './dto/device-sync.dto';
 
 @ApiTags('Device Synchronization')
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/device-sync')
+@Controller('device-sync')
 export class DeviceSyncController {
   constructor(private deviceSyncService: DeviceSyncService) {}
 

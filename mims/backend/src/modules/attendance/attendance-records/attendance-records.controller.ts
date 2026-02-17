@@ -11,7 +11,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { AttendanceRecordsService } from './attendance-records.service';
 import {
   MarkAttendanceDto,
@@ -30,7 +30,7 @@ import { CurrentHospital } from '@/common/decorators/current-hospital.decorator'
 @ApiTags('Attendance Records')
 @Controller('attendance-records')
 @UseGuards(JwtAuthGuard)
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 export class AttendanceRecordsController {
   constructor(private readonly recordService: AttendanceRecordsService) {}
 
