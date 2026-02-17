@@ -1,4 +1,6 @@
-import { IsNotEmpty, IsString, IsEnum, IsOptional, IsDateString, Matches } from 'class-validator';
+import { IsNotEmpty, IsString, IsEnum, IsOptional, IsDateString, Matches, IsUUID, IsObject, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+import { VitalSignsDto } from '../../visits/dto';
 
 export class CreatePatientDto {
   @IsString()
@@ -27,9 +29,17 @@ export class CreatePatientDto {
   @IsOptional()
   address?: string;
 
+  @IsString()
+  @IsOptional()
+  nrNumber?: string;
+
   @IsEnum(['OPD', 'EMERGENCY', 'WARD_INDOOR'], { message: 'Invalid visit type' })
   @IsNotEmpty({ message: 'Visit type is required' })
   visitType: 'OPD' | 'EMERGENCY' | 'WARD_INDOOR';
+
+  @IsUUID()
+  @IsOptional()
+  clinicId?: string;
 
   @IsString()
   @IsOptional()
@@ -46,5 +56,19 @@ export class CreatePatientDto {
   @IsString()
   @IsOptional()
   attendingDoctorId?: string;
+
+  @IsString()
+  @IsOptional()
+  chiefComplaint?: string;
+
+  @IsObject()
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => VitalSignsDto)
+  vitalSigns?: VitalSignsDto;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
 }
 

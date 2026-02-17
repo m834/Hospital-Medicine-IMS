@@ -95,7 +95,7 @@ export default function PharmaciesPage() {
   const { user } = useAuthStore();
 
   const isSuperAdmin = user?.role === UserRole.SUPER_ADMIN;
-  const canModify = user?.role ? canModifyResources(user.role) : false;
+  const canModify = user?.role ? canModifyResources(user.role as UserRole) : false;
 
   // Determine current hospital for create modal
   const currentHospital = selectedHospital || (user?.hospitalId ? {

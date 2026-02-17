@@ -10,6 +10,7 @@ import {
   Request,
   HttpCode,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 import { HospitalsService } from './hospitals.service';
 import { CreateHospitalDto, UpdateHospitalDto, CreateHospitalUserDto } from './dto';
@@ -91,8 +92,17 @@ export class HospitalsController {
    */
   @Get(':id/users')
   @Roles(UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN)
-  async findHospitalUsers(@Param('id') id: string) {
-    return this.hospitalsService.findHospitalUsers(id);
+  async findHospitalUsers(
+    @Param('id') id: string,
+    @Query('role') role?: UserRole,
+    @Query('departmentId') departmentId?: string,
+    @Query('subDepartmentId') subDepartmentId?: string,
+  ) {
+    return this.hospitalsService.findHospitalUsers(id, {
+      role,
+      departmentId,
+      subDepartmentId,
+    });
   }
 
   /**

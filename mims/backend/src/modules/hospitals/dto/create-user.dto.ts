@@ -47,4 +47,12 @@ export class CreateHospitalUserDto {
   @IsUUID('4', { message: 'Invalid pharmacy ID' })
   @IsOptional()
   pharmacyId?: string;
+
+  @IsUUID('4', { message: 'Invalid department ID' })
+  @IsOptional()
+  departmentId?: string;
+
+  @IsUUID('4', { message: 'Invalid sub-department ID' })
+  @IsOptional()
+  subDepartmentId?: string;
 }

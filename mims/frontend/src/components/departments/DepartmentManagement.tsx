@@ -83,7 +83,8 @@ export function DepartmentManagement() {
   const { selectedHospital } = useHospitalStore();
 
   // Determine current hospital based on user role
-  const currentHospitalId = user?.hospitalId || selectedHospital?.id;
+  // Master Admin & Super Admin must select hospital, others use their hospitalId
+  const currentHospitalId = selectedHospital?.id || user?.hospitalId;
   const currentHospitalName = user?.hospitalId 
     ? 'Your Hospital' 
     : selectedHospital?.name || 'No Hospital Selected';

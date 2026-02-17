@@ -227,12 +227,29 @@ export class HospitalsService {
    * @param hospitalId Hospital ID
    * @returns Array of users
    */
-  async findHospitalUsers(hospitalId: string) {
+  async findHospitalUsers(
+    hospitalId: string,
+    filters?: { role?: string; departmentId?: string; subDepartmentId?: string },
+  ) {
     // Check if hospital exists
     await this.findOne(hospitalId);
 
+    const where: any = { hospitalId };
+
+    if (filters?.role) {
+      where.role = filters.role;
+    }
+
+    if (filters?.departmentId) {
+      where.departmentId = filters.departmentId;
+    }
+
+    if (filters?.subDepartmentId) {
+      where.subDepartmentId = filters.subDepartmentId;
+    }
+
     return this.prisma.user.findMany({
-      where: { hospitalId },
+      where,
       select: {
         id: true,
         email: true,
@@ -242,6 +259,8 @@ export class HospitalsService {
         status: true,
         lastLogin: true,
         createdAt: true,
+        departmentId: true,
+        subDepartmentId: true,
         pharmacy: {
           select: {
             id: true,
@@ -347,6 +366,56 @@ export class HospitalsService {
       }
     }
 
+    // If department-scoped roles, validate departmentId and subDepartmentId (if provided)
+    const departmentRoles: UserRole[] = [
+      UserRole.DEPARTMENT_ADMIN,
+      UserRole.DOCTOR,
+      UserRole.DOCTOR_ASSISTANT,
+      UserRole.REGISTRATION_STAFF,
+      UserRole.AUDITOR,
+      UserRole.LAB_TECHNICIAN,
+      UserRole.RADIOLOGIST,
+      UserRole.NURSE,
+      UserRole.BILLING_STAFF,
+      UserRole.RECEPTIONIST,
+    ];
+
+    if (departmentRoles.includes(createUserDto.role)) {
+      if (!createUserDto.departmentId) {
+        throw new BadRequestException(`Department ID is required for ${createUserDto.role} role`);
+      }
+
+      // Validate department belongs to hospital
+      const department = await this.prisma.department.findFirst({
+        where: {
+          id: createUserDto.departmentId,
+          hospitalId,
+        },
+      });
+
+      if (!department) {
+        throw new BadRequestException(
+          `Department with ID ${createUserDto.departmentId} not found in this hospital`,
+        );
+      }
+
+      // If subDepartmentId provided, validate it belongs to the department
+      if (createUserDto.subDepartmentId) {
+        const subDepartment = await this.prisma.subDepartment.findFirst({
+          where: {
+            id: createUserDto.subDepartmentId,
+            departmentId: createUserDto.departmentId,
+          },
+        });
+
+        if (!subDepartment) {
+          throw new BadRequestException(
+            `Sub-department with ID ${createUserDto.subDepartmentId} not found for the given department`,
+          );
+        }
+      }
+    }
+
     // Hash password
     const passwordHash = await argon2.hash(createUserDto.password);
 
@@ -360,6 +429,8 @@ export class HospitalsService {
         role: createUserDto.role,
         hospitalId,
         pharmacyId: createUserDto.pharmacyId,
+        departmentId: createUserDto.departmentId,
+        subDepartmentId: createUserDto.subDepartmentId,
         status: 'ACTIVE',
       },
       select: {
@@ -371,6 +442,8 @@ export class HospitalsService {
         status: true,
         hospitalId: true,
         pharmacyId: true,
+        departmentId: true,
+        subDepartmentId: true,
         hospital: {
           select: {
             id: true,
@@ -406,6 +479,8 @@ export class HospitalsService {
             role: user.role,
             hospitalId: user.hospitalId,
             pharmacyId: user.pharmacyId,
+            departmentId: user.departmentId,
+            subDepartmentId: user.subDepartmentId,
           },
           ipAddress: '0.0.0.0',
           userAgent: 'API',

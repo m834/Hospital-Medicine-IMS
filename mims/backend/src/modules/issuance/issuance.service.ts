@@ -9,6 +9,7 @@ import { InventoryService } from '../inventory/inventory.service';
 import { CreateIssuanceDto } from './dto/create-issuance.dto';
 import { SearchIssuanceDto } from './dto/search-issuance.dto';
 import { Decimal } from '@prisma/client/runtime/library';
+import { PaymentMethod, PaymentStatus, Prisma, ReceiptType } from '@prisma/client';
 
 @Injectable()
 export class IssuanceService {
@@ -172,11 +173,76 @@ export class IssuanceService {
         });
       }
 
+      const latestVisit = await (tx as any).visit.findFirst({
+        where: { patientId: patient.id, hospitalId },
+        orderBy: { visitDate: 'desc' },
+        select: { id: true, departmentId: true },
+      });
+
+      const doctorDepartmentId = prescriptionId
+        ? (
+            await tx.prescription.findUnique({
+              where: { id: prescriptionId },
+              select: { doctor: { select: { departmentId: true } } },
+            })
+          )?.doctor?.departmentId
+        : null;
+
+      const fallbackDepartment = await tx.department.findFirst({
+        where: { hospitalId },
+        select: { id: true },
+      });
+
+      const departmentId =
+        (latestVisit as any)?.departmentId || doctorDepartmentId || fallbackDepartment?.id;
+
+      if (!departmentId) {
+        throw new BadRequestException('Department is required to generate pharmacy receipt');
+      }
+
+      const receiptNumber = await this.generateReceiptNumber(tx);
+
+      const txAny = tx as any;
+      await txAny.receipt.create({
+        data: {
+          hospitalId,
+          patientId: patient.id,
+          visitId: latestVisit?.id || undefined,
+          departmentId,
+          generatedById: userId,
+          receiptNumber,
+          receiptType: ReceiptType.PHARMACY,
+          description: `Pharmacy Issue - ${issue.id.slice(0, 8)}`,
+          amount: totalAmount,
+          totalAmount: totalAmount,
+          paidAmount: new Prisma.Decimal(0),
+          paymentMethod: PaymentMethod.CASH,
+          paymentStatus: PaymentStatus.UNPAID,
+          notes: JSON.stringify({ issueTransactionId: issue.id, prescriptionId }),
+        },
+      });
+
       return issue;
     });
 
     // Return full issue details
     return this.findOne(issueTransaction.id, hospitalId);
+  }
+
+  private async generateReceiptNumber(tx: Prisma.TransactionClient) {
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+
+    const lastReceipt = await tx.receipt.findFirst({
+      where: { receiptNumber: { startsWith: `REC-${dateStr}` } },
+      orderBy: { receiptNumber: 'desc' },
+    });
+
+    const sequence = lastReceipt
+      ? parseInt(lastReceipt.receiptNumber.split('-')[2]) + 1
+      : 1;
+
+    return `REC-${dateStr}-${sequence.toString().padStart(4, '0')}`;
   }
 
   async findAll(searchDto: SearchIssuanceDto, hospitalId: string) {

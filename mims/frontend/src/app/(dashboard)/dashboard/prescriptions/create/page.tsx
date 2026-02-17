@@ -45,6 +45,14 @@ interface Medicine {
   form: string;
 }
 
+interface StockBatch {
+  id: string;
+  qtyAvailable: number;
+  expiryDate: string;
+  status: string;
+  medicine: Medicine;
+}
+
 export default function CreatePrescriptionPage() {
   const router = useRouter();
   const { user } = useAuthStore();
@@ -85,16 +93,41 @@ export default function CreatePrescriptionPage() {
   const fetchMedicines = async () => {
     try {
       setLoadingMedicines(true);
-      const params: any = { 
-        limit: 200, 
-        status: 'ACTIVE' 
+      if (user?.pharmacyId) {
+        const today = new Date();
+        const params: any = {
+          pharmacyId: user.pharmacyId,
+          status: 'AVAILABLE',
+          expiringAfter: today.toISOString(),
+          limit: 200,
+        };
+
+        const response = await api.get('/inventory/batches', { params });
+        const batches: StockBatch[] = response.data.data || [];
+
+        const availableMedicines = new Map<string, Medicine>();
+        batches
+          .filter((batch) => batch.qtyAvailable > 0)
+          .forEach((batch) => {
+            if (!availableMedicines.has(batch.medicine.id)) {
+              availableMedicines.set(batch.medicine.id, batch.medicine);
+            }
+          });
+
+        setMedicines(Array.from(availableMedicines.values()));
+        return;
+      }
+
+      const params: any = {
+        limit: 200,
+        status: 'ACTIVE',
       };
-      
+
       // Only add hospitalId for SUPER_ADMIN with selected hospital
       if (user?.role === 'SUPER_ADMIN' && selectedHospital?.id) {
         params.hospitalId = selectedHospital.id;
       }
-      
+
       const response = await api.get('/medicines', { params });
       setMedicines(response.data.data || []);
     } catch (error: any) {

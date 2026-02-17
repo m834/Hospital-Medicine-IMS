@@ -90,8 +90,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           isSidebarCollapsed={isSidebarCollapsed}
         />
 
-        {/* Stock Alert Ticker - Below Navbar */}
-        <StockAlertTicker />
+        {/* Stock Alert Ticker - Below Navbar (Admins & Pharmacy Staff Only) */}
+        {(user.role === UserRole.MASTER_ADMIN || 
+          user.role === UserRole.SUPER_ADMIN ||
+          user.role === UserRole.HOSPITAL_ADMIN ||
+          user.role === UserRole.MAIN_PHARMACY_MANAGER ||
+          user.role === UserRole.SUB_PHARMACY_MANAGER ||
+          user.role === UserRole.PHARMACY_STAFF) && (
+          <StockAlertTicker />
+        )}
 
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto p-6 bg-background">

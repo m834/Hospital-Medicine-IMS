@@ -168,7 +168,7 @@ export default function ApproveTransferPage() {
       const alternatives: Record<string, AlternativeStock[]> = {};
 
       // Get hospital ID - we need to fetch it from the pharmacy
-      let hospitalId = user?.hospitalId || selectedHospital?.id;
+      let hospitalId = selectedHospital?.id || user?.hospitalId;
 
       if (!hospitalId && transfer) {
         // Fetch pharmacy details to get hospitalId

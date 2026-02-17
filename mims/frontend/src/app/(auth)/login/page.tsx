@@ -31,8 +31,13 @@ export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { setUser } = useAuthStore();
+  const errorParam = searchParams?.get('error');
+  const hasAuthError =
+    errorParam === 'authentication_required' ||
+    errorParam === 'session_expired' ||
+    errorParam === 'verification_failed';
   const [isLoading, setIsLoading] = useState(false);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(!hasAuthError);
   const [error, setError] = useState<string | null>(null);
 
   const {
@@ -46,6 +51,11 @@ export default function LoginPage() {
   // CRITICAL: Check for existing valid token on mount
   useEffect(() => {
     async function checkExistingToken() {
+      if (hasAuthError) {
+        setIsCheckingAuth(false);
+        return;
+      }
+
       setIsCheckingAuth(true);
       console.log('[Login] Checking for existing authentication...');
 
@@ -82,7 +92,6 @@ export default function LoginPage() {
 
   // Show error messages from URL params
   useEffect(() => {
-    const errorParam = searchParams?.get('error');
     if (errorParam === 'session_expired') {
       setError('Your session has expired. Please login again.');
     } else if (errorParam === 'authentication_required') {
@@ -90,7 +99,7 @@ export default function LoginPage() {
     } else if (errorParam === 'verification_failed') {
       setError('Unable to verify your session. Please login again.');
     }
-  }, [searchParams]);
+  }, [errorParam]);
 
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
@@ -159,7 +168,7 @@ export default function LoginPage() {
   };
 
   // Show loading state while checking authentication
-  if (isCheckingAuth) {
+  if (isCheckingAuth && !hasAuthError) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">

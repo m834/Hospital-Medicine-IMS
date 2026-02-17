@@ -75,7 +75,8 @@ export default function TransfersPage() {
   const { user } = useAuthStore();
   const { selectedHospital } = useHospitalStore();
 
-  const currentHospitalId = user?.hospitalId || selectedHospital?.id;
+  // Master Admin & Super Admin must select hospital, others use their hospitalId
+  const currentHospitalId = selectedHospital?.id || user?.hospitalId;
   const userPharmacyId = user?.pharmacyId;
 
   useEffect(() => {

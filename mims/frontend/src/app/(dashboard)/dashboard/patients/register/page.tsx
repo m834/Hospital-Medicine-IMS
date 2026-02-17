@@ -45,6 +45,10 @@ const patientSchema = z.object({
   address: z.string().optional(),
   visitType: z.enum(['OPD', 'EMERGENCY', 'WARD_INDOOR']),
   department: z.string().optional(),
+  clinicId: z.string().optional(),
+  roomType: z.string().optional(),
+  roomId: z.string().optional(),
+  bedId: z.string().optional(),
   ward: z.string().optional(),
   bed: z.string().optional(),
   attendingDoctorId: z.string().optional(),
@@ -52,16 +56,92 @@ const patientSchema = z.object({
 
 type PatientFormData = z.infer<typeof patientSchema>;
 
+const formatCnic = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 13);
+  const part1 = digits.slice(0, 5);
+  const part2 = digits.slice(5, 12);
+  const part3 = digits.slice(12, 13);
+  if (digits.length <= 5) return part1;
+  if (digits.length <= 12) return `${part1}-${part2}`;
+  return `${part1}-${part2}-${part3}`;
+};
+
 interface Doctor {
   id: string;
   fullName: string;
   email: string;
+  departmentId?: string;
 }
+
+interface Department {
+  id: string;
+  name: string;
+  code: string;
+  consultationFee?: number;
+}
+
+interface Clinic {
+  id: string;
+  name?: string;
+  opdFee: number;
+  availableDays?: string | string[];
+  availableTime?: string;
+  doctor: {
+    id: string;
+    fullName: string;
+  };
+  department?: {
+    id: string;
+    name: string;
+  };
+}
+
+interface Room {
+  id: string;
+  roomNumber: string;
+  roomType: string;
+  capacity: number;
+  availableBeds?: number;
+}
+
+interface Bed {
+  id: string;
+  bedNumber: string;
+  status: string;
+  dailyRate?: number;
+  room?: {
+    roomNumber: string;
+    dailyRate?: number;
+  };
+}
+
+const ROOM_TYPES = [
+  { value: 'PRIVATE', label: 'Private' },
+  { value: 'SEMI_PRIVATE', label: 'Semi-Private' },
+  { value: 'GENERAL', label: 'General' },
+  { value: 'ICU', label: 'ICU' },
+  { value: 'NICU', label: 'NICU' },
+  { value: 'PICU', label: 'PICU' },
+  { value: 'CCU', label: 'CCU' },
+  { value: 'HDU', label: 'HDU' },
+  { value: 'ISOLATION', label: 'Isolation' },
+  { value: 'EMERGENCY', label: 'Emergency' },
+];
 
 export default function RegisterPatientPage() {
   const [submitting, setSubmitting] = useState(false);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loadingDoctors, setLoadingDoctors] = useState(false);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [loadingDepartments, setLoadingDepartments] = useState(false);
+  const [clinics, setClinics] = useState<Clinic[]>([]);
+  const [loadingClinics, setLoadingClinics] = useState(false);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [loadingRooms, setLoadingRooms] = useState(false);
+  const [beds, setBeds] = useState<Bed[]>([]);
+  const [loadingBeds, setLoadingBeds] = useState(false);
+  const [selectedFee, setSelectedFee] = useState<string>('');
+  const [selectedBedRate, setSelectedBedRate] = useState<string>('');
 
   const router = useRouter();
   const { user } = useAuthStore();
@@ -84,6 +164,10 @@ export default function RegisterPatientPage() {
       address: '',
       visitType: 'OPD',
       department: '',
+      clinicId: '',
+      roomType: '',
+      roomId: '',
+      bedId: '',
       ward: '',
       bed: '',
       attendingDoctorId: '',
@@ -91,6 +175,98 @@ export default function RegisterPatientPage() {
   });
 
   const visitType = form.watch('visitType');
+  const selectedDepartmentId = form.watch('department');
+  const selectedRoomType = form.watch('roomType');
+  const selectedRoomId = form.watch('roomId');
+
+  // Fetch clinics when department changes and visit type is OPD
+  useEffect(() => {
+    if (visitType === 'OPD' && selectedDepartmentId && currentHospitalId) {
+      fetchClinics(selectedDepartmentId);
+    } else {
+      setClinics([]);
+      form.setValue('clinicId', '');
+    }
+  }, [selectedDepartmentId, visitType, currentHospitalId]);
+
+  // Fetch rooms when room type changes and visit type is WARD_INDOOR
+  useEffect(() => {
+    if (visitType === 'WARD_INDOOR' && selectedRoomType && currentHospitalId) {
+      fetchRooms(selectedRoomType);
+    } else {
+      setRooms([]);
+      form.setValue('roomId', '');
+    }
+  }, [selectedRoomType, visitType, currentHospitalId]);
+
+  // Fetch beds when room changes and visit type is WARD_INDOOR
+  useEffect(() => {
+    if (visitType === 'WARD_INDOOR' && selectedRoomId && currentHospitalId) {
+      fetchBeds(selectedRoomId);
+    } else {
+      setBeds([]);
+      form.setValue('bedId', '');
+    }
+  }, [selectedRoomId, visitType, currentHospitalId]);
+
+  const fetchClinics = async (departmentId: string) => {
+    setLoadingClinics(true);
+    try {
+      const response = await api.get('/clinics', {
+        params: { 
+          hospitalId: currentHospitalId, 
+          departmentId,
+          status: 'ACTIVE'
+        },
+      });
+      const clinicsList = response.data?.data || response.data || [];
+      setClinics(clinicsList);
+    } catch (error) {
+      console.error('Error fetching clinics:', error);
+      setClinics([]);
+    } finally {
+      setLoadingClinics(false);
+    }
+  };
+
+  const fetchRooms = async (roomType: string) => {
+    setLoadingRooms(true);
+    try {
+      const response = await api.get('/rooms', {
+        params: { 
+          hospitalId: currentHospitalId, 
+          roomType,
+          status: 'AVAILABLE'
+        },
+      });
+      const roomsList = response.data?.data || response.data || [];
+      setRooms(roomsList);
+    } catch (error) {
+      console.error('Error fetching rooms:', error);
+      setRooms([]);
+    } finally {
+      setLoadingRooms(false);
+    }
+  };
+
+  const fetchBeds = async (roomId: string) => {
+    setLoadingBeds(true);
+    try {
+      const response = await api.get('/beds', {
+        params: { 
+          roomId,
+          status: 'AVAILABLE'
+        },
+      });
+      const bedsList = response.data?.data || response.data || [];
+      setBeds(bedsList);
+    } catch (error) {
+      console.error('Error fetching beds:', error);
+      setBeds([]);
+    } finally {
+      setLoadingBeds(false);
+    }
+  };
 
   useEffect(() => {
     // Redirect if no access
@@ -100,9 +276,25 @@ export default function RegisterPatientPage() {
     }
 
     if (currentHospitalId) {
+      fetchDepartments();
       fetchDoctors();
     }
   }, [currentHospitalId, user, hasAccess]);
+
+  const fetchDepartments = async () => {
+    setLoadingDepartments(true);
+    try {
+      const response = await api.get(`/departments/hospital/${currentHospitalId}`);
+      console.log('Departments API Response:', response.data); // Debug log
+      const departmentsList = response.data || [];
+      console.log('Departments List:', departmentsList); // Debug log
+      setDepartments(departmentsList);
+    } catch (error) {
+      console.error('Error fetching departments:', error);
+    } finally {
+      setLoadingDepartments(false);
+    }
+  };
 
   const fetchDoctors = async () => {
     setLoadingDoctors(true);
@@ -119,6 +311,11 @@ export default function RegisterPatientPage() {
     }
   };
 
+  // Filter doctors by selected department
+  const filteredDoctors = selectedDepartmentId
+    ? doctors.filter(doc => doc.departmentId === selectedDepartmentId)
+    : doctors;
+
   const onSubmit = async (data: PatientFormData) => {
     setSubmitting(true);
     try {
@@ -128,15 +325,25 @@ export default function RegisterPatientPage() {
         return;
       }
 
-      const payload = {
-        ...data,
+      if (data.visitType === 'WARD_INDOOR' && !data.roomId && !data.bedId) {
+        alert('Please select a ward or bed for indoor visits');
+        setSubmitting(false);
+        return;
+      }
+
+      // Patient creation payload (includes visit details for visit record creation)
+      const patientPayload = {
+        fullName: data.fullName,
+        gender: data.gender,
         dob: data.dob || undefined,
         mobile: data.mobile || undefined,
         cnic: data.cnic || undefined,
         address: data.address || undefined,
+        visitType: data.visitType,
+        clinicId: data.clinicId || undefined,
         department: data.department || undefined,
-        ward: data.ward || undefined,
-        bed: data.bed || undefined,
+        ward: data.roomId || data.ward || undefined,
+        bed: data.bedId || data.bed || undefined,
         attendingDoctorId: data.attendingDoctorId || undefined,
       };
 
@@ -145,7 +352,7 @@ export default function RegisterPatientPage() {
         ? { hospitalId: currentHospitalId }
         : {};
 
-      const response = await api.post('/patients', payload, { params });
+      const response = await api.post('/patients', patientPayload, { params });
       const patient = response.data;
 
       alert(`Patient registered successfully!\nNR Number: ${patient.nrNumber}`);
@@ -188,21 +395,21 @@ export default function RegisterPatientPage() {
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Personal Information</h3>
 
-                <FormField
-                  control={form.control}
-                  name="fullName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Full Name *</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Enter full name" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="fullName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Full Name *</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter full name" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="gender"
@@ -241,7 +448,7 @@ export default function RegisterPatientPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <FormField
                     control={form.control}
                     name="mobile"
@@ -263,140 +470,342 @@ export default function RegisterPatientPage() {
                       <FormItem>
                         <FormLabel>CNIC</FormLabel>
                         <FormControl>
-                          <Input placeholder="XXXXX-XXXXXXX-X" {...field} />
+                          <Input
+                            placeholder="XXXXX-XXXXXXX-X"
+                            value={field.value || ''}
+                            onChange={(event) => {
+                              field.onChange(formatCnic(event.target.value));
+                            }}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="address"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Address</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter address" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                 </div>
-
-                <FormField
-                  control={form.control}
-                  name="address"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Address</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="Enter complete address" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
               </div>
 
               {/* Visit Information */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Visit Information</h3>
 
-                <FormField
-                  control={form.control}
-                  name="visitType"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Visit Type *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select visit type" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="OPD">Out-Patient (OPD)</SelectItem>
-                          <SelectItem value="EMERGENCY">Emergency</SelectItem>
-                          <SelectItem value="WARD_INDOOR">Ward/Indoor (IPD)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormDescription>
-                        OPD for outpatient visits, Emergency for urgent cases, Ward/Indoor for admitted patients
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="visitType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Visit Type *</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select visit type" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="OPD">Out-Patient (OPD)</SelectItem>
+                            <SelectItem value="EMERGENCY">Emergency</SelectItem>
+                            <SelectItem value="WARD_INDOOR">Ward/Indoor (IPD)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <FormField
-                  control={form.control}
-                  name="department"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Department</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Cardiology, General Medicine" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                  <FormField
+                    control={form.control}
+                    name="department"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Department</FormLabel>
+                        <Select 
+                          onValueChange={(value) => {
+                            field.onChange(value);
+                            form.setValue('attendingDoctorId', '');
+                            const dept = departments.find(d => d.id === value);
+                            if (dept?.consultationFee) {
+                              setSelectedFee(`PKR ${dept.consultationFee}`);
+                            } else {
+                              setSelectedFee('');
+                            }
+                          }} 
+                          value={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select department" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {loadingDepartments ? (
+                              <div className="px-2 py-4 text-sm text-center">
+                                <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                              </div>
+                            ) : departments.length === 0 ? (
+                              <div className="px-2 py-2 text-sm text-muted-foreground">
+                                No departments
+                              </div>
+                            ) : (
+                              departments.map((dept) => (
+                                <SelectItem key={dept.id} value={dept.id}>
+                                  {dept.name}
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                {visitType === 'WARD_INDOOR' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Clinic selector for OPD */}
+                  {visitType === 'OPD' && selectedDepartmentId ? (
                     <FormField
                       control={form.control}
-                      name="ward"
+                      name="clinicId"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Ward</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., Ward A" {...field} />
-                          </FormControl>
+                          <FormLabel>Clinic *</FormLabel>
+                          <Select 
+                            onValueChange={(value) => {
+                              field.onChange(value);
+                              const clinic = clinics.find(c => c.id === value);
+                              if (clinic) {
+                                setSelectedFee(`PKR ${clinic.opdFee}`);
+                                form.setValue('attendingDoctorId', clinic.doctor.id);
+                              }
+                            }} 
+                            value={field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select clinic" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {loadingClinics ? (
+                                <div className="px-2 py-4 text-sm text-center">
+                                  <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                                </div>
+                              ) : clinics.length === 0 ? (
+                                <div className="px-2 py-2 text-sm text-muted-foreground">
+                                  No clinics available
+                                </div>
+                              ) : (
+                                clinics.map((clinic) => (
+                                  <SelectItem key={clinic.id} value={clinic.id}>
+                                    Dr. {clinic.doctor.fullName} - PKR {clinic.opdFee}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-
+                  ) : (
                     <FormField
                       control={form.control}
-                      name="bed"
+                      name="attendingDoctorId"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Bed Number</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., B-12" {...field} />
-                          </FormControl>
+                          <FormLabel>Doctor</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select doctor" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {loadingDoctors ? (
+                                <div className="px-2 py-4 text-sm text-center">
+                                  <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                                </div>
+                              ) : filteredDoctors.length === 0 ? (
+                                <div className="px-2 py-2 text-sm text-muted-foreground">
+                                  No doctors available
+                                </div>
+                              ) : (
+                                filteredDoctors.map((doctor) => (
+                                  <SelectItem key={doctor.id} value={doctor.id}>
+                                    Dr. {doctor.fullName}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                  </div>
+                  )}
+                </div>
+
+                {/* Show fee if selected */}
+                {selectedFee && (
+                  <p className="text-sm font-medium text-green-600">
+                    💰 Consultation Fee: {selectedFee}
+                  </p>
                 )}
 
-                <FormField
-                  control={form.control}
-                  name="attendingDoctorId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Attending Doctor</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select doctor (optional)" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {loadingDoctors ? (
-                            <div className="px-2 py-4 text-sm text-muted-foreground text-center">
-                              <Loader2 className="h-4 w-4 animate-spin mx-auto mb-2" />
-                              Loading doctors...
-                            </div>
-                          ) : doctors.length === 0 ? (
-                            <div className="px-2 py-4 text-sm text-muted-foreground text-center">
-                              No doctors available
-                            </div>
-                          ) : (
-                            doctors.map((doctor) => (
-                              <SelectItem key={doctor.id} value={doctor.id}>
-                                Dr. {doctor.fullName}
-                              </SelectItem>
-                            ))
+                {/* Ward/Bed for Indoor patients */}
+                {visitType === 'WARD_INDOOR' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Room Type */}
+                      <FormField
+                        control={form.control}
+                        name="roomType"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Room Type *</FormLabel>
+                            <Select 
+                              onValueChange={(value) => {
+                                field.onChange(value);
+                                form.setValue('roomId', '');
+                                form.setValue('bedId', '');
+                              }} 
+                              value={field.value}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select room type" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {ROOM_TYPES.map((type) => (
+                                  <SelectItem key={type.value} value={type.value}>
+                                    {type.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Room */}
+                      {selectedRoomType && (
+                        <FormField
+                          control={form.control}
+                          name="roomId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Room *</FormLabel>
+                              <Select 
+                                onValueChange={(value) => {
+                                  field.onChange(value);
+                                  form.setValue('bedId', '');
+                                }} 
+                                value={field.value}
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select room" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {loadingRooms ? (
+                                    <div className="px-2 py-4 text-sm text-center">
+                                      <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                                    </div>
+                                  ) : rooms.length === 0 ? (
+                                    <div className="px-2 py-2 text-sm text-muted-foreground">
+                                      No rooms available
+                                    </div>
+                                  ) : (
+                                    rooms.map((room) => (
+                                      <SelectItem key={room.id} value={room.id}>
+                                        Room {room.roomNumber}
+                                      </SelectItem>
+                                    ))
+                                  )}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
                           )}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                        />
+                      )}
+
+                      {/* Bed */}
+                      {selectedRoomId && (
+                        <FormField
+                          control={form.control}
+                          name="bedId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Bed *</FormLabel>
+                              <Select 
+                                onValueChange={(value) => {
+                                  field.onChange(value);
+                                  const bed = beds.find(b => b.id === value);
+                                  if (bed) {
+                                    const rate = bed.dailyRate || bed.room?.dailyRate || 0;
+                                    setSelectedBedRate(`PKR ${rate}/day`);
+                                  }
+                                }} 
+                                value={field.value}
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select bed" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {loadingBeds ? (
+                                    <div className="px-2 py-4 text-sm text-center">
+                                      <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                                    </div>
+                                  ) : beds.length === 0 ? (
+                                    <div className="px-2 py-2 text-sm text-muted-foreground">
+                                      No beds available
+                                    </div>
+                                  ) : (
+                                    beds.map((bed) => {
+                                      const rate = bed.dailyRate || bed.room?.dailyRate || 0;
+                                      return (
+                                        <SelectItem key={bed.id} value={bed.id}>
+                                          Bed {bed.bedNumber} - PKR {rate}/day
+                                        </SelectItem>
+                                      );
+                                    })
+                                  )}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      )}
+                    </div>
+
+                    {/* Show bed rate if selected */}
+                    {selectedBedRate && (
+                      <p className="text-sm font-medium text-blue-600">
+                        💵 Daily Rate: {selectedBedRate}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Submit */}

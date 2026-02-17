@@ -7,7 +7,8 @@ import {
   LayoutDashboard, Hospital, Users, Pill, FileText, BarChart3,
   Settings, UserCog, Building2, PackagePlus, ArrowLeftRight,
   AlertCircle, Syringe, HeartPulse, Activity, ChevronLeft, ChevronRight,
-  Store, Flag, Shield,
+  Store, Flag, Shield, Stethoscope, ClipboardList, Clock, UserPlus, Receipt,
+  DoorOpen, Bed, UserRoundPlus, UserRoundX, TestTube, Microscope, CheckSquare, FileCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -46,11 +47,92 @@ const menuItems: MenuItem[] = [
     icon: Building2,
     roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.DEPARTMENT_ADMIN]
   },
+  
+  // In-House Management - Admin only
+  {
+    label: 'Room Management',
+    href: '/admin/rooms',
+    icon: DoorOpen,
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.DEPARTMENT_ADMIN]
+  },
+  {
+    label: 'Bed Management',
+    href: '/admin/beds',
+    icon: Bed,
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.DEPARTMENT_ADMIN]
+  },
+  {
+    label: 'Operations',
+    href: '/admin/operations',
+    icon: FileCheck,
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.DEPARTMENT_ADMIN]
+  },
+  
+  // Clinical Services - OPD/Clinics
+  {
+    label: 'Clinics',
+    href: '/admin/clinics',
+    icon: Stethoscope,
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.DEPARTMENT_ADMIN]
+  },
+  {
+    label: 'OPD Registration',
+    href: '/reception/opd',
+    icon: ClipboardList,
+    roles: [UserRole.RECEPTIONIST, UserRole.REGISTRATION_STAFF,UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN]
+  },
+  {
+    label: 'Doctor Queue',
+    href: '/doctor/queue',
+    icon: Clock,
+    roles: [UserRole.DOCTOR, UserRole.DOCTOR_ASSISTANT, UserRole.NURSE, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN]
+  },
+  {
+    label: 'Referrals',
+    href: '/referrals',
+    icon: ArrowLeftRight,
+    roles: [UserRole.DOCTOR, UserRole.LAB_TECHNICIAN, UserRole.RADIOLOGIST, UserRole.NURSE, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN]
+  },
+  {
+    label: 'Receipts',
+    href: '/finance/receipts',
+    icon: Receipt,
+    roles: [UserRole.RECEPTIONIST, UserRole.BILLING_STAFF, UserRole.HOSPITAL_ADMIN, UserRole.SUPER_ADMIN, UserRole.MASTER_ADMIN, UserRole.AUDITOR]
+  },
+  
+  // Ward Management - Admission & Discharge
+  {
+    label: 'Patient Admission',
+    href: '/ward/admissions',
+    icon: UserRoundPlus,
+    roles: [UserRole.NURSE, UserRole.DOCTOR,UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.REGISTRATION_STAFF]
+  },
+  {
+    label: 'Patient Discharge',
+    href: '/ward/discharge',
+    icon: UserRoundX,
+    roles: [UserRole.NURSE, UserRole.DOCTOR, UserRole.SUPER_ADMIN,     UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.BILLING_STAFF]
+  },
+  
+  // Lab Services - Phase 3
+  {
+    label: 'Lab Tests Catalog',
+    href: '/admin/lab-tests',
+    icon: TestTube,
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.DEPARTMENT_ADMIN]
+  },
+  {
+    label: 'Lab Services',
+    href: '/lab',
+    icon: Microscope,
+    roles: [UserRole.DOCTOR, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.LAB_TECHNICIAN, UserRole.RECEPTIONIST]
+  },
+  
   { 
     label: 'Pharmacies', 
     href: '/dashboard/pharmacies', 
     icon: Store, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.MASTER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MAIN_PHARMACY_MANAGER] 
+    roles: [UserRole.SUPER_ADMIN, UserRole.MASTER_ADMIN,UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MAIN_PHARMACY_MANAGER] 
   },
   
   // Pharmacy Management - SUPER_ADMIN has access to everything
@@ -58,13 +140,13 @@ const menuItems: MenuItem[] = [
     label: 'Medicines', 
     href: '/dashboard/medicines', 
     icon: Pill, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.PHARMACY_STAFF, UserRole.AUDITOR] 
+    roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUPER_ADMIN,UserRole.SUB_PHARMACY_MANAGER, UserRole.PHARMACY_STAFF, UserRole.AUDITOR] 
   },
   { 
     label: 'Inventory', 
     href: '/dashboard/inventory', 
     icon: PackagePlus, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.PHARMACY_STAFF, UserRole.AUDITOR] 
+    roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER,UserRole.SUPER_ADMIN, UserRole.SUB_PHARMACY_MANAGER, UserRole.PHARMACY_STAFF, UserRole.AUDITOR] 
   },
   { 
     label: 'Stock Alerts', 
@@ -78,7 +160,7 @@ const menuItems: MenuItem[] = [
     label: 'Patients', 
     href: '/dashboard/patients', 
     icon: Users, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.REGISTRATION_STAFF, UserRole.DOCTOR, UserRole.DOCTOR_ASSISTANT, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER] 
+    roles: [UserRole.SUPER_ADMIN, UserRole.REGISTRATION_STAFF,UserRole.SUPER_ADMIN, UserRole.DOCTOR, UserRole.DOCTOR_ASSISTANT, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER] 
   },
   { 
     label: 'Prescriptions', 

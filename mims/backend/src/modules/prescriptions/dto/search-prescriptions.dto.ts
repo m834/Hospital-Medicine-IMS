@@ -4,6 +4,10 @@ import { Type } from 'class-transformer';
 export class SearchPrescriptionsDto {
   @IsOptional()
   @IsString()
+  hospitalId?: string; // Passed from frontend but handled by controller
+
+  @IsOptional()
+  @IsString()
   nrNumber?: string;
 
   @IsOptional()

@@ -45,6 +45,7 @@ interface User {
   status: string;
   hospitalId: string;
   pharmacyId?: string;
+  departmentId?: string;
   hospital?: {
     id: string;
     name: string;
@@ -57,6 +58,11 @@ interface User {
     type: 'MAIN' | 'SUB';
     locationWard?: string;
     status: string;
+  };
+  department?: {
+    id: string;
+    name: string;
+    code: string;
   };
   createdAt: string;
 }
@@ -309,6 +315,7 @@ export default function UsersPage() {
               <TableHead>Email</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Hospital</TableHead>
+              <TableHead>Department</TableHead>
               <TableHead>Pharmacy</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Actions</TableHead>
@@ -317,13 +324,13 @@ export default function UsersPage() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8">
+                <TableCell colSpan={8} className="text-center py-8">
                   Loading users...
                 </TableCell>
               </TableRow>
             ) : filteredUsers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8">
+                <TableCell colSpan={8} className="text-center py-8">
                   No users found
                 </TableCell>
               </TableRow>
@@ -338,6 +345,18 @@ export default function UsersPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>{user.hospital?.name || 'N/A'}</TableCell>
+                  <TableCell>
+                    {user.department ? (
+                      <div className="text-sm">
+                        <div>{user.department.name}</div>
+                        <div className="text-muted-foreground text-xs">
+                          ({user.department.code})
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     {user.pharmacy ? (
                       <div className="text-sm">
@@ -431,6 +450,14 @@ export default function UsersPage() {
                   {viewUserModal.hospital?.name || 'N/A'}
                 </p>
               </div>
+              {viewUserModal.department && (
+                <div>
+                  <label className="text-sm font-medium">Department</label>
+                  <p className="text-sm text-muted-foreground">
+                    {viewUserModal.department.name} ({viewUserModal.department.code})
+                  </p>
+                </div>
+              )}
               {viewUserModal.pharmacy && (
                 <div>
                   <label className="text-sm font-medium">Pharmacy</label>

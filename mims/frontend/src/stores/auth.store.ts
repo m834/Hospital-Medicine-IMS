@@ -5,14 +5,17 @@
 
 import { create } from 'zustand';
 import type { User } from '@/lib/auth';
+import { AUTH_TOKENS } from '@/lib/constants';
 
 interface AuthState {
   user: User | null;
+  token: string | null;
   isLoading: boolean;
   error: string | null;
   
   // Actions
   setUser: (user: User | null) => void;
+  setToken: (token: string | null) => void;
   setLoading: (isLoading: boolean) => void;
   setError: (error: string | null) => void;
   clearUser: () => void;
@@ -21,18 +24,33 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
+  token: typeof window !== 'undefined' ? localStorage.getItem(AUTH_TOKENS.ACCESS_TOKEN) : null,
   isLoading: false,
   error: null,
 
   setUser: (user) => set({ user, error: null }),
   
+  setToken: (token) => {
+    if (typeof window !== 'undefined') {
+      if (token) {
+        localStorage.setItem(AUTH_TOKENS.ACCESS_TOKEN, token);
+      } else {
+        localStorage.removeItem(AUTH_TOKENS.ACCESS_TOKEN);
+      }
+    }
+    set({ token });
+  },
+  
   setLoading: (isLoading) => set({ isLoading }),
   
   setError: (error) => set({ error, isLoading: false }),
   
-  clearUser: () => set({ user: null, error: null }),
+  clearUser: () => set({ user: null, token: null, error: null }),
   
   logout: () => {
-    set({ user: null, error: null, isLoading: false });
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(AUTH_TOKENS.ACCESS_TOKEN);
+    }
+    set({ user: null, token: null, error: null, isLoading: false });
   },
 }));

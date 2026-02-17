@@ -102,7 +102,8 @@ export default function MedicinesPage() {
   const canModify = user?.role ? canModifyResources(user.role as UserRole) : false;
 
   // Determine current hospital for operations
-  const currentHospitalId = user?.hospitalId || selectedHospital?.id;
+  // Master Admin & Super Admin must select hospital, others use their hospitalId
+  const currentHospitalId = selectedHospital?.id || user?.hospitalId;
   const currentHospital = selectedHospital || (user?.hospitalId ? {
     id: user.hospitalId,
     name: 'My Hospital',

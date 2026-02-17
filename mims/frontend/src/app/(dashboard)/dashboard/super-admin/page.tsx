@@ -39,8 +39,8 @@ export default function SuperAdminDashboard() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   useEffect(() => {
-    // Verify Super Admin role
-    if (!user || user.role !== UserRole.SUPER_ADMIN) {
+    // Verify Super Admin or Master Admin role
+    if (!user || (user.role !== UserRole.SUPER_ADMIN && user.role !== UserRole.MASTER_ADMIN)) {
       router.push('/dashboard');
       return;
     }

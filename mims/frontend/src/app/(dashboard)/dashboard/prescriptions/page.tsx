@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { format } from 'date-fns';
+import { DollarSign } from 'lucide-react';
 
 interface PrescriptionItem {
   id: string;
@@ -56,9 +57,12 @@ export default function PrescriptionsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [statusEdits, setStatusEdits] = useState<Record<string, string>>({});
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
   const limit = 50;
 
-  const currentHospitalId = user?.hospitalId || selectedHospital?.id;
+  // Master Admin & Super Admin must select hospital, others use their hospitalId
+  const currentHospitalId = selectedHospital?.id || user?.hospitalId;
 
   useEffect(() => {
     if (currentHospitalId) {
@@ -136,6 +140,35 @@ export default function PrescriptionsPage() {
   const canCreatePrescription = ['SUPER_ADMIN', 'HOSPITAL_ADMIN', 'DOCTOR', 'DOCTOR_ASSISTANT', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER'].includes(
     user?.role || ''
   );
+
+  const statusOptions = ['PENDING', 'ISSUED', 'PARTIALLY_ISSUED', 'CANCELLED'];
+
+  const handleStatusChange = (id: string, value: string) => {
+    setStatusEdits((prev) => ({ ...prev, [id]: value }));
+  };
+
+  const handleStatusUpdate = async (prescription: Prescription) => {
+    const nextStatus = statusEdits[prescription.id] || prescription.status;
+    if (nextStatus === prescription.status) return;
+
+    try {
+      setUpdatingId(prescription.id);
+      await api.patch(`/prescriptions/${prescription.id}/status`, {
+        status: nextStatus,
+      });
+
+      setPrescriptions((prev) =>
+        prev.map((item) =>
+          item.id === prescription.id ? { ...item, status: nextStatus as Prescription['status'] } : item
+        )
+      );
+    } catch (error: any) {
+      console.error('Failed to update prescription status:', error);
+      alert(error.response?.data?.message || 'Failed to update prescription status');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
 
   return (
     <div className="container mx-auto py-6 px-4">
@@ -290,12 +323,46 @@ export default function PrescriptionsPage() {
                         {format(new Date(prescription.createdAt), 'MMM dd, yyyy')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button
-                          onClick={() => router.push(`/dashboard/prescriptions/${prescription.id}`)}
-                          className="text-blue-600 hover:text-blue-900"
-                        >
-                          View
-                        </button>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <button
+                            onClick={() => router.push(`/dashboard/prescriptions/${prescription.id}`)}
+                            className="text-blue-600 hover:text-blue-900"
+                          >
+                            View
+                          </button>
+                          <button
+                            onClick={() =>
+                              router.push(`/dashboard/payments/patient/${prescription.patient.id}?scope=pharmacy`)
+                            }
+                            className="inline-flex items-center text-green-600 hover:text-green-800 text-sm font-medium"
+                          >
+                            <DollarSign className="h-4 w-4 mr-1" />
+                            Pay
+                          </button>
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={statusEdits[prescription.id] || prescription.status}
+                              onChange={(event) => handleStatusChange(prescription.id, event.target.value)}
+                              className="px-2 py-1 border border-gray-300 rounded-md text-sm"
+                            >
+                              {statusOptions.map((status) => (
+                                <option key={status} value={status}>
+                                  {status.replace('_', ' ')}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => handleStatusUpdate(prescription)}
+                              disabled={
+                                updatingId === prescription.id ||
+                                (statusEdits[prescription.id] || prescription.status) === prescription.status
+                              }
+                              className="px-2 py-1 text-xs font-semibold rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {updatingId === prescription.id ? 'Updating...' : 'Update'}
+                            </button>
+                          </div>
+                        </div>
                       </td>
                     </tr>
                   ))}

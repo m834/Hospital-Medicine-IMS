@@ -32,6 +32,19 @@ interface Pharmacy {
   type: 'MAIN' | 'SUB';
 }
 
+interface Department {
+  id: string;
+  name: string;
+  code: string;
+}
+
+interface SubDepartment {
+  id: string;
+  name: string;
+  code: string;
+  departmentId: string;
+}
+
 interface AddUserModalProps {
   isOpen: boolean;
   hospital: Hospital | null;
@@ -40,21 +53,26 @@ interface AddUserModalProps {
 }
 
 const USER_ROLES = [
-  { value: 'HOSPITAL_ADMIN', label: 'Hospital Admin', requiresPharmacy: false },
-  { value: 'MAIN_PHARMACY_MANAGER', label: 'Main Pharmacy Manager', requiresPharmacy: true, pharmacyType: 'MAIN' },
-  { value: 'SUB_PHARMACY_MANAGER', label: 'Sub-Pharmacy Manager', requiresPharmacy: true, pharmacyType: 'SUB' },
-  { value: 'DOCTOR', label: 'Doctor', requiresPharmacy: false },
-  { value: 'DOCTOR_ASSISTANT', label: 'Doctor Assistant', requiresPharmacy: false },
-  { value: 'REGISTRATION_STAFF', label: 'Registration Staff', requiresPharmacy: false },
-  { value: 'PHARMACY_STAFF', label: 'Pharmacy Staff', requiresPharmacy: true },
-  { value: 'AUDITOR', label: 'Auditor', requiresPharmacy: false },
-];
+  { value: 'HOSPITAL_ADMIN', label: 'Hospital Admin', requiresPharmacy: false, requiresDepartment: false, pharmacyType: undefined },
+  { value: 'DEPARTMENT_ADMIN', label: 'Department Admin', requiresPharmacy: false, requiresDepartment: true, pharmacyType: undefined },
+  { value: 'MAIN_PHARMACY_MANAGER', label: 'Main Pharmacy Manager', requiresPharmacy: true, pharmacyType: 'MAIN' as const, requiresDepartment: false },
+  { value: 'SUB_PHARMACY_MANAGER', label: 'Sub-Pharmacy Manager', requiresPharmacy: true, pharmacyType: 'SUB' as const, requiresDepartment: false },
+  { value: 'PHARMACY_STAFF', label: 'Pharmacy Staff', requiresPharmacy: true, requiresDepartment: false, pharmacyType: undefined },
+  { value: 'DOCTOR', label: 'Doctor', requiresPharmacy: false, requiresDepartment: true, pharmacyType: undefined },
+  { value: 'DOCTOR_ASSISTANT', label: 'Doctor Assistant', requiresPharmacy: false, requiresDepartment: true, pharmacyType: undefined },
+  { value: 'REGISTRATION_STAFF', label: 'Registration Staff', requiresPharmacy: false, requiresDepartment: true, pharmacyType: undefined },
+  { value: 'AUDITOR', label: 'Auditor', requiresPharmacy: false, requiresDepartment: true, pharmacyType: undefined },
+] as const;
 
 export function AddUserModal({ isOpen, hospital, onClose, onUserAdded }: AddUserModalProps) {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
   const [loadingPharmacies, setLoadingPharmacies] = useState(false);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [loadingDepartments, setLoadingDepartments] = useState(false);
+  const [subDepartments, setSubDepartments] = useState<SubDepartment[]>([]);
+  const [loadingSubDepartments, setLoadingSubDepartments] = useState(false);
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -64,6 +82,8 @@ export function AddUserModal({ isOpen, hospital, onClose, onUserAdded }: AddUser
     phone: '',
     role: '',
     pharmacyId: '',
+    departmentId: '',
+    subDepartmentId: '',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -72,6 +92,7 @@ export function AddUserModal({ isOpen, hospital, onClose, onUserAdded }: AddUser
     if (isOpen && hospital) {
       resetForm();
       fetchPharmacies();
+      fetchDepartments();
     }
   }, [isOpen, hospital]);
 
@@ -91,6 +112,38 @@ export function AddUserModal({ isOpen, hospital, onClose, onUserAdded }: AddUser
     }
   };
 
+  const fetchDepartments = async () => {
+    if (!hospital) return;
+
+    setLoadingDepartments(true);
+    try {
+      const response = await api.get('/departments', {
+        params: { hospitalId: hospital.id }
+      });
+      setDepartments(response.data || []);
+    } catch (err) {
+      console.error('Failed to fetch departments:', err);
+      setDepartments([]);
+    } finally {
+      setLoadingDepartments(false);
+    }
+  };
+
+  const fetchSubDepartments = async (departmentId: string) => {
+    if (!departmentId) return;
+
+    setLoadingSubDepartments(true);
+    try {
+      const response = await api.get(`/sub-departments/department/${departmentId}`);
+      setSubDepartments(response.data || []);
+    } catch (err) {
+      console.error('Failed to fetch sub-departments:', err);
+      setSubDepartments([]);
+    } finally {
+      setLoadingSubDepartments(false);
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       fullName: '',
@@ -100,9 +153,12 @@ export function AddUserModal({ isOpen, hospital, onClose, onUserAdded }: AddUser
       phone: '',
       role: '',
       pharmacyId: '',
+      departmentId: '',
+      subDepartmentId: '',
     });
     setErrors({});
     setShowPassword(false);
+    setSubDepartments([]);
   };
 
   const validateForm = (): boolean => {
@@ -157,6 +213,11 @@ export function AddUserModal({ isOpen, hospital, onClose, onUserAdded }: AddUser
       newErrors.pharmacyId = 'Pharmacy is required for this role';
     }
 
+    // Department (if required for selected role)
+    if (selectedRole?.requiresDepartment && !formData.departmentId) {
+      newErrors.departmentId = 'Department is required for this role';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -184,6 +245,14 @@ export function AddUserModal({ isOpen, hospital, onClose, onUserAdded }: AddUser
         payload.pharmacyId = formData.pharmacyId;
       }
 
+      if (formData.departmentId) {
+        payload.departmentId = formData.departmentId;
+      }
+
+      if (formData.subDepartmentId) {
+        payload.subDepartmentId = formData.subDepartmentId;
+      }
+
       await api.post(`/hospitals/${hospital.id}/users`, payload);
 
       alert('User created successfully');
@@ -200,6 +269,8 @@ export function AddUserModal({ isOpen, hospital, onClose, onUserAdded }: AddUser
   if (!isOpen || !hospital) return null;
 
   const selectedRole = USER_ROLES.find((r) => r.value === formData.role);
+  const showPharmacyDropdown = selectedRole?.requiresPharmacy === true;
+  const showDepartmentDropdown = selectedRole?.requiresDepartment === true;
   const availablePharmacies = selectedRole?.pharmacyType
     ? pharmacies.filter((p) => p.type === selectedRole.pharmacyType)
     : pharmacies;
@@ -353,7 +424,7 @@ export function AddUserModal({ isOpen, hospital, onClose, onUserAdded }: AddUser
                     <Select
                       value={formData.role}
                       onValueChange={(value) =>
-                        setFormData({ ...formData, role: value, pharmacyId: '' })
+                        setFormData({ ...formData, role: value, pharmacyId: '', departmentId: '', subDepartmentId: '' })
                       }
                     >
                       <SelectTrigger className={errors.role ? 'border-destructive' : ''}>
@@ -372,7 +443,7 @@ export function AddUserModal({ isOpen, hospital, onClose, onUserAdded }: AddUser
                 </div>
 
                 {/* Row 4: Pharmacy (conditional) */}
-                {selectedRole?.requiresPharmacy && (
+                {showPharmacyDropdown && (
                   <div className="space-y-2">
                     <Label htmlFor="pharmacy">
                       Pharmacy Assignment <span className="text-destructive">*</span>
@@ -387,14 +458,16 @@ export function AddUserModal({ isOpen, hospital, onClose, onUserAdded }: AddUser
                           placeholder={
                             loadingPharmacies
                               ? 'Loading pharmacies...'
-                              : `Select ${selectedRole.pharmacyType?.toLowerCase() || ''} pharmacy`
+                              : selectedRole?.pharmacyType
+                              ? `Select ${selectedRole.pharmacyType.toLowerCase()} pharmacy`
+                              : 'Select pharmacy'
                           }
                         />
                       </SelectTrigger>
                       <SelectContent>
                         {availablePharmacies.length === 0 ? (
                           <div className="p-2 text-sm text-muted-foreground">
-                            No {selectedRole.pharmacyType?.toLowerCase()} pharmacies available
+                            No {selectedRole?.pharmacyType?.toLowerCase() || ''} pharmacies available
                           </div>
                         ) : (
                           availablePharmacies.map((pharmacy) => (
@@ -407,6 +480,79 @@ export function AddUserModal({ isOpen, hospital, onClose, onUserAdded }: AddUser
                     </Select>
                     {errors.pharmacyId && (
                       <p className="text-xs text-destructive">{errors.pharmacyId}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Row 5: Department & Sub-Department (conditional) */}
+                {showDepartmentDropdown && (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="department">
+                        Department <span className="text-destructive">*</span>
+                      </Label>
+                      <Select
+                        value={formData.departmentId}
+                        onValueChange={(value) => {
+                          setFormData({ ...formData, departmentId: value, subDepartmentId: '' });
+                          fetchSubDepartments(value);
+                        }}
+                        disabled={loadingDepartments}
+                      >
+                        <SelectTrigger className={errors.departmentId ? 'border-destructive' : ''}>
+                          <SelectValue
+                            placeholder={
+                              loadingDepartments ? 'Loading departments...' : 'Select department'
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {departments.length === 0 ? (
+                            <div className="p-2 text-sm text-muted-foreground">
+                              No departments available
+                            </div>
+                          ) : (
+                            departments.map((department) => (
+                              <SelectItem key={department.id} value={department.id}>
+                                {department.name} ({department.code})
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      {errors.departmentId && (
+                        <p className="text-xs text-destructive">{errors.departmentId}</p>
+                      )}
+                    </div>
+
+                    {formData.departmentId && subDepartments.length > 0 && (
+                      <div className="space-y-2">
+                        <Label htmlFor="subDepartment">
+                          Sub-Department (Optional)
+                        </Label>
+                        <Select
+                          value={formData.subDepartmentId}
+                          onValueChange={(value) => setFormData({ ...formData, subDepartmentId: value })}
+                          disabled={loadingSubDepartments}
+                        >
+                          <SelectTrigger>
+                            <SelectValue
+                              placeholder={
+                                loadingSubDepartments
+                                  ? 'Loading sub-departments...'
+                                  : 'Select sub-department (optional)'
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {subDepartments.map((subDept) => (
+                              <SelectItem key={subDept.id} value={subDept.id}>
+                                {subDept.name} ({subDept.code})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     )}
                   </div>
                 )}

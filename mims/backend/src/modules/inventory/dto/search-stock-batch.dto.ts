@@ -5,6 +5,10 @@ import { BatchStatus, StorageType } from '@prisma/client';
 export class SearchStockBatchDto {
   @IsString()
   @IsOptional()
+  hospitalId?: string; // Passed from frontend but handled by controller
+
+  @IsString()
+  @IsOptional()
   search?: string;
 
   @IsString()

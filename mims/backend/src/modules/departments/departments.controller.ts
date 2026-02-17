@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   Request,
+  Query,
 } from '@nestjs/common';
 import { DepartmentsService } from './departments.service';
 import { CreateDepartmentDto } from './dto/create-department.dto';
@@ -41,7 +42,11 @@ export class DepartmentsController {
     UserRole.DOCTOR,
     UserRole.NURSE,
   )
-  findAll(@Request() req: any) {
+  findAll(@Query('hospitalId') hospitalId: string | undefined, @Request() req: any) {
+    // If hospitalId is provided as query param, use it
+    if (hospitalId) {
+      return this.departmentsService.findByHospital(hospitalId, req.user);
+    }
     return this.departmentsService.findAll(req.user);
   }
 

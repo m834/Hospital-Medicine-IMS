@@ -36,7 +36,7 @@ export enum UserRole {
 
 // Dashboard Routes by Role
 export const ROLE_DASHBOARDS: Record<UserRole, string> = {
-  [UserRole.MASTER_ADMIN]: '/dashboard/master-admin',
+  [UserRole.MASTER_ADMIN]: '/dashboard/super-admin', // Same as Super Admin
   [UserRole.SUPER_ADMIN]: '/dashboard/super-admin',
   [UserRole.HOSPITAL_ADMIN]: '/dashboard/hospital-admin',
   [UserRole.DEPARTMENT_ADMIN]: '/dashboard/department-admin',

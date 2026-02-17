@@ -85,7 +85,8 @@ export default function IssuancePage() {
   const { user } = useAuthStore();
   const { selectedHospital } = useHospitalStore();
 
-  const currentHospitalId = user?.hospitalId || selectedHospital?.id;
+  // Master Admin & Super Admin must select hospital, others use their hospitalId
+  const currentHospitalId = selectedHospital?.id || user?.hospitalId;
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   // Fetch Main Pharmacy ID when hospital is selected (for Super Admin)

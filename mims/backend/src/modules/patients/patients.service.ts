@@ -3,10 +3,73 @@ import { PrismaService } from '../../database/prisma.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
 import { SearchPatientsDto } from './dto/search-patients.dto';
+import { VisitsService } from '../visits/visits.service';
+import { AdmissionsService } from '../admissions/admissions.service';
+import { AdmissionType, VisitType } from '@prisma/client';
 
 @Injectable()
 export class PatientsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly visitsService: VisitsService,
+    private readonly admissionsService: AdmissionsService,
+  ) {}
+
+  private async createVisitForRegistration(
+    patientId: string,
+    createPatientDto: CreatePatientDto,
+    userId: string,
+    hospitalId: string,
+  ) {
+    return this.visitsService.create({
+      hospitalId,
+      patientId,
+      registrarId: userId,
+      visitType: createPatientDto.visitType as VisitType,
+      clinicId: createPatientDto.clinicId,
+      departmentId: createPatientDto.department || undefined,
+      wardId: createPatientDto.ward || undefined,
+      bedId: createPatientDto.bed || undefined,
+      attendingDoctorId: createPatientDto.attendingDoctorId || undefined,
+      chiefComplaint: createPatientDto.chiefComplaint,
+      vitalSigns: createPatientDto.vitalSigns,
+      notes: createPatientDto.notes,
+    });
+  }
+
+  private async createAdmissionForRegistration(
+    patientId: string,
+    visitId: string,
+    createPatientDto: CreatePatientDto,
+    userId: string,
+    hospitalId: string,
+  ) {
+    if (createPatientDto.visitType !== 'WARD_INDOOR') {
+      return null;
+    }
+
+    if (!createPatientDto.department) {
+      throw new BadRequestException('Department is required for indoor admission');
+    }
+
+    if (!createPatientDto.attendingDoctorId) {
+      throw new BadRequestException('Attending doctor is required for indoor admission');
+    }
+
+    return this.admissionsService.create({
+      hospitalId,
+      patientId,
+      visitId,
+      departmentId: createPatientDto.department,
+      roomId: createPatientDto.ward || undefined,
+      bedId: createPatientDto.bed || undefined,
+      attendingDoctorId: createPatientDto.attendingDoctorId,
+      admittingUserId: userId,
+      admissionType: AdmissionType.PLANNED,
+      diagnosisOnAdmission: createPatientDto.chiefComplaint,
+      notes: createPatientDto.notes,
+    });
+  }
 
   /**
    * Generate NR-Number in format: NR-YYYYMMDD-XXXX
@@ -53,6 +116,48 @@ export class PatientsService {
 
       if (!doctor) {
         throw new BadRequestException('Invalid attending doctor');
+      }
+    }
+
+    const identifierFilters = [];
+    if (createPatientDto.cnic) {
+      identifierFilters.push({ cnic: createPatientDto.cnic });
+    }
+    if (createPatientDto.nrNumber) {
+      identifierFilters.push({ nrNumber: createPatientDto.nrNumber });
+    }
+
+    if (identifierFilters.length > 0) {
+      const existingPatient = await this.prisma.patient.findFirst({
+        where: {
+          hospitalId,
+          OR: identifierFilters,
+        },
+        include: {
+          attendingDoctor: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
+          },
+          registeredByUser: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      if (existingPatient) {
+        const visitResult = await this.createVisitForRegistration(existingPatient.id, createPatientDto, userId, hospitalId);
+        const visitId = visitResult?.visit?.id;
+        if (visitId) {
+          await this.createAdmissionForRegistration(existingPatient.id, visitId, createPatientDto, userId, hospitalId);
+        }
+        return existingPatient;
       }
     }
 
@@ -110,6 +215,12 @@ export class PatientsService {
         },
       },
     });
+
+    const visitResult = await this.createVisitForRegistration(patient.id, createPatientDto, userId, hospitalId);
+    const visitId = visitResult?.visit?.id;
+    if (visitId) {
+      await this.createAdmissionForRegistration(patient.id, visitId, createPatientDto, userId, hospitalId);
+    }
 
     return patient;
   }
@@ -184,11 +295,94 @@ export class PatientsService {
             email: true,
           },
         },
+        _count: {
+          select: {
+            visits: true,
+          },
+        },
+        visits: {
+          where: {
+            status: { in: ['WAITING', 'IN_PROGRESS', 'CALLED'] },
+          },
+          include: {
+            clinic: {
+              select: {
+                id: true,
+                name: true,
+                opdFee: true,
+                doctor: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                  },
+                },
+                department: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
       },
     });
 
+    // Add department info for each patient
+    const patientsWithDept = await Promise.all(
+      patients.map(async (patient) => {
+        let departmentInfo = null;
+        if (patient.department) {
+          departmentInfo = await this.prisma.department.findUnique({
+            where: { id: patient.department },
+            select: { id: true, name: true, code: true },
+          });
+        }
+        let roomInfo = null;
+        let bedInfo = null;
+        let admissionInfo = null;
+        if (patient.visitType === 'WARD_INDOOR') {
+          const activeAdmission = await this.prisma.admission.findFirst({
+            where: {
+              patientId: patient.id,
+              status: 'ADMITTED',
+            },
+            orderBy: { admittedAt: 'desc' },
+            include: {
+              room: { select: { id: true, roomNumber: true, roomType: true } },
+              bed: { select: { id: true, bedNumber: true, bedType: true } },
+              department: { select: { id: true, name: true, code: true } },
+            },
+          });
+          if (activeAdmission) {
+            admissionInfo = {
+              id: activeAdmission.id,
+              admissionNumber: activeAdmission.admissionNumber,
+              admittedAt: activeAdmission.admittedAt,
+              department: activeAdmission.department,
+            };
+            roomInfo = activeAdmission.room;
+            bedInfo = activeAdmission.bed;
+            if (!departmentInfo && activeAdmission.department) {
+              departmentInfo = activeAdmission.department;
+            }
+          }
+        }
+        return {
+          ...patient,
+          departmentInfo,
+          admissionInfo,
+          roomInfo,
+          bedInfo,
+        };
+      }),
+    );
+
     return {
-      data: patients,
+      data: patientsWithDept,
       meta: {
         total,
         page,
@@ -231,6 +425,30 @@ export class PatientsService {
           orderBy: { issuedAt: 'desc' },
           take: 5,
         },
+        visits: {
+          include: {
+            clinic: {
+              select: {
+                id: true,
+                name: true,
+                opdFee: true,
+                doctor: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                  },
+                },
+                department: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
 
@@ -238,7 +456,53 @@ export class PatientsService {
       throw new NotFoundException('Patient not found');
     }
 
-    return patient;
+    // Add department info
+    let departmentInfo = null;
+    if (patient.department) {
+      departmentInfo = await this.prisma.department.findUnique({
+        where: { id: patient.department },
+        select: { id: true, name: true, code: true },
+      });
+    }
+
+    let roomInfo = null;
+    let bedInfo = null;
+    let admissionInfo = null;
+    if (patient.visitType === 'WARD_INDOOR') {
+      const activeAdmission = await this.prisma.admission.findFirst({
+        where: {
+          patientId: patient.id,
+          status: 'ADMITTED',
+        },
+        orderBy: { admittedAt: 'desc' },
+        include: {
+          room: { select: { id: true, roomNumber: true, roomType: true } },
+          bed: { select: { id: true, bedNumber: true, bedType: true } },
+          department: { select: { id: true, name: true, code: true } },
+        },
+      });
+      if (activeAdmission) {
+        admissionInfo = {
+          id: activeAdmission.id,
+          admissionNumber: activeAdmission.admissionNumber,
+          admittedAt: activeAdmission.admittedAt,
+          department: activeAdmission.department,
+        };
+        roomInfo = activeAdmission.room;
+        bedInfo = activeAdmission.bed;
+        if (!departmentInfo && activeAdmission.department) {
+          departmentInfo = activeAdmission.department;
+        }
+      }
+    }
+
+    return {
+      ...patient,
+      departmentInfo,
+      admissionInfo,
+      roomInfo,
+      bedInfo,
+    };
   }
 
   /**

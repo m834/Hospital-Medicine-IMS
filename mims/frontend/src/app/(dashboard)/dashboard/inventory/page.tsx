@@ -122,7 +122,8 @@ export default function InventoryDashboardPage() {
   const { selectedHospital } = useHospitalStore();
   const router = useRouter();
 
-  const currentHospitalId = user?.hospitalId || selectedHospital?.id;
+  // Master Admin & Super Admin must select hospital, others use their hospitalId
+  const currentHospitalId = selectedHospital?.id || user?.hospitalId;
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const isHospitalAdmin = user?.role === 'HOSPITAL_ADMIN';
   const isMainManager = user?.role === 'MAIN_PHARMACY_MANAGER';

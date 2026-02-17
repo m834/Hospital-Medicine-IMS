@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
@@ -7,6 +12,7 @@ import { User, UserRole, DepartmentStatus } from '@prisma/client';
 @Injectable()
 export class DepartmentsService {
   constructor(private readonly prisma: PrismaService) {}
+
 
   /**
    * Create a new department
@@ -280,6 +286,13 @@ export class DepartmentsService {
     return this.prisma.department.findMany({
       where: { hospitalId },
       include: {
+        hospital: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
         _count: {
           select: {
             users: true,
@@ -292,4 +305,5 @@ export class DepartmentsService {
       },
     });
   }
+
 }

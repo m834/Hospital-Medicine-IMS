@@ -87,7 +87,8 @@ export function SubDepartmentManagement() {
   const { user } = useAuthStore();
   const { selectedHospital } = useHospitalStore();
 
-  const currentHospitalId = user?.hospitalId || selectedHospital?.id;
+  // Master Admin & Super Admin must select hospital, others use their hospitalId
+  const currentHospitalId = selectedHospital?.id || user?.hospitalId;
   
   // Permission check - allow MASTER_ADMIN, SUPER_ADMIN, and HOSPITAL_ADMIN to manage
   const canModify = 

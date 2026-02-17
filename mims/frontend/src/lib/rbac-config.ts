@@ -363,6 +363,7 @@ export const sidebarConfig: SidebarSection[] = [
           UserRole.DOCTOR_ASSISTANT,
           UserRole.MAIN_PHARMACY_MANAGER,
           UserRole.SUB_PHARMACY_MANAGER,
+          UserRole.PHARMACY_STAFF,
         ],
       },
       {

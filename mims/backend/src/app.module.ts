@@ -26,6 +26,26 @@ import { PermissionsModule } from './modules/permissions/permissions.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
 import { SubDepartmentsModule } from './modules/sub-departments/sub-departments.module';
 
+// Phase 2: Clinical Services modules
+import { ClinicsModule } from './modules/clinics/clinics.module';
+import { VisitsModule } from './modules/visits/visits.module';
+import { TokensModule } from './modules/tokens/tokens.module';
+import { ReferralsModule } from './modules/referrals/referrals.module';
+import { ReceiptsModule } from './modules/receipts/receipts.module';
+import { PaymentsModule } from './modules/payments/payments.module';
+import { PatientVisitsModule } from './modules/patient-visits/patient-visits.module';
+// Phase 2: In-House (Indoor/Admission) modules
+import { RoomsModule } from './modules/rooms/rooms.module';
+import { BedsModule } from './modules/beds/beds.module';
+import { AdmissionsModule } from './modules/admissions/admissions.module';
+import { OperationsModule } from './modules/operations/operations.module';
+// Phase 3: Lab Services modules
+import { LabTestsModule } from './modules/lab-tests/lab-tests.module';
+import { LabOrdersModule } from './modules/lab-orders/lab-orders.module';
+
+// Attendance & HR modules
+import { AttendanceModule } from './modules/attendance/attendance.module';
+
 // Import configuration
 import { DatabaseModule } from './database/database.module';
 import { HospitalsModule } from './modules/hospitals/hospitals.module';
@@ -73,6 +93,24 @@ import appConfig from './config/app.config';
     PermissionsModule,
     DepartmentsModule,
     SubDepartmentsModule,
+    // Phase 2: Clinical Services
+    ClinicsModule,
+    VisitsModule,
+    TokensModule,
+    ReferralsModule,
+    ReceiptsModule,
+    PaymentsModule,
+    PatientVisitsModule,
+    // Phase 2: In-House (Indoor/Admission)
+    RoomsModule,
+    BedsModule,
+    AdmissionsModule,
+    OperationsModule,
+    // Phase 3: Lab Services
+    LabTestsModule,
+    LabOrdersModule,
+    // Attendance & HR
+    AttendanceModule,
   ],
   providers: [
     {

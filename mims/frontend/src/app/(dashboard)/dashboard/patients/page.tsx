@@ -25,6 +25,7 @@ import {
   Search,
   Loader2,
   Eye,
+  DollarSign,
   Phone,
   Calendar,
   MapPin,
@@ -41,15 +42,24 @@ interface Patient {
   nrNumber: string;
   fullName: string;
   mobile?: string;
+  cnic?: string;
   gender: string;
   dob?: string;
   visitType: string;
   department?: string;
+  departmentInfo?: {
+    id: string;
+    name: string;
+    code: string;
+  };
   attendingDoctor?: {
     fullName: string;
   };
   registeredAt: string;
   status: string;
+  _count?: {
+    visits: number;
+  };
 }
 
 interface Stats {
@@ -76,7 +86,16 @@ export default function PatientsPage() {
   const router = useRouter();
 
   // Check if user has access to patients page
-  const allowedRoles = ['SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR', 'DOCTOR_ASSISTANT', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER'];
+  const allowedRoles = [
+    'SUPER_ADMIN',
+    'HOSPITAL_ADMIN',
+    'REGISTRATION_STAFF',
+    'DOCTOR',
+    'DOCTOR_ASSISTANT',
+    'MAIN_PHARMACY_MANAGER',
+    'SUB_PHARMACY_MANAGER',
+    'PHARMACY_STAFF',
+  ];
   const hasAccess = user && allowedRoles.includes(user.role);
 
   const currentHospitalId = user?.hospitalId || selectedHospital?.id;
@@ -282,10 +301,10 @@ export default function PatientsPage() {
                 <span class="label">Visit Type:</span>
                 <span class="value">${getVisitTypeLabel(patient.visitType)}</span>
               </div>
-              ${patient.department ? `
+              ${patient.departmentInfo?.name ? `
               <div class="row">
                 <span class="label">Department:</span>
-                <span class="value">${patient.department}</span>
+                <span class="value">${patient.departmentInfo.name}</span>
               </div>
               ` : ''}
               ${patient.attendingDoctor?.fullName ? `
@@ -493,7 +512,9 @@ export default function PatientsPage() {
                   <TableHead>Patient Name</TableHead>
                   <TableHead>Gender</TableHead>
                   <TableHead>Mobile</TableHead>
+                  <TableHead>CNIC</TableHead>
                   <TableHead>Visit Type</TableHead>
+                  <TableHead>Visits</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Attending Doctor</TableHead>
                   <TableHead>Registered</TableHead>
@@ -522,12 +543,14 @@ export default function PatientsPage() {
                         '-'
                       )}
                     </TableCell>
+                    <TableCell>{patient.cnic || '-'}</TableCell>
                     <TableCell>
                       <Badge className={getVisitTypeBadge(patient.visitType)}>
                         {getVisitTypeLabel(patient.visitType)}
                       </Badge>
                     </TableCell>
-                    <TableCell>{patient.department || '-'}</TableCell>
+                    <TableCell>{patient._count?.visits ?? 0}</TableCell>
+                    <TableCell>{patient.departmentInfo?.name || '-'}</TableCell>
                     <TableCell>{patient.attendingDoctor?.fullName || '-'}</TableCell>
                     <TableCell>
                       {format(new Date(patient.registeredAt), 'MMM dd, yyyy')}
@@ -541,6 +564,14 @@ export default function PatientsPage() {
                         >
                           <Eye className="h-4 w-4 mr-1" />
                           View
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => router.push(`/dashboard/payments/patient/${patient.id}`)}
+                        >
+                          <DollarSign className="h-4 w-4 mr-1" />
+                          Pay
                         </Button>
                         <Button
                           variant="outline"

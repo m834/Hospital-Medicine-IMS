@@ -40,7 +40,8 @@ export function StockAlertTicker() {
   ];
 
   const shouldShowTicker = user && allowedRoles.includes(user.role);
-  const currentHospitalId = user?.hospitalId || selectedHospital?.id;
+  // Master Admin & Super Admin must select hospital, others use their hospitalId
+  const currentHospitalId = selectedHospital?.id || user?.hospitalId;
 
   useEffect(() => {
     if (shouldShowTicker && currentHospitalId) {
