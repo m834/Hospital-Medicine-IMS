@@ -7,6 +7,7 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 // Import common modules
 import { CommonModule } from './common/common.module';
 import { PerformanceInterceptor } from './common/interceptors/performance.interceptor';
+import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 
 // Import feature modules
 import { AuthModule } from './modules/auth/auth.module';
@@ -120,6 +121,10 @@ import appConfig from './config/app.config';
     {
       provide: APP_INTERCEPTOR,
       useClass: PerformanceInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
     },
   ],
 })

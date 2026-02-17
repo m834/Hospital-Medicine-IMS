@@ -5,10 +5,15 @@ import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import * as compression from 'compression';
 import { AppModule } from './app.module';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
+
+  // SECURITY: Global Exception Filter
+  // Prevents sensitive information leakage in error responses
+  app.useGlobalFilters(new GlobalExceptionFilter());
 
   // Security
   app.use(helmet());
