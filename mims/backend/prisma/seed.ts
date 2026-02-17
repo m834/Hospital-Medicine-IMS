@@ -1,5 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
+import { seedShifts } from './seeds/seed-shifts';
+import { seedLeaveTypes } from './seeds/seed-leave-types';
+import { seedHolidays } from './seeds/seed-holidays';
+import { seedAttendanceConfig } from './seeds/seed-attendance-config';
 
 const prisma = new PrismaClient();
 
@@ -246,6 +250,25 @@ async function main() {
     console.log(`   Hospital: ${hospital.name} (${hospital.code})\n`);
   }
   console.log('='.repeat(60));
+
+  // ============================================
+  // ATTENDANCE MODULE SEEDING
+  // ============================================
+  console.log('\n🎯 ATTENDANCE MODULE INITIALIZATION\n');
+  
+  // Seed shifts
+  await seedShifts();
+  
+  // Seed leave types
+  await seedLeaveTypes();
+  
+  // Seed holidays
+  await seedHolidays();
+  
+  // Seed attendance configuration
+  await seedAttendanceConfig();
+
+  console.log('✅ All attendance module seeds completed successfully!\n');
 }
 
 main()
