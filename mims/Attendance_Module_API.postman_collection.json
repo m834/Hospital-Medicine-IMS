@@ -1,0 +1,1352 @@
+{
+  "info": {
+    "name": "Hospital Attendance Module API",
+    "description": "Complete API testing collection for the Hospital Attendance Module with 70+ endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000/api/v1"
+    },
+    {
+      "key": "auth_token",
+      "value": "your_jwt_token_here"
+    },
+    {
+      "key": "hospital_id",
+      "value": "hospital_id_here"
+    },
+    {
+      "key": "device_id",
+      "value": "device_id_here"
+    },
+    {
+      "key": "user_id",
+      "value": "user_id_here"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Biometric Devices",
+      "description": "Device registration, management, and status monitoring",
+      "item": [
+        {
+          "name": "Register Device",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.environment.set('device_id', jsonData.id);",
+                  "    pm.test('Device registered successfully', function () {",
+                  "        pm.expect(jsonData).to.have.property('id');",
+                  "        pm.expect(jsonData.status).to.equal('ACTIVE');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Device 1 - Reception\",\n  \"deviceType\": \"FINGERPRINT\",\n  \"serialNumber\": \"ZKT-001-2026\",\n  \"ipAddress\": \"192.168.1.100\",\n  \"port\": 4370,\n  \"location\": \"Reception Area\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/biometric-devices",
+              "host": ["{{base_url}}"],
+              "path": ["biometric-devices"]
+            },
+            "description": "Register a new biometric device (fingerprint, face, etc.)"
+          },
+          "response": []
+        },
+        {
+          "name": "List Devices",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/biometric-devices",
+              "host": ["{{base_url}}"],
+              "path": ["biometric-devices"]
+            },
+            "description": "List all registered biometric devices"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Device Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/biometric-devices/{{device_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["biometric-devices", "{{device_id}}"]
+            },
+            "description": "Get details of a specific device"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Device",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Device 1 - Updated Name\",\n  \"location\": \"Main Reception\",\n  \"configuration\": {}\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/biometric-devices/{{device_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["biometric-devices", "{{device_id}}"]
+            },
+            "description": "Update device configuration and details"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Device",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/biometric-devices/{{device_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["biometric-devices", "{{device_id}}"]
+            },
+            "description": "Delete a device"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Device Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/biometric-devices/{{device_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["biometric-devices", "{{device_id}}", "status"]
+            },
+            "description": "Get real-time status of device (online, battery, storage)"
+          },
+          "response": []
+        },
+        {
+          "name": "Check Online Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/biometric-devices/{{device_id}}/online-status",
+              "host": ["{{base_url}}"],
+              "path": ["biometric-devices", "{{device_id}}", "online-status"]
+            },
+            "description": "Check if device is online"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Enrollment Count",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/biometric-devices/{{device_id}}/enrollment-count",
+              "host": ["{{base_url}}"],
+              "path": ["biometric-devices", "{{device_id}}", "enrollment-count"]
+            },
+            "description": "Get count of employees enrolled on device"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Biometric Enrollments",
+      "description": "Employee biometric enrollment workflow",
+      "item": [
+        {
+          "name": "Start Enrollment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"deviceId\": \"{{device_id}}\",\n  \"enrollmentType\": \"FINGERPRINT_1\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/biometric-enrollments/start",
+              "host": ["{{base_url}}"],
+              "path": ["biometric-enrollments", "start"]
+            },
+            "description": "Initiate biometric enrollment process for an employee"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Enrollment Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/biometric-enrollments/{{user_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["biometric-enrollments", "{{user_id}}", "status"]
+            },
+            "description": "Check enrollment status for an employee"
+          },
+          "response": []
+        },
+        {
+          "name": "Enroll Fingerprint",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"deviceId\": \"{{device_id}}\",\n  \"templateData\": \"base64_encoded_fingerprint_template\",\n  \"qualityScore\": 95\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/biometric-enrollments/fingerprint",
+              "host": ["{{base_url}}"],
+              "path": ["biometric-enrollments", "fingerprint"]
+            },
+            "description": "Submit fingerprint enrollment data"
+          },
+          "response": []
+        },
+        {
+          "name": "Enroll Face",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"deviceId\": \"{{device_id}}\",\n  \"templateData\": \"base64_encoded_face_template\",\n  \"qualityScore\": 98\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/biometric-enrollments/face",
+              "host": ["{{base_url}}"],
+              "path": ["biometric-enrollments", "face"]
+            },
+            "description": "Submit face recognition enrollment data"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Enrollment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enrollmentId\": \"enrollment_id\",\n  \"verificationData\": \"sample_verification_data\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/biometric-enrollments/verify",
+              "host": ["{{base_url}}"],
+              "path": ["biometric-enrollments", "verify"]
+            },
+            "description": "Verify enrollment completion"
+          },
+          "response": []
+        },
+        {
+          "name": "List Enrollments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/biometric-enrollments?skip=0&take=10",
+              "host": ["{{base_url}}"],
+              "path": ["biometric-enrollments"],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "take",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "List all biometric enrollments with pagination"
+          },
+          "response": []
+        },
+        {
+          "name": "Revoke Enrollment",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/biometric-enrollments/{{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["biometric-enrollments", "{{user_id}}"]
+            },
+            "description": "Revoke biometric enrollment for an employee"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Attendance Records",
+      "description": "Attendance marking, correction, and history",
+      "item": [
+        {
+          "name": "Mark Attendance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"status\": \"PRESENT\",\n  \"checkInTime\": \"2026-02-17T09:00:00Z\",\n  \"checkOutTime\": \"2026-02-17T17:30:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/attendance-records",
+              "host": ["{{base_url}}"],
+              "path": ["attendance-records"]
+            },
+            "description": "Mark attendance for an employee"
+          },
+          "response": []
+        },
+        {
+          "name": "Query Attendance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/attendance-records?fromDate=2026-02-01&toDate=2026-02-28",
+              "host": ["{{base_url}}"],
+              "path": ["attendance-records"],
+              "query": [
+                {
+                  "key": "fromDate",
+                  "value": "2026-02-01"
+                },
+                {
+                  "key": "toDate",
+                  "value": "2026-02-28"
+                }
+              ]
+            },
+            "description": "Query attendance records with date range"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Employee Attendance History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/attendance-records/employee/{{user_id}}?limit=30",
+              "host": ["{{base_url}}"],
+              "path": ["attendance-records", "employee", "{{user_id}}"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "30"
+                }
+              ]
+            },
+            "description": "Get attendance history for specific employee"
+          },
+          "response": []
+        },
+        {
+          "name": "Correct Attendance",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"recordId\": \"record_id\",\n  \"status\": \"PRESENT\",\n  \"checkInTime\": \"2026-02-17T09:15:00Z\",\n  \"checkOutTime\": \"2026-02-17T17:45:00Z\",\n  \"reason\": \"Device sync delay\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/attendance-records/correct",
+              "host": ["{{base_url}}"],
+              "path": ["attendance-records", "correct"]
+            },
+            "description": "Correct an attendance record"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Monthly Attendance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"month\": 2,\n  \"year\": 2026\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/attendance-records/monthly",
+              "host": ["{{base_url}}"],
+              "path": ["attendance-records", "monthly"]
+            },
+            "description": "Get monthly attendance summary"
+          },
+          "response": []
+        },
+        {
+          "name": "Check Leave Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"date\": \"2026-02-17\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/attendance-records/check-leave",
+              "host": ["{{base_url}}"],
+              "path": ["attendance-records", "check-leave"]
+            },
+            "description": "Check if employee has approved leave on a date"
+          },
+          "response": []
+        },
+        {
+          "name": "Bulk Mark Attendance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"records\": [\n    {\n      \"userId\": \"user_id_1\",\n      \"status\": \"PRESENT\",\n      \"checkInTime\": \"2026-02-17T09:00:00Z\"\n    },\n    {\n      \"userId\": \"user_id_2\",\n      \"status\": \"ABSENT\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/attendance-records/bulk-mark",
+              "host": ["{{base_url}}"],
+              "path": ["attendance-records", "bulk-mark"]
+            },
+            "description": "Mark attendance for multiple employees"
+          },
+          "response": []
+        },
+        {
+          "name": "Generate Report",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/attendance-records/report/generate?fromDate=2026-02-01&toDate=2026-02-28",
+              "host": ["{{base_url}}"],
+              "path": ["attendance-records", "report", "generate"],
+              "query": [
+                {
+                  "key": "fromDate",
+                  "value": "2026-02-01"
+                },
+                {
+                  "key": "toDate",
+                  "value": "2026-02-28"
+                }
+              ]
+            },
+            "description": "Generate attendance report"
+          },
+          "response": []
+        },
+        {
+          "name": "Export Report",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/attendance-records/report/export?format=csv&fromDate=2026-02-01&toDate=2026-02-28",
+              "host": ["{{base_url}}"],
+              "path": ["attendance-records", "report", "export"],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "csv"
+                },
+                {
+                  "key": "fromDate",
+                  "value": "2026-02-01"
+                },
+                {
+                  "key": "toDate",
+                  "value": "2026-02-28"
+                }
+              ]
+            },
+            "description": "Export attendance report (CSV, JSON, Excel)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Shift Management",
+      "description": "Shift CRUD, assignment, and rotation",
+      "item": [
+        {
+          "name": "Create Shift",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Morning Shift\",\n  \"startTime\": \"08:00\",\n  \"endTime\": \"16:00\",\n  \"gracePeriodMinutes\": 15,\n  \"halfDayThresholdMinutes\": 240,\n  \"breakDuration\": 60\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/shifts",
+              "host": ["{{base_url}}"],
+              "path": ["shifts"]
+            },
+            "description": "Create a new shift"
+          },
+          "response": []
+        },
+        {
+          "name": "List Shifts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/shifts",
+              "host": ["{{base_url}}"],
+              "path": ["shifts"]
+            },
+            "description": "List all shifts"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Shift Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/shifts/{{shift_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["shifts", "{{shift_id}}"]
+            },
+            "description": "Get details of a specific shift"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Shift",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Morning Shift - Updated\",\n  \"startTime\": \"08:30\",\n  \"endTime\": \"16:30\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/shifts/{{shift_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["shifts", "{{shift_id}}"]
+            },
+            "description": "Update a shift"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Shift",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/shifts/{{shift_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["shifts", "{{shift_id}}"]
+            },
+            "description": "Delete a shift"
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Shift to Employee",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"shiftId\": \"shift_id\",\n  \"startDate\": \"2026-02-17\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/shifts/assign",
+              "host": ["{{base_url}}"],
+              "path": ["shifts", "assign"]
+            },
+            "description": "Assign a shift to an employee"
+          },
+          "response": []
+        },
+        {
+          "name": "Bulk Assign Shift",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userIds\": [\"user_id_1\", \"user_id_2\", \"user_id_3\"],\n  \"shiftId\": \"shift_id\",\n  \"startDate\": \"2026-02-17\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/shifts/bulk-assign",
+              "host": ["{{base_url}}"],
+              "path": ["shifts", "bulk-assign"]
+            },
+            "description": "Assign shift to multiple employees"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Employee Shifts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/shifts/employee/{{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["shifts", "employee", "{{user_id}}"]
+            },
+            "description": "Get shift assignments for an employee"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Shift Roster",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/shifts/roster?month=2&year=2026",
+              "host": ["{{base_url}}"],
+              "path": ["shifts", "roster"],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "2"
+                },
+                {
+                  "key": "year",
+                  "value": "2026"
+                }
+              ]
+            },
+            "description": "Get shift roster for a month"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Leave Management",
+      "description": "Leave applications, approvals, balance tracking",
+      "item": [
+        {
+          "name": "Apply for Leave",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leaveTypeId\": \"leave_type_id\",\n  \"fromDate\": \"2026-02-17\",\n  \"toDate\": \"2026-02-19\",\n  \"reason\": \"Medical appointment\",\n  \"attachmentUrl\": \"https://example.com/attachment.pdf\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/leaves/apply",
+              "host": ["{{base_url}}"],
+              "path": ["leaves", "apply"]
+            },
+            "description": "Apply for leave"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Leave Balance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leaves/balance/{{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["leaves", "balance", "{{user_id}}"]
+            },
+            "description": "Get leave balance for an employee"
+          },
+          "response": []
+        },
+        {
+          "name": "List Pending Leave Requests",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leaves/pending",
+              "host": ["{{base_url}}"],
+              "path": ["leaves", "pending"]
+            },
+            "description": "List all pending leave requests for approval"
+          },
+          "response": []
+        },
+        {
+          "name": "Approve Leave",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leaveRequestId\": \"leave_request_id\",\n  \"approvalNotes\": \"Approved\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/leaves/approve",
+              "host": ["{{base_url}}"],
+              "path": ["leaves", "approve"]
+            },
+            "description": "Approve a leave request"
+          },
+          "response": []
+        },
+        {
+          "name": "Reject Leave",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leaveRequestId\": \"leave_request_id\",\n  \"rejectionReason\": \"Insufficient balance\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/leaves/reject",
+              "host": ["{{base_url}}"],
+              "path": ["leaves", "reject"]
+            },
+            "description": "Reject a leave request"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Employee Leave History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leaves/employee/{{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["leaves", "employee", "{{user_id}}"]
+            },
+            "description": "Get leave history for an employee"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Leave Types",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leaves/types",
+              "host": ["{{base_url}}"],
+              "path": ["leaves", "types"]
+            },
+            "description": "List all leave types"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Leave Balance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"leaveTypeId\": \"leave_type_id\",\n  \"daysToAdd\": 5,\n  \"reason\": \"Annual leave accrual\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/leaves/balance/update",
+              "host": ["{{base_url}}"],
+              "path": ["leaves", "balance", "update"]
+            },
+            "description": "Update leave balance for an employee"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. Device Synchronization",
+      "description": "Device sync, log processing, and statistics",
+      "item": [
+        {
+          "name": "Trigger Device Sync",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceId\": \"{{device_id}}\",\n  \"fullSync\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/device-sync/trigger",
+              "host": ["{{base_url}}"],
+              "path": ["device-sync", "trigger"]
+            },
+            "description": "Trigger manual device synchronization"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Sync Log",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/device-sync/logs/{{sync_log_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["device-sync", "logs", "{{sync_log_id}}"]
+            },
+            "description": "Get details of a specific sync log"
+          },
+          "response": []
+        },
+        {
+          "name": "Query Sync Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/device-sync/logs?deviceId={{device_id}}&status=SUCCESS",
+              "host": ["{{base_url}}"],
+              "path": ["device-sync", "logs"],
+              "query": [
+                {
+                  "key": "deviceId",
+                  "value": "{{device_id}}"
+                },
+                {
+                  "key": "status",
+                  "value": "SUCCESS"
+                }
+              ]
+            },
+            "description": "Query sync logs with filters"
+          },
+          "response": []
+        },
+        {
+          "name": "Process Attendance Logs",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceId\": \"{{device_id}}\",\n  \"logs\": [\n    {\n      \"logId\": 12345,\n      \"employeeId\": \"EMP001\",\n      \"timestamp\": 1708173600,\n      \"logType\": \"CHECKIN\",\n      \"temperature\": 36.5,\n      \"biometricType\": \"FINGERPRINT\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/device-sync/process-logs",
+              "host": ["{{base_url}}"],
+              "path": ["device-sync", "process-logs"]
+            },
+            "description": "Process attendance logs from device"
+          },
+          "response": []
+        },
+        {
+          "name": "Batch Device Sync",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceIds\": [\"device_id_1\", \"device_id_2\", \"device_id_3\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/device-sync/batch-sync",
+              "host": ["{{base_url}}"],
+              "path": ["device-sync", "batch-sync"]
+            },
+            "description": "Synchronize multiple devices in batch"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Sync Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/device-sync/statistics/summary?fromDate=2026-02-01&toDate=2026-02-28",
+              "host": ["{{base_url}}"],
+              "path": ["device-sync", "statistics", "summary"],
+              "query": [
+                {
+                  "key": "fromDate",
+                  "value": "2026-02-01"
+                },
+                {
+                  "key": "toDate",
+                  "value": "2026-02-28"
+                }
+              ]
+            },
+            "description": "Get sync statistics and metrics"
+          },
+          "response": []
+        },
+        {
+          "name": "Retry Failed Sync",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceId\": \"{{device_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/device-sync/retry",
+              "host": ["{{base_url}}"],
+              "path": ["device-sync", "retry"]
+            },
+            "description": "Retry failed synchronization"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Log Integrity",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromDate\": \"2026-02-01\",\n  \"toDate\": \"2026-02-28\",\n  \"deviceId\": \"{{device_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/device-sync/verify-integrity",
+              "host": ["{{base_url}}"],
+              "path": ["device-sync", "verify-integrity"]
+            },
+            "description": "Verify log integrity for date range"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "7. Authentication & Authorization",
+      "description": "Login, token refresh, permission checks",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.environment.set('auth_token', jsonData.accessToken);",
+                  "    pm.test('Login successful', function () {",
+                  "        pm.expect(jsonData).to.have.property('accessToken');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"your_password\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "User login - returns JWT token"
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "refresh"]
+            },
+            "description": "Refresh JWT token"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
