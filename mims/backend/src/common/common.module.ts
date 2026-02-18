@@ -7,6 +7,9 @@ import { EntityEncryptionService } from './services/entity-encryption.service';
 import { AuditLogViewerService } from './services/audit-log-viewer.service';
 import { ThreatDetectionService } from './services/threat-detection.service';
 import { AlertService } from './services/alert.service';
+import { DashboardService } from './services/dashboard.service';
+import { ExportService } from './services/export.service';
+import { ComplianceService } from './services/compliance.service';
 import { AuditModule } from './modules/audit.module';
 
 /**
@@ -25,6 +28,9 @@ import { AuditModule } from './modules/audit.module';
     AuditLogViewerService,
     ThreatDetectionService,
     AlertService,
+    DashboardService,
+    ExportService,
+    ComplianceService,
   ],
   exports: [
     CacheService,
@@ -35,6 +41,9 @@ import { AuditModule } from './modules/audit.module';
     AuditLogViewerService,
     ThreatDetectionService,
     AlertService,
+    DashboardService,
+    ExportService,
+    ComplianceService,
   ],
 })
 export class CommonModule {}
