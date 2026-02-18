@@ -5,16 +5,36 @@ import { AuditService } from './services/audit.service';
 import { EncryptionService } from './services/encryption.service';
 import { EntityEncryptionService } from './services/entity-encryption.service';
 import { AuditLogViewerService } from './services/audit-log-viewer.service';
+import { ThreatDetectionService } from './services/threat-detection.service';
+import { AlertService } from './services/alert.service';
 import { AuditModule } from './modules/audit.module';
 
 /**
- * Common Module - Global services like caching, encryption, auditing
+ * Common Module - Global services like caching, encryption, auditing, threat detection
  * Marked as @Global so services are available everywhere without importing
  */
 @Global()
 @Module({
   imports: [AuditModule],
-  providers: [CacheService, RedisService, AuditService, EncryptionService, EntityEncryptionService, AuditLogViewerService],
-  exports: [CacheService, RedisService, AuditService, EncryptionService, EntityEncryptionService, AuditLogViewerService],
+  providers: [
+    CacheService,
+    RedisService,
+    AuditService,
+    EncryptionService,
+    EntityEncryptionService,
+    AuditLogViewerService,
+    ThreatDetectionService,
+    AlertService,
+  ],
+  exports: [
+    CacheService,
+    RedisService,
+    AuditService,
+    EncryptionService,
+    EntityEncryptionService,
+    AuditLogViewerService,
+    ThreatDetectionService,
+    AlertService,
+  ],
 })
 export class CommonModule {}

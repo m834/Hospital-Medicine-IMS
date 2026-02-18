@@ -45,6 +45,7 @@ model Hospital {
   syncOperations     SyncOperation[]
   systemConfigs      SystemConfig[]
   featureFlags       FeatureFlag[]
+  threatAlerts       ThreatAlert[]
   // Phase 2: Clinical Services
   clinics            Clinic[]
   visits             Visit[]
@@ -198,6 +199,9 @@ model User {
   leaves                Leave[]
   leaveReviews          Leave[]             @relation("LeaveReviewedBy")
   markedAttendance      AttendanceRecord[]  @relation("MarkedAttendance")
+  // Security: Threat Detection & Alerts
+  threatAlerts          ThreatAlert[]
+  threatAlertsAsAdmin   ThreatAlert[]       @relation("AdminAlerts")
 
   @@index([hospitalId])
   @@index([pharmacyId])
@@ -2046,6 +2050,41 @@ model DeviceSyncLog {
   @@index([syncStartTime])
   @@index([status])
   @@map("device_sync_logs")
+}
+
+// ============================================
+// SECURITY: THREAT DETECTION & ALERTS
+// ============================================
+
+model ThreatAlert {
+  id              String          @id @default(uuid())
+  hospitalId      String          @map("hospital_id")
+  userId          String?         @map("user_id") // User who triggered the alert (can be null for system-wide threats)
+  adminId         String?         @map("admin_id") // Admin who acknowledged/handled the alert
+  alertType       String          @map("alert_type") // FAILED_LOGIN_ATTEMPTS, BULK_OPERATIONS, PERMISSION_ESCALATION, SUSPICIOUS_IP
+  severity        String          // CRITICAL, HIGH, MEDIUM, LOW
+  description     String          // Human-readable alert message
+  details         Json            // Additional context/metadata as JSONB
+  requiresAction  Boolean         @default(false) @map("requires_action") // Set to true for CRITICAL alerts
+  read            Boolean         @default(false)
+  dismissedAt     DateTime?       @map("dismissed_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  hospital      Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  admin         User?    @relation("AdminAlerts", fields: [adminId], references: [id], onDelete: SetNull)
+
+  // Indexes for common queries
+  @@index([hospitalId])
+  @@index([userId])
+  @@index([severity])
+  @@index([alertType])
+  @@index([read])
+  @@index([createdAt])
+  @@index([hospitalId, read]) // Composite index for hospital alert queries
+  @@map("threat_alerts")
 }
 
 model AttendanceConfig {
