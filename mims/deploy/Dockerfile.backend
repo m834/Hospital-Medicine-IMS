@@ -1,0 +1,66 @@
+# ============================================================
+# M-IMS Backend — Production Dockerfile (Multi-stage)
+# ============================================================
+# Stage 1: Build & Obfuscate
+# Stage 2: Minimal runtime image (no source, no dev tools)
+# ============================================================
+
+# ─── Stage 1: Builder ───────────────────────────────────────
+FROM node:20-alpine AS builder
+
+WORKDIR /build
+
+# Install build tools (needed for native modules like argon2)
+RUN apk add --no-cache python3 make g++ openssl
+
+# Copy package files first for layer caching
+COPY backend/package*.json ./
+RUN npm ci --include=dev
+
+# Copy full source
+COPY backend/ ./
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Build & obfuscate
+RUN node scripts/build-protected.js
+
+# ─── Stage 2: Production Runtime ────────────────────────────
+FROM node:20-alpine AS production
+
+# Security: run as non-root user
+RUN addgroup -g 1001 -S mims && adduser -S mims -u 1001 -G mims
+
+WORKDIR /app
+
+# Install production-only system dependencies
+RUN apk add --no-cache openssl libstdc++
+
+# Copy obfuscated application (no TypeScript source)
+COPY --from=builder --chown=mims:mims /build/dist-protected/app ./app
+COPY --from=builder --chown=mims:mims /build/dist-protected/prisma ./prisma
+COPY --from=builder --chown=mims:mims /build/dist-protected/package.json ./package.json
+
+# Copy Prisma client (pre-generated, no source)
+COPY --from=builder --chown=mims:mims /build/dist-protected/node_modules ./node_modules
+
+# Install runtime node_modules (no source exposed)
+RUN npm install --omit=dev --ignore-scripts 2>/dev/null || true
+
+# The license.key is NEVER baked into the image.
+# It must be mounted at runtime:  -v /path/to/license.key:/app/license.key:ro
+# Kubernetes: use a Secret mounted at /app/license.key
+
+# Expose only the API port
+EXPOSE 3001
+
+# Drop to non-root
+USER mims
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD wget -qO- http://localhost:3001/api/v1/health || exit 1
+
+# Entrypoint: run obfuscated main.js
+CMD ["node", "app/main.js"]

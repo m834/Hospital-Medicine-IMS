@@ -1,4 +1,16 @@
 import { IsNotEmpty, IsString, IsEnum, IsOptional, IsDateString, Matches, IsUUID, IsObject, ValidateNested } from 'class-validator';
+
+export enum Gender {
+  MALE = 'MALE',
+  FEMALE = 'FEMALE',
+  OTHER = 'OTHER',
+}
+
+export enum VisitType {
+  OPD = 'OPD',
+  EMERGENCY = 'EMERGENCY',
+  WARD_INDOOR = 'WARD_INDOOR',
+}
 import { Type } from 'class-transformer';
 import { VitalSignsDto } from '../../visits/dto';
 
@@ -11,9 +23,9 @@ export class CreatePatientDto {
   @IsOptional()
   dob?: string;
 
-  @IsEnum(['MALE', 'FEMALE', 'OTHER'], { message: 'Invalid gender' })
+  @IsEnum(Gender, { message: 'Invalid gender' })
   @IsNotEmpty({ message: 'Gender is required' })
-  gender: 'MALE' | 'FEMALE' | 'OTHER';
+  gender: Gender;
 
   @IsString()
   @IsOptional()
@@ -21,9 +33,9 @@ export class CreatePatientDto {
   cnic?: string;
 
   @IsString()
-  @IsNotEmpty({ message: 'Mobile number is required' })
+  @IsOptional()
   @Matches(/^(\+92|0)[0-9]{10}$/, { message: 'Invalid mobile number format' })
-  mobile: string;
+  mobile?: string;
 
   @IsString()
   @IsOptional()
@@ -33,9 +45,9 @@ export class CreatePatientDto {
   @IsOptional()
   nrNumber?: string;
 
-  @IsEnum(['OPD', 'EMERGENCY', 'WARD_INDOOR'], { message: 'Invalid visit type' })
+  @IsEnum(VisitType, { message: 'Invalid visit type' })
   @IsNotEmpty({ message: 'Visit type is required' })
-  visitType: 'OPD' | 'EMERGENCY' | 'WARD_INDOOR';
+  visitType: VisitType;
 
   @IsUUID()
   @IsOptional()

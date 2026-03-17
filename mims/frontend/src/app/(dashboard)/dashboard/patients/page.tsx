@@ -90,6 +90,7 @@ export default function PatientsPage() {
     'SUPER_ADMIN',
     'HOSPITAL_ADMIN',
     'REGISTRATION_STAFF',
+    'RECEPTIONIST',
     'DOCTOR',
     'DOCTOR_ASSISTANT',
     'MAIN_PHARMACY_MANAGER',

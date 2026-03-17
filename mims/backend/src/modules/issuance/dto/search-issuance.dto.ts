@@ -2,6 +2,11 @@ import { IsString, IsOptional, IsEnum, IsInt, Min, Max, IsDateString } from 'cla
 import { Type } from 'class-transformer';
 import { IssueTransactionStatus } from '@prisma/client';
 
+export enum SortOrder {
+  ASC = 'asc',
+  DESC = 'desc',
+}
+
 export class SearchIssuanceDto {
   @IsString()
   @IsOptional()
@@ -32,19 +37,19 @@ export class SearchIssuanceDto {
   @Max(200)
   @Type(() => Number)
   @IsOptional()
-  limit?: number = 50;
+  limit?: number;
 
   @IsInt()
   @Min(1)
   @Type(() => Number)
   @IsOptional()
-  page?: number = 1;
+  page?: number;
 
   @IsString()
   @IsOptional()
-  sortBy?: string = 'issuedAt';
+  sortBy?: string;
 
-  @IsEnum(['asc', 'desc'])
+  @IsEnum(SortOrder)
   @IsOptional()
-  sortOrder?: 'asc' | 'desc' = 'desc';
+  sortOrder?: string;
 }

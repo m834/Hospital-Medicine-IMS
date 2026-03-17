@@ -80,7 +80,12 @@ export class CorrectAttendanceDto {
   @IsDateString()
   correctedCheckInTime?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description: 'Corrected check-out time',
+    example: '2026-02-17T17:30:00Z',
+  })
+  @IsOptional()
+  @IsDateString()
   correctedCheckOutTime?: string;
 
   @IsString()

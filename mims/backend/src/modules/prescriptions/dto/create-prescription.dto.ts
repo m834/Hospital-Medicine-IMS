@@ -1,4 +1,10 @@
 import { IsString, IsNotEmpty, IsArray, ValidateNested, IsOptional, IsEnum, IsInt, Min } from 'class-validator';
+
+export enum PrescriptionType {
+  E_PRESCRIPTION = 'E_PRESCRIPTION',
+  SCANNED = 'SCANNED',
+  WRITTEN = 'WRITTEN',
+}
 import { Type } from 'class-transformer';
 
 export class PrescriptionItemDto {
@@ -32,8 +38,8 @@ export class CreatePrescriptionDto {
   @IsString()
   doctorId?: string;
 
-  @IsEnum(['E_PRESCRIPTION', 'SCANNED', 'WRITTEN'])
-  prescriptionType: 'E_PRESCRIPTION' | 'SCANNED' | 'WRITTEN';
+  @IsEnum(PrescriptionType)
+  prescriptionType: PrescriptionType;
 
   @IsOptional()
   @IsString()

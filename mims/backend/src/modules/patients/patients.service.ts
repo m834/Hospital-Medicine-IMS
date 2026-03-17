@@ -39,7 +39,7 @@ export class PatientsService {
 
   private async createAdmissionForRegistration(
     patientId: string,
-    visitId: string,
+    visitId: string | undefined,
     createPatientDto: CreatePatientDto,
     userId: string,
     hospitalId: string,
@@ -152,11 +152,15 @@ export class PatientsService {
       });
 
       if (existingPatient) {
+        // Create visit for all types
         const visitResult = await this.createVisitForRegistration(existingPatient.id, createPatientDto, userId, hospitalId);
         const visitId = visitResult?.visit?.id;
-        if (visitId) {
+        
+        // Create admission for WARD_INDOOR
+        if (createPatientDto.visitType === VisitType.WARD_INDOOR && visitId) {
           await this.createAdmissionForRegistration(existingPatient.id, visitId, createPatientDto, userId, hospitalId);
         }
+        
         return existingPatient;
       }
     }
@@ -164,29 +168,13 @@ export class PatientsService {
     // Generate NR-Number
     const nrNumber = await this.generateNRNumber(hospitalId);
 
-    // Check for duplicate mobile in same hospital
-    if (createPatientDto.mobile) {
-      const existingPatient = await this.prisma.patient.findFirst({
-        where: {
-          hospitalId,
-          mobile: createPatientDto.mobile,
-        },
-      });
-
-      if (existingPatient) {
-        throw new ConflictException(
-          `Patient with mobile ${createPatientDto.mobile} already registered (NR-Number: ${existingPatient.nrNumber})`,
-        );
-      }
-    }
-
     // Create patient
     const patient = await this.prisma.patient.create({
       data: {
         hospitalId,
         nrNumber,
         fullName: createPatientDto.fullName,
-        mobile: createPatientDto.mobile,
+        mobile: createPatientDto.mobile ?? null,
         cnic: createPatientDto.cnic,
         dob: createPatientDto.dob ? new Date(createPatientDto.dob) : null,
         gender: createPatientDto.gender,
@@ -216,9 +204,12 @@ export class PatientsService {
       },
     });
 
+    // Create visit for all types
     const visitResult = await this.createVisitForRegistration(patient.id, createPatientDto, userId, hospitalId);
     const visitId = visitResult?.visit?.id;
-    if (visitId) {
+    
+    // Create admission for WARD_INDOOR
+    if (createPatientDto.visitType === VisitType.WARD_INDOOR && visitId) {
       await this.createAdmissionForRegistration(patient.id, visitId, createPatientDto, userId, hospitalId);
     }
 

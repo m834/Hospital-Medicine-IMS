@@ -35,7 +35,7 @@ export class DepartmentsService {
     }
 
     // Validate user has access to this hospital
-    if (user.role !== UserRole.MASTER_ADMIN && user.hospitalId !== hospitalId) {
+    if ((user.role !== UserRole.MASTER_ADMIN && user.role !== UserRole.SUPER_ADMIN) && user.hospitalId !== hospitalId) {
       throw new ForbiddenException('You can only create departments in your own hospital');
     }
 
@@ -176,7 +176,8 @@ export class DepartmentsService {
 
   /**
    * Update a department
-   * Only MASTER_ADMIN can update any department
+  * MASTER_ADMIN and SUPER_ADMIN can update any department
+  * HOSPITAL_ADMIN can update departments in their hospital
    */
   async update(id: string, updateDepartmentDto: UpdateDepartmentDto, user: User) {
     const department = await this.prisma.department.findUnique({
@@ -188,8 +189,10 @@ export class DepartmentsService {
     }
 
     // Validate user has access
-    if (user.role !== UserRole.MASTER_ADMIN) {
-      throw new ForbiddenException('Only MASTER_ADMIN can update departments');
+    const canUpdateAny = user.role === UserRole.MASTER_ADMIN || user.role === UserRole.SUPER_ADMIN;
+    const canUpdateOwnHospital = user.role === UserRole.HOSPITAL_ADMIN && user.hospitalId === department.hospitalId;
+    if (!canUpdateAny && !canUpdateOwnHospital) {
+      throw new ForbiddenException('You do not have permission to update this department');
     }
 
     // If code is being updated, check for conflicts
@@ -232,7 +235,8 @@ export class DepartmentsService {
 
   /**
    * Delete a department
-   * Only MASTER_ADMIN can delete departments
+  * MASTER_ADMIN and SUPER_ADMIN can delete any department
+  * HOSPITAL_ADMIN can delete departments in their hospital
    */
   async remove(id: string, user: User) {
     const department = await this.prisma.department.findUnique({
@@ -251,9 +255,11 @@ export class DepartmentsService {
       throw new NotFoundException(`Department with ID ${id} not found`);
     }
 
-    // Only MASTER_ADMIN can delete
-    if (user.role !== UserRole.MASTER_ADMIN) {
-      throw new ForbiddenException('Only MASTER_ADMIN can delete departments');
+    // Validate user has access
+    const canDeleteAny = user.role === UserRole.MASTER_ADMIN || user.role === UserRole.SUPER_ADMIN;
+    const canDeleteOwnHospital = user.role === UserRole.HOSPITAL_ADMIN && user.hospitalId === department.hospitalId;
+    if (!canDeleteAny && !canDeleteOwnHospital) {
+      throw new ForbiddenException('You do not have permission to delete this department');
     }
 
     // Check if department has users or sub-departments

@@ -22,26 +22,21 @@ export class AdmissionsService {
     const day = String(today.getDate()).padStart(2, '0');
     const prefix = `ADM-${year}${month}${day}`;
 
-    // Get the last admission number for today
-    const lastAdmission = await this.prisma.admission.findFirst({
-      where: {
-        hospitalId,
-        admissionNumber: {
-          startsWith: prefix,
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const sequence = Math.floor(1000 + Math.random() * 9000);
+      const admissionNumber = `${prefix}-${sequence}`;
 
-    let sequence = 1;
-    if (lastAdmission) {
-      const lastSequence = parseInt(lastAdmission.admissionNumber.split('-')[3]);
-      sequence = lastSequence + 1;
+      const existing = await this.prisma.admission.findUnique({
+        where: { admissionNumber },
+        select: { id: true },
+      });
+
+      if (!existing) {
+        return admissionNumber;
+      }
     }
 
-    return `${prefix}-${String(sequence).padStart(4, '0')}`;
+    throw new ConflictException('Unable to generate unique admission number');
   }
 
   async create(createAdmissionDto: CreateAdmissionDto) {
@@ -112,83 +107,95 @@ export class AdmissionsService {
       bedCharges = bed.dailyRate;
     }
 
-    // Generate admission number
-    const admissionNumber = await this.generateAdmissionNumber(hospitalId);
+    const maxAttempts = 3;
+    let admission: any;
 
-    // Create admission in a transaction
-    const admission = await this.prisma.$transaction(async (tx) => {
-      // Create admission
-      const newAdmission = await tx.admission.create({
-        data: {
-          hospitalId,
-          patientId,
-          visitId,
-          departmentId,
-          roomId,
-          bedId,
-          attendingDoctorId,
-          admittingUserId,
-          admissionNumber,
-          ...rest,
-        },
-        include: {
-          patient: {
-            select: {
-              id: true,
-              nrNumber: true,
-              fullName: true,
-              gender: true,
-              mobile: true,
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const admissionNumber = await this.generateAdmissionNumber(hospitalId);
+
+      try {
+        admission = await this.prisma.$transaction(async (tx) => {
+          const newAdmission = await tx.admission.create({
+            data: {
+              hospitalId,
+              patientId,
+              visitId,
+              departmentId,
+              roomId,
+              bedId,
+              attendingDoctorId,
+              admittingUserId,
+              admissionNumber,
+              ...rest,
             },
-          },
-          department: {
-            select: { id: true, name: true, code: true },
-          },
-          room: {
-            select: { id: true, roomNumber: true, roomType: true, dailyRate: true },
-          },
-          bed: {
-            select: { id: true, bedNumber: true, bedType: true, dailyRate: true },
-          },
-          attendingDoctor: {
-            select: { id: true, fullName: true },
-          },
-          admittingUser: {
-            select: { id: true, fullName: true },
-          },
-        },
-      });
+            include: {
+              patient: {
+                select: {
+                  id: true,
+                  nrNumber: true,
+                  fullName: true,
+                  gender: true,
+                  mobile: true,
+                },
+              },
+              department: {
+                select: { id: true, name: true, code: true },
+              },
+              room: {
+                select: { id: true, roomNumber: true, roomType: true, dailyRate: true },
+              },
+              bed: {
+                select: { id: true, bedNumber: true, bedType: true, dailyRate: true },
+              },
+              attendingDoctor: {
+                select: { id: true, fullName: true },
+              },
+              admittingUser: {
+                select: { id: true, fullName: true },
+              },
+            },
+          });
 
-      // Update bed status to OCCUPIED if assigned
-      if (bedId) {
-        await tx.bed.update({
-          where: { id: bedId },
-          data: { status: BedStatus.OCCUPIED },
+          if (bedId) {
+            await tx.bed.update({
+              where: { id: bedId },
+              data: { status: BedStatus.OCCUPIED },
+            });
+          }
+
+          if (roomId) {
+            await tx.room.update({
+              where: { id: roomId },
+              data: { status: 'OCCUPIED' },
+            });
+          }
+
+          await tx.dailyCharge.create({
+            data: {
+              hospitalId,
+              admissionId: newAdmission.id,
+              chargeDate: new Date(),
+              roomCharges,
+              bedCharges,
+              totalCharges: new Prisma.Decimal(roomCharges).plus(bedCharges),
+            },
+          });
+
+          return newAdmission;
         });
+
+        break;
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002' &&
+          attempt < maxAttempts - 1
+        ) {
+          continue;
+        }
+        throw error;
       }
-
-      // Update room status to OCCUPIED if assigned and all beds are occupied
-      if (roomId) {
-        await tx.room.update({
-          where: { id: roomId },
-          data: { status: 'OCCUPIED' },
-        });
-      }
-
-      // Create first daily charge entry
-      await tx.dailyCharge.create({
-        data: {
-          hospitalId,
-          admissionId: newAdmission.id,
-          chargeDate: new Date(),
-          roomCharges,
-          bedCharges,
-          totalCharges: new Prisma.Decimal(roomCharges).plus(bedCharges),
-        },
-      });
-
-      return newAdmission;
-    });
+    }
 
     return admission;
   }
@@ -397,7 +404,7 @@ export class AdmissionsService {
       throw new BadRequestException('Admission is already discharged or cancelled');
     }
 
-    const { dischargingUserId, dischargedAt, dischargeSummary, diagnosisOnDischarge } =
+    const { dischargingUserId, dischargedAt, dischargeSummary, diagnosisOnDischarge, estimatedTotal } =
       dischargeDto;
 
     // Validate discharging user
@@ -431,6 +438,10 @@ export class AdmissionsService {
         .plus(labCharges)
         .plus(pharmacyCharges)
         .plus(opdCharges);
+
+      const receiptTotal = typeof estimatedTotal === 'number' && !Number.isNaN(estimatedTotal)
+        ? new Prisma.Decimal(estimatedTotal)
+        : totalCharges;
 
       // Update admission
       const dischargedAdmission = await tx.admission.update({
@@ -481,6 +492,8 @@ export class AdmissionsService {
         labCharges: labCharges.toString(),
         pharmacyCharges: pharmacyCharges.toString(),
         opdCharges: opdCharges.toString(),
+        calculatedTotal: totalCharges.toString(),
+        estimatedTotal: receiptTotal.toString(),
       });
 
       const receipt = await tx.receipt.create({
@@ -493,10 +506,10 @@ export class AdmissionsService {
           receiptNumber,
           receiptType: ReceiptType.ADMISSION,
           description: `Final bill for admission ${admission.admissionNumber}`,
-          amount: totalCharges,
+          amount: receiptTotal,
           discount: new Prisma.Decimal(0),
           tax: new Prisma.Decimal(0),
-          totalAmount: totalCharges,
+          totalAmount: receiptTotal,
           paidAmount: new Prisma.Decimal(0),
           paymentMethod: PaymentMethod.CASH,
           paymentStatus: PaymentStatus.UNPAID,

@@ -137,12 +137,14 @@ export class QueryLeaveRequestsDto {
   @IsNumber()
   @IsOptional()
   @Min(0)
+  @Type(() => Number)
   skip?: number = 0;
 
   @IsNumber()
   @IsOptional()
   @Min(1)
   @Max(100)
+  @Type(() => Number)
   take?: number = 10;
 }
 

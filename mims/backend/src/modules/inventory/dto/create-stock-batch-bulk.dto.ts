@@ -76,6 +76,45 @@ export class BulkStockBatchItemDto {
   @Min(0, { message: 'Retail price must be non-negative' })
   retailPrice: number;
 
+  // ---- Unit-based tracking fields ----
+
+  @IsString()
+  @IsOptional()
+  purchaseUnit?: string;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  purchaseUnitPrice?: number;
+
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  unitsPerPurchaseUnit?: number;
+
+  @IsString()
+  @IsOptional()
+  subUnit?: string;
+
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  unitsPerSubUnit?: number;
+
+  @IsString()
+  @IsOptional()
+  dispensingUnit?: string;
+
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  qtyReceivedPurchase?: number;
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  reorderLevel?: number;
+
   @IsDateString()
   @IsOptional()
   receivedDate?: string;

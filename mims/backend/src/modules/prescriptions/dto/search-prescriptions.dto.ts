@@ -1,4 +1,11 @@
 import { IsOptional, IsString, IsEnum, IsInt, Min } from 'class-validator';
+
+export enum PrescriptionStatus {
+  PENDING = 'PENDING',
+  ISSUED = 'ISSUED',
+  PARTIALLY_ISSUED = 'PARTIALLY_ISSUED',
+  CANCELLED = 'CANCELLED',
+}
 import { Type } from 'class-transformer';
 
 export class SearchPrescriptionsDto {
@@ -15,8 +22,8 @@ export class SearchPrescriptionsDto {
   doctorId?: string;
 
   @IsOptional()
-  @IsEnum(['PENDING', 'ISSUED', 'PARTIALLY_ISSUED', 'CANCELLED'])
-  status?: 'PENDING' | 'ISSUED' | 'PARTIALLY_ISSUED' | 'CANCELLED';
+  @IsEnum(PrescriptionStatus)
+  status?: PrescriptionStatus;
 
   @IsOptional()
   @Type(() => Number)

@@ -8,6 +8,7 @@ import {
   IsNumber,
   Min,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { StorageType, MedicineForm } from '@prisma/client';
 
 export class CreateStockBatchDto {
@@ -70,6 +71,50 @@ export class CreateStockBatchDto {
   @IsNumber()
   @Min(0, { message: 'Retail price must be non-negative' })
   retailPrice: number;
+
+  // ---- Unit-based tracking fields ----
+
+  @IsString()
+  @IsOptional()
+  purchaseUnit?: string; // e.g., Box, Bottle, Carton
+
+  @IsNumber()
+  @Min(0, { message: 'Purchase unit price must be non-negative' })
+  @IsOptional()
+  @Type(() => Number)
+  purchaseUnitPrice?: number; // price per purchase unit
+
+  @IsInt()
+  @Min(1, { message: 'Units per purchase unit must be at least 1' })
+  @IsOptional()
+  @Type(() => Number)
+  unitsPerPurchaseUnit?: number; // e.g., 1 Box = 10 Strips
+
+  @IsString()
+  @IsOptional()
+  subUnit?: string; // e.g., Strip, Vial (middle level)
+
+  @IsInt()
+  @Min(1, { message: 'Units per sub unit must be at least 1' })
+  @IsOptional()
+  @Type(() => Number)
+  unitsPerSubUnit?: number; // e.g., 1 Strip = 10 Tablets
+
+  @IsString()
+  @IsOptional()
+  dispensingUnit?: string; // e.g., Tablet, ml, Vial
+
+  @IsInt()
+  @Min(1, { message: 'Quantity received in purchase units must be at least 1' })
+  @IsOptional()
+  @Type(() => Number)
+  qtyReceivedPurchase?: number; // quantity received in purchase units
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  @Type(() => Number)
+  reorderLevel?: number; // minimum dispensing units before alert triggers
 
   @IsDateString()
   @IsOptional()

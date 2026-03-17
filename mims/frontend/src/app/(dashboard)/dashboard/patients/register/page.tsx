@@ -235,8 +235,7 @@ export default function RegisterPatientPage() {
       const response = await api.get('/rooms', {
         params: { 
           hospitalId: currentHospitalId, 
-          roomType,
-          status: 'AVAILABLE'
+          roomType
         },
       });
       const roomsList = response.data?.data || response.data || [];

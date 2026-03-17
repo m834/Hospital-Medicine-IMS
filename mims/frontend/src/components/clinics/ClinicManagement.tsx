@@ -196,6 +196,23 @@ export function ClinicManagement() {
     }
   };
 
+  const parseAvailableDays = (value: string | string[] | null | undefined) => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      // Fallback for comma-separated values like "MON,TUE,WED"
+    }
+    return trimmed
+      .split(',')
+      .map((d) => d.trim())
+      .filter(Boolean);
+  };
+
   const openEditDialog = (clinic: Clinic) => {
     setEditingClinic(clinic);
     setForm({
@@ -203,7 +220,7 @@ export function ClinicManagement() {
       doctorId: clinic.doctorId,
       name: clinic.name || '',
       opdFee: clinic.opdFee,
-      availableDays: clinic.availableDays ? JSON.parse(clinic.availableDays) : [],
+      availableDays: parseAvailableDays(clinic.availableDays),
       availableTime: clinic.availableTime || '',
       status: clinic.status,
     });

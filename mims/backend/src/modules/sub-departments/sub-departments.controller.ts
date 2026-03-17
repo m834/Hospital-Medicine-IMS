@@ -63,7 +63,7 @@ export class SubDepartmentsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.MASTER_ADMIN)
+  @Roles(UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN)
   update(
     @Param('id') id: string,
     @Body() updateSubDepartmentDto: UpdateSubDepartmentDto,
@@ -73,7 +73,7 @@ export class SubDepartmentsController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.MASTER_ADMIN)
+  @Roles(UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN)
   remove(@Param('id') id: string, @Request() req: any) {
     return this.subDepartmentsService.remove(id, req.user);
   }

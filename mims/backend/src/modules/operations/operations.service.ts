@@ -16,6 +16,9 @@ import { OperationTheatreQueryDto } from './dto/theatre-query.dto';
 import { OperationTheatreAvailabilityQueryDto } from './dto/theatre-availability-query.dto';
 import {
   AdmissionStatus,
+  PaymentMethod,
+  PaymentStatus,
+  ReceiptType,
 } from '@prisma/client';
 
 enum OperationPatientType {
@@ -99,7 +102,25 @@ export class OperationsService {
     }
   }
 
-  async create(createDto: CreateOperationDto) {
+  private async generateReceiptNumber(): Promise<string> {
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+
+    const lastReceipt = await this.prisma.receipt.findFirst({
+      where: {
+        receiptNumber: { startsWith: `REC-${dateStr}` },
+      },
+      orderBy: { receiptNumber: 'desc' },
+    });
+
+    const sequence = lastReceipt
+      ? parseInt(lastReceipt.receiptNumber.split('-')[2]) + 1
+      : 1;
+
+    return `REC-${dateStr}-${sequence.toString().padStart(4, '0')}`;
+  }
+
+  async create(createDto: CreateOperationDto, createdById: string) {
     const {
       hospitalId,
       patientId,
@@ -166,6 +187,7 @@ export class OperationsService {
       }
     }
 
+    let resolvedAdmission: { visitId?: string } | null = null;
     if (admissionId) {
       const admission = await this.prisma.admission.findUnique({
         where: { id: admissionId },
@@ -177,12 +199,13 @@ export class OperationsService {
       if (admission.status !== AdmissionStatus.ADMITTED) {
         throw new BadRequestException('Admission is not active');
       }
+      resolvedAdmission = admission;
     }
 
     const duration = estimatedDurationMinutes ?? 60;
     await this.assertTheatreAvailability(theatreId, scheduledDate, duration);
 
-    return (this.prisma as any).operation.create({
+    const operation = await (this.prisma as any).operation.create({
       data: {
         hospitalId,
         patientId,
@@ -217,6 +240,32 @@ export class OperationsService {
         admission: true,
       },
     });
+
+    const operationAmount = createDto.operationPrice ?? 0;
+    const receiptNumber = await this.generateReceiptNumber();
+
+    await this.prisma.receipt.create({
+      data: {
+        hospitalId,
+        patientId,
+        visitId: visitId ?? resolvedAdmission?.visitId ?? undefined,
+        departmentId,
+        generatedById: createdById,
+        receiptNumber,
+        receiptType: ReceiptType.PROCEDURE,
+        description: `Procedure - ${createDto.operationType}`,
+        amount: operationAmount,
+        discount: 0,
+        tax: 0,
+        totalAmount: operationAmount,
+        paidAmount: 0,
+        paymentMethod: PaymentMethod.CASH,
+        paymentStatus: PaymentStatus.UNPAID,
+        notes: createDto.notes,
+      },
+    });
+
+    return operation;
   }
 
   async findAll(query: OperationQueryDto) {

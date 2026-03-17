@@ -273,3 +273,24 @@ export function hasRole(role: string | string[]): boolean {
 
   return userRole === role;
 }
+
+/**
+ * Set impersonation session flag
+ */
+export function setImpersonationSession(isImpersonating: boolean): void {
+  if (typeof window === 'undefined') return;
+  
+  if (isImpersonating) {
+    localStorage.setItem('isImpersonating', 'true');
+  } else {
+    localStorage.removeItem('isImpersonating');
+  }
+}
+
+/**
+ * Check if currently in impersonation session
+ */
+export function isImpersonatingSession(): boolean {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem('isImpersonating') === 'true';
+}

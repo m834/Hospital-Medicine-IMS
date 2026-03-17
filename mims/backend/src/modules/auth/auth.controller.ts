@@ -1,4 +1,5 @@
 import { Controller, Post, Body, Get, UseGuards, Patch, HttpCode, HttpStatus } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto, RegisterDto, RequestPasswordResetDto, ResetPasswordDto, ChangePasswordDto } from './dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -88,6 +89,7 @@ export class AuthController {
    */
   @Post('verify')
   @UseGuards(JwtAuthGuard)
+  @SkipThrottle()
   @HttpCode(HttpStatus.OK)
   async verifyToken(@CurrentUser() user: any) {
     // If JwtAuthGuard passes, token is valid
@@ -113,4 +115,5 @@ export class AuthController {
   async refreshToken(@Body('refreshToken') refreshToken: string) {
     return this.authService.refreshToken(refreshToken);
   }
+
 }

@@ -170,7 +170,7 @@ export function useUpdateClinic() {
 
   return useMutation({
     mutationFn: async ({ id, dto }: { id: string; dto: UpdateClinicDto }) => {
-      const { data } = await api.patch(`/clinics/${id}`, dto);
+      const { data } = await api.put(`/clinics/${id}`, dto);
       return data as Clinic;
     },
     onSuccess: (_, variables) => {

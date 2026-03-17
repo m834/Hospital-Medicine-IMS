@@ -63,6 +63,7 @@ import {
   Loader2,
   X,
 } from 'lucide-react';
+import { UserRole } from '@/lib/constants';
 
 const BED_TYPES = [
   { value: 'STANDARD', label: 'Standard' },
@@ -90,7 +91,7 @@ export default function BedsPage() {
   const { toast } = useToast();
 
   // Get the effective hospital ID (either from selected hospital or user's hospital)
-  const hospitalId = selectedHospital?.id || user?.hospitalId;
+  const hospitalId = user?.role === UserRole.MASTER_ADMIN || user?.role === UserRole.SUPER_ADMIN ? selectedHospital?.id : user?.hospitalId;
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -362,7 +363,7 @@ export default function BedsPage() {
     return matchesSearch;
   });
 
-  if (!selectedHospital) {
+  if (!hospitalId) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-200px)]">
         <Card className="w-96">

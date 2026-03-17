@@ -70,9 +70,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     if (exception instanceof BadRequestException) {
       const response = exception.getResponse() as any;
       statusCode = HttpStatus.BAD_REQUEST;
-      message = 'Validation Error';
+      const responseMessage = response?.message;
+      if (Array.isArray(responseMessage)) {
+        message = responseMessage.length === 1 ? responseMessage[0] : 'Validation Error';
+      } else if (typeof responseMessage === 'string') {
+        message = responseMessage;
+      } else {
+        message = 'Validation Error';
+      }
       error = 'BadRequest';
-      validationErrors = response?.message; // Validation error details
+      validationErrors = responseMessage; // Validation error details
     }
     // Handle authentication errors
     else if (exception instanceof UnauthorizedException) {
@@ -132,7 +139,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     // Only include validation details in client response
     if (validationErrors) {
-      errorResponse.details = validationErrors;
+      if (Array.isArray(validationErrors) && validationErrors.length === 1) {
+        errorResponse.details = validationErrors[0];
+      } else {
+        errorResponse.details = validationErrors;
+      }
     }
 
     // Send response

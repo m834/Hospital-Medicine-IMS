@@ -1,6 +1,23 @@
 import { IsOptional, IsString, IsEnum, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
+export enum Gender {
+  MALE = 'MALE',
+  FEMALE = 'FEMALE',
+  OTHER = 'OTHER',
+}
+
+export enum VisitType {
+  OPD = 'OPD',
+  EMERGENCY = 'EMERGENCY',
+  WARD_INDOOR = 'WARD_INDOOR',
+}
+
+export enum SortOrder {
+  ASC = 'asc',
+  DESC = 'desc',
+}
+
 export class SearchPatientsDto {
   @IsString()
   @IsOptional()
@@ -22,13 +39,13 @@ export class SearchPatientsDto {
   @IsOptional()
   mobile?: string;
 
-  @IsEnum(['MALE', 'FEMALE', 'OTHER'], { message: 'Invalid gender' })
+  @IsEnum(Gender, { message: 'Invalid gender' })
   @IsOptional()
-  gender?: 'MALE' | 'FEMALE' | 'OTHER';
+  gender?: string;
 
-  @IsEnum(['OPD', 'EMERGENCY', 'WARD_INDOOR'], { message: 'Invalid visit type' })
+  @IsEnum(VisitType, { message: 'Invalid visit type' })
   @IsOptional()
-  visitType?: 'OPD' | 'EMERGENCY' | 'WARD_INDOOR';
+  visitType?: string;
 
   @IsString()
   @IsOptional()
@@ -39,19 +56,19 @@ export class SearchPatientsDto {
   @Max(200)
   @Type(() => Number)
   @IsOptional()
-  limit?: number = 50;
+  limit?: number;
 
   @IsInt()
   @Min(1)
   @Type(() => Number)
   @IsOptional()
-  page?: number = 1;
+  page?: number;
 
   @IsString()
   @IsOptional()
-  sortBy?: string = 'registeredAt';
+  sortBy?: string;
 
-  @IsEnum(['asc', 'desc'])
+  @IsEnum(SortOrder)
   @IsOptional()
-  sortOrder?: 'asc' | 'desc' = 'desc';
+  sortOrder?: string;
 }

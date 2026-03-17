@@ -176,12 +176,12 @@ export function EditPharmacyModal({
               name="code"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Pharmacy Code</FormLabel>
+                  <FormLabel>Pharmacy Code (Auto-generated)</FormLabel>
                   <FormControl>
-                    <Input placeholder="MAIN-PH" {...field} />
+                    <Input placeholder="PHAR-001" readOnly className="bg-muted/50" {...field} />
                   </FormControl>
                   <FormDescription>
-                    Unique code for this pharmacy
+                    System-generated code for this pharmacy
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

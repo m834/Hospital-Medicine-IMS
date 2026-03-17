@@ -1,0 +1,1195 @@
+================================================================================
+  M-IMS  —  HOSPITAL MEDICINE INVENTORY MANAGEMENT SYSTEM
+  COMPLETE DEPLOYMENT INSTRUCTION MANUAL
+  Version 1.0  |  Date: February 2026
+================================================================================
+
+  READ THIS ENTIRE DOCUMENT BEFORE TOUCHING ANY MACHINE.
+  Follow the steps in ORDER. Do not skip sections.
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+
+  PART A  —  OVERVIEW & REQUIREMENTS
+  PART B  —  WHAT TO DO ON YOUR DEVELOPMENT MACHINE (Vendor Steps)
+  PART C  —  WHAT TO COLLECT FROM THE CLIENT SERVER
+  PART D  —  GENERATING THE LICENSE KEY (Vendor Step — Back on Dev Machine)
+  PART E  —  WHAT TO INSTALL ON THE CLIENT SERVER
+  PART F  —  STARTING THE SYSTEM
+  PART G  —  VERIFYING THE SYSTEM IS RUNNING
+  PART H  —  FIRST LOGIN & INITIAL SETUP
+  PART I  —  DAILY OPERATIONS & MAINTENANCE
+  PART J  —  TROUBLESHOOTING
+  PART K  —  SECURITY CHECKLIST BEFORE HANDOFF
+  PART L  —  FILES SUMMARY (What Goes Where)
+
+================================================================================
+PART A  —  OVERVIEW & REQUIREMENTS
+================================================================================
+
+WHAT THIS SYSTEM IS
+-------------------
+  M-IMS is a Hospital Medicine Inventory Management System.
+  It includes:
+    - Frontend web application  (runs on port 3000)
+    - Backend REST API          (runs on port 3001)
+    - PostgreSQL database       (runs internally inside Docker)
+    - Redis cache               (runs internally inside Docker)
+    - Nginx reverse proxy       (runs on port 80 — main access point)
+
+HOW USERS ACCESS IT
+-------------------
+  Users open a web browser on any computer on the hospital's local network
+  and go to:    http://<SERVER-IP-ADDRESS>/
+  Example:      http://192.168.1.100/
+
+  There is NO internet required. Everything runs locally.
+
+WHAT RUNS ON THE CLIENT SERVER
+-------------------------------
+  Everything runs inside Docker containers.
+  The client server needs ONLY:
+    - Docker
+    - Docker Compose
+  Nothing else is installed directly on the machine.
+
+MINIMUM SERVER REQUIREMENTS (CLIENT MACHINE)
+---------------------------------------------
+  Operating System  : Ubuntu 22.04 LTS  (recommended)
+                      OR  Ubuntu 20.04 LTS
+                      OR  Debian 11/12
+                      OR  CentOS/RHEL 8+
+                      OR  Windows Server 2019+ with WSL2 + Docker Desktop
+  CPU               : 4 cores minimum (8 cores recommended)
+  RAM               : 8 GB minimum (16 GB recommended)
+  Disk Space        : 50 GB free minimum (100 GB recommended for database growth)
+  Network           : Connected to hospital LAN
+  Internet Access   : Only needed ONCE during initial Docker installation
+                      Not needed for day-to-day operation
+
+
+================================================================================
+PART B  —  WHAT TO DO ON YOUR DEVELOPMENT MACHINE (Vendor Steps)
+================================================================================
+
+  Run these steps on YOUR Mac/PC — the machine where the source code is.
+  Do NOT run these on the client server yet.
+
+------------------------------------------------------------------------
+STEP B-1: MAKE SURE YOUR DEV ENVIRONMENT IS READY
+------------------------------------------------------------------------
+
+  Open a terminal and check:
+
+    node --version          # Must be v18.0.0 or higher
+    npm  --version          # Must be 9.0.0 or higher
+    docker --version        # Must be 20.x or higher
+    docker compose version  # Must be 2.x or higher
+
+  If any are missing, install them before continuing.
+
+------------------------------------------------------------------------
+STEP B-2: INSTALL THE OBFUSCATION TOOL
+------------------------------------------------------------------------
+
+  The obfuscation tool (javascript-obfuscator) should already be installed
+  from the previous session. Verify:
+
+    cd /Users/mapmac/Hospital-Medicine-IMS/mims/backend
+    ls node_modules/javascript-obfuscator
+
+  If the folder does NOT exist, run:
+
+    npm install --save-dev javascript-obfuscator
+
+------------------------------------------------------------------------
+STEP B-3: BUILD THE PROTECTED BACKEND
+------------------------------------------------------------------------
+
+  This step compiles TypeScript, obfuscates all JavaScript, removes
+  source maps, and puts everything in the dist-protected/ folder.
+
+    cd /Users/mapmac/Hospital-Medicine-IMS/mims/backend
+    npm run build:prod
+
+  This will take 2–5 minutes.
+  When it finishes you will see:
+
+    ╔══════════════════════════════════════════════╗
+    ║       ✅ Protected Build Complete!            ║
+    ╚══════════════════════════════════════════════╝
+
+  The output is in:
+    /Users/mapmac/Hospital-Medicine-IMS/mims/backend/dist-protected/
+
+------------------------------------------------------------------------
+STEP B-4: BUILD THE PROTECTED FRONTEND
+------------------------------------------------------------------------
+
+  This creates a production frontend build with no source maps and
+  all console.log calls removed.
+
+    cd /Users/mapmac/Hospital-Medicine-IMS/mims/frontend
+    NODE_ENV=production npm run build
+
+  When it finishes you will see:
+    ✓ Compiled successfully
+
+  The output is in:
+    /Users/mapmac/Hospital-Medicine-IMS/mims/frontend/.next/
+
+------------------------------------------------------------------------
+STEP B-5: BUILD THE DOCKER IMAGES
+------------------------------------------------------------------------
+
+  This bundles everything into Docker images that you will ship to the
+  client. Run from the project root:
+
+    cd /Users/mapmac/Hospital-Medicine-IMS/mims
+
+    # Build backend image
+    docker build \
+      --no-cache \
+      -f deploy/Dockerfile.backend \
+      -t mims-backend:1.0.0 \
+      -t mims-backend:latest \
+      .
+
+    # Build frontend image
+    docker build \
+      --no-cache \
+      -f deploy/Dockerfile.frontend \
+      -t mims-frontend:1.0.0 \
+      -t mims-frontend:latest \
+      .
+
+  Each build takes 3–10 minutes.
+
+------------------------------------------------------------------------
+STEP B-6: EXPORT THE DOCKER IMAGES AS FILES
+------------------------------------------------------------------------
+
+  These files are what you physically carry or transfer to the client.
+
+    mkdir -p /Users/mapmac/Hospital-Medicine-IMS/mims/deploy/output
+
+    docker save mims-backend:1.0.0  | gzip > \
+      /Users/mapmac/Hospital-Medicine-IMS/mims/deploy/output/mims-backend-1.0.0.tar.gz
+
+    docker save mims-frontend:1.0.0 | gzip > \
+      /Users/mapmac/Hospital-Medicine-IMS/mims/deploy/output/mims-frontend-1.0.0.tar.gz
+
+  Also save the base images (they will be needed on the client server):
+
+    docker pull postgres:16-alpine
+    docker save postgres:16-alpine | gzip > \
+      /Users/mapmac/Hospital-Medicine-IMS/mims/deploy/output/postgres-16-alpine.tar.gz
+
+    docker pull redis:7-alpine
+    docker save redis:7-alpine | gzip > \
+      /Users/mapmac/Hospital-Medicine-IMS/mims/deploy/output/redis-7-alpine.tar.gz
+
+    docker pull nginx:alpine
+    docker save nginx:alpine | gzip > \
+      /Users/mapmac/Hospital-Medicine-IMS/mims/deploy/output/nginx-alpine.tar.gz
+
+------------------------------------------------------------------------
+STEP B-7: COPY DEPLOYMENT CONFIG FILES INTO OUTPUT FOLDER
+------------------------------------------------------------------------
+
+    cp /Users/mapmac/Hospital-Medicine-IMS/mims/deploy/docker-compose.prod.yml \
+       /Users/mapmac/Hospital-Medicine-IMS/mims/deploy/output/docker-compose.yml
+
+    cp /Users/mapmac/Hospital-Medicine-IMS/mims/deploy/nginx.conf \
+       /Users/mapmac/Hospital-Medicine-IMS/mims/deploy/output/nginx.conf
+
+------------------------------------------------------------------------
+STEP B-8: CREATE THE .env TEMPLATE FILE
+------------------------------------------------------------------------
+
+  Create this file at:
+    /Users/mapmac/Hospital-Medicine-IMS/mims/deploy/output/.env
+
+  Content (fill in ONLY the items marked — leave placeholders for now):
+
+  ─────────────────────────────────────────────────────────
+  # M-IMS Production Environment
+  NODE_ENV=production
+  APP_VERSION=1.0.0
+
+  # Database — CHANGE THESE
+  DB_USERNAME=mims_user
+  DB_PASSWORD=FILL_IN_STRONG_PASSWORD_HERE
+  DB_NAME=mims_db
+
+  # Redis — CHANGE THIS
+  REDIS_PASSWORD=FILL_IN_REDIS_PASSWORD_HERE
+
+  # JWT Secrets — generate with command below
+  JWT_SECRET=FILL_IN_AFTER_GENERATING
+  JWT_REFRESH_SECRET=FILL_IN_AFTER_GENERATING
+
+  # NextAuth
+  NEXTAUTH_SECRET=FILL_IN_AFTER_GENERATING
+
+  # License Master Key — DO NOT SHARE WITH CLIENT
+  LICENSE_MASTER_KEY=M1MS-H05P1T4L-PR0T3CT3D-2026-K3Y
+  ─────────────────────────────────────────────────────────
+
+  Generate the JWT secrets with this command (run 3 times, use each output):
+
+    node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+
+  Use the 3 outputs for JWT_SECRET, JWT_REFRESH_SECRET, and NEXTAUTH_SECRET.
+
+------------------------------------------------------------------------
+STEP B-9: VERIFY THE OUTPUT FOLDER IS COMPLETE
+------------------------------------------------------------------------
+
+  Run:
+    ls -lh /Users/mapmac/Hospital-Medicine-IMS/mims/deploy/output/
+
+  You should see ALL of these files:
+
+    mims-backend-1.0.0.tar.gz      ← backend app image
+    mims-frontend-1.0.0.tar.gz     ← frontend app image
+    postgres-16-alpine.tar.gz      ← database image
+    redis-7-alpine.tar.gz          ← cache image
+    nginx-alpine.tar.gz            ← web server image
+    docker-compose.yml             ← startup configuration
+    nginx.conf                     ← web server configuration
+    .env                           ← environment variables (partially filled)
+
+  The following file does NOT exist yet — it will be created in PART D:
+    license.key                    ← generated AFTER collecting machine info
+
+  DO NOT PROCEED TO PART C if any of the above files are missing.
+
+------------------------------------------------------------------------
+STEP B-10: PUT ALL OUTPUT FILES ON A USB DRIVE OR SECURE TRANSFER
+------------------------------------------------------------------------
+
+  Copy the entire output/ folder to a USB drive or prepare a secure
+  file transfer method (SCP, SFTP, private cloud).
+
+  IMPORTANT SECURITY RULES:
+    ✅ Transfer only the output/ folder
+    ❌ DO NOT transfer the src/ folder
+    ❌ DO NOT transfer any .ts files
+    ❌ DO NOT transfer package-lock.json or tsconfig.json
+    ❌ DO NOT transfer the scripts/ folder
+    ❌ DO NOT transfer .env from development
+
+
+
+================================================================================
+PART C  —  WHAT TO COLLECT FROM THE CLIENT SERVER
+================================================================================
+
+  These steps are performed ON THE CLIENT SERVER.
+  You need physical or remote access to the client server to do this.
+
+  GOAL: Collect the machine's unique fingerprint so we can generate
+  a license key that is locked to THAT specific machine.
+
+------------------------------------------------------------------------
+STEP C-1: CONNECT TO THE CLIENT SERVER
+------------------------------------------------------------------------
+
+  Option A — Physical access:
+    Sit at the server machine, open a terminal.
+
+  Option B — SSH remote access:
+    ssh username@<SERVER-IP-ADDRESS>
+
+  Once connected, you should see a command prompt.
+
+------------------------------------------------------------------------
+STEP C-2: CHECK THE SERVER'S MACHINE ID
+------------------------------------------------------------------------
+
+  Run this command:
+
+    cat /etc/machine-id
+
+  Expected output — a 32-character hex string. Example:
+    d8f3a1b2c4e5f6a7b8c9d0e1f2a3b4c5
+
+  WRITE THIS DOWN. You will need it to generate the license.
+
+  If that file doesn't exist, try:
+    cat /var/lib/dbus/machine-id
+
+  On Windows Server:
+    wmic csproduct get uuid
+
+------------------------------------------------------------------------
+STEP C-3: CHECK THE SERVER'S MAC ADDRESSES
+------------------------------------------------------------------------
+
+  Run this command on Linux:
+
+    ip link show | grep -E "^[0-9]|link/ether" | grep -v "00:00:00:00:00:00"
+
+  This will show output like:
+    2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> ...
+        link/ether aa:bb:cc:dd:ee:ff brd ff:ff:ff:ff:ff:ff
+    3: eth1: <BROADCAST,MULTICAST,UP,LOWER_UP> ...
+        link/ether 11:22:33:44:55:66 brd ff:ff:ff:ff:ff:ff
+
+  WRITE DOWN ALL MAC ADDRESSES shown.
+  Use ONLY the physical/real network cards (not virtual, not loopback).
+
+  On macOS:
+    ifconfig | grep ether
+
+  On Windows Server:
+    ipconfig /all | findstr "Physical Address"
+
+------------------------------------------------------------------------
+STEP C-4: CHECK THE SERVER'S IP ADDRESS
+------------------------------------------------------------------------
+
+  Run:
+    ip addr show | grep "inet " | grep -v 127.0.0.1
+
+  Example output:
+    inet 192.168.1.100/24 brd 192.168.1.255 scope global eth0
+
+  WRITE DOWN: 192.168.1.100  (this is the server IP address)
+  This is what hospital users will type in their browsers.
+
+------------------------------------------------------------------------
+STEP C-5: RECORD ALL INFORMATION ON PAPER
+------------------------------------------------------------------------
+
+  Fill in this form on paper or a text file. Keep it secure.
+
+  ┌─────────────────────────────────────────────────────────────┐
+  │  M-IMS CLIENT SERVER FINGERPRINT RECORD                     │
+  ├─────────────────────────────────────────────────────────────┤
+  │  Hospital Name    : ____________________________________     │
+  │  Contact Person   : ____________________________________     │
+  │  Server Hostname  : ____________________________________     │
+  │  Server IP Address: ____________________________________     │
+  │  Operating System : ____________________________________     │
+  │  Machine ID       : ____________________________________     │
+  │  MAC Address 1    : ____________________________________     │
+  │  MAC Address 2    : ____________________________________(opt)│
+  │  Date Collected   : ____________________________________     │
+  └─────────────────────────────────────────────────────────────┘
+
+------------------------------------------------------------------------
+STEP C-6: INSTALL DOCKER ON THE CLIENT SERVER (if not already installed)
+------------------------------------------------------------------------
+
+  Check if Docker is installed:
+    docker --version
+
+  If NOT installed, run these commands (Ubuntu/Debian):
+
+    # Update package list
+    sudo apt-get update
+
+    # Install prerequisites
+    sudo apt-get install -y ca-certificates curl gnupg lsb-release
+
+    # Add Docker's official GPG key
+    sudo install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+      sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+    # Set up the repository
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+      https://download.docker.com/linux/ubuntu \
+      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+    # Install Docker
+    sudo apt-get update
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+    # Start Docker and enable on boot
+    sudo systemctl start docker
+    sudo systemctl enable docker
+
+    # Allow current user to run docker without sudo
+    sudo usermod -aG docker $USER
+    newgrp docker
+
+    # Verify installation
+    docker --version
+    docker compose version
+
+  For CentOS/RHEL:
+    sudo yum install -y yum-utils
+    sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+    sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    sudo usermod -aG docker $USER
+
+  NOTE: If the server has NO internet access, you must install Docker
+  from the USB drive using offline packages. Ask your IT team for the
+  Docker offline .deb/.rpm packages for your OS version.
+
+------------------------------------------------------------------------
+STEP C-7: CREATE THE APPLICATION DIRECTORY ON THE CLIENT SERVER
+------------------------------------------------------------------------
+
+    sudo mkdir -p /opt/mims
+    sudo chown $USER:$USER /opt/mims
+    cd /opt/mims
+
+  This is where the application will live permanently.
+
+
+
+================================================================================
+PART D  —  GENERATING THE LICENSE KEY (Vendor Step — Back on Dev Machine)
+================================================================================
+
+  Go back to YOUR development machine now.
+  You need the Machine ID and MAC address(es) you wrote down in PART C.
+
+------------------------------------------------------------------------
+STEP D-1: GENERATE THE LICENSE KEY
+------------------------------------------------------------------------
+
+  Run this command on your dev machine, replacing the values with what
+  you collected from the client server:
+
+    cd /Users/mapmac/Hospital-Medicine-IMS/mims/backend
+
+    npx ts-node scripts/generate-license.ts \
+      --client-name="HOSPITAL_NAME_HERE" \
+      --licensed-to="CONTACT_PERSON_NAME" \
+      --machine-id="PASTE_MACHINE_ID_HERE" \
+      --mac="PASTE_MAC_ADDRESS_1_HERE" \
+      --mac="PASTE_MAC_ADDRESS_2_HERE" \
+      --expires="2027-12-31"
+
+  REAL EXAMPLE:
+    npx ts-node scripts/generate-license.ts \
+      --client-name="Al-Noor General Hospital" \
+      --licensed-to="Dr. Ahmed Al-Rashidi" \
+      --machine-id="d8f3a1b2c4e5f6a7b8c9d0e1f2a3b4c5" \
+      --mac="aa:bb:cc:dd:ee:ff" \
+      --mac="11:22:33:44:55:66" \
+      --expires="2027-12-31"
+
+  NOTES:
+    - --expires is optional. Leave it out for a perpetual license.
+    - You can add multiple --mac arguments (one per line).
+    - The date must be in YYYY-MM-DD format.
+
+------------------------------------------------------------------------
+STEP D-2: CHECK THE OUTPUT
+------------------------------------------------------------------------
+
+  After running the command you will see:
+
+    ✅ License generated successfully!
+       📄 License file  : /path/to/dist-protected/license.key
+       📋 License info  : /path/to/dist-protected/license.info
+
+  Two files are created:
+    license.key  — This is the ENCRYPTED license. GIVE THIS TO THE CLIENT.
+    license.info — This is your vendor record. KEEP THIS. NEVER SHARE IT.
+
+------------------------------------------------------------------------
+STEP D-3: COPY license.key INTO THE OUTPUT FOLDER
+------------------------------------------------------------------------
+
+    cp /Users/mapmac/Hospital-Medicine-IMS/mims/backend/dist-protected/license.key \
+       /Users/mapmac/Hospital-Medicine-IMS/mims/deploy/output/license.key
+
+------------------------------------------------------------------------
+STEP D-4: KEEP license.info IN YOUR VENDOR RECORDS
+------------------------------------------------------------------------
+
+  Store license.info in your company records.
+  You will need it if the client's hardware changes and they need a
+  re-issued license.
+
+  Store in your company folder (NOT on USB that goes to client):
+    /Users/mapmac/Hospital-Medicine-IMS/mims/deploy/vendor-records/
+      license-HOSPITAL_NAME-YYYY-MM-DD.info
+
+
+
+================================================================================
+PART E  —  WHAT TO INSTALL ON THE CLIENT SERVER
+================================================================================
+
+  Now you are ON THE CLIENT SERVER again.
+  You have the USB drive (or transferred the output/ folder).
+
+------------------------------------------------------------------------
+STEP E-1: COPY THE DEPLOYMENT FILES TO THE SERVER
+------------------------------------------------------------------------
+
+  If using USB drive, mount it and copy:
+
+    # Mount the USB (usually auto-mounted, check with: lsblk)
+    # Then copy:
+    cp -r /media/$USER/USB_DRIVE_NAME/output/* /opt/mims/
+
+  If using SCP from your dev machine:
+
+    scp -r /Users/mapmac/Hospital-Medicine-IMS/mims/deploy/output/* \
+      username@<SERVER-IP>:/opt/mims/
+
+  Verify the files are there:
+
+    ls -lh /opt/mims/
+
+  You should see:
+    mims-backend-1.0.0.tar.gz
+    mims-frontend-1.0.0.tar.gz
+    postgres-16-alpine.tar.gz
+    redis-7-alpine.tar.gz
+    nginx-alpine.tar.gz
+    docker-compose.yml
+    nginx.conf
+    .env               ← the template (needs final passwords filled in)
+    license.key        ← the license for THIS specific machine
+
+------------------------------------------------------------------------
+STEP E-2: LOAD THE DOCKER IMAGES
+------------------------------------------------------------------------
+
+  This loads the application into Docker.
+  No internet connection is required for this step.
+
+    cd /opt/mims
+
+    echo "Loading backend image..."
+    docker load < mims-backend-1.0.0.tar.gz
+
+    echo "Loading frontend image..."
+    docker load < mims-frontend-1.0.0.tar.gz
+
+    echo "Loading database image..."
+    docker load < postgres-16-alpine.tar.gz
+
+    echo "Loading cache image..."
+    docker load < redis-7-alpine.tar.gz
+
+    echo "Loading web server image..."
+    docker load < nginx-alpine.tar.gz
+
+  Verify all images loaded:
+
+    docker images
+
+  You should see:
+    REPOSITORY        TAG           IMAGE ID       CREATED         SIZE
+    mims-backend      1.0.0         ...            ...             ...
+    mims-frontend     1.0.0         ...            ...             ...
+    postgres          16-alpine     ...            ...             ...
+    redis             7-alpine      ...            ...             ...
+    nginx             alpine        ...            ...             ...
+
+------------------------------------------------------------------------
+STEP E-3: CONFIGURE THE ENVIRONMENT FILE
+------------------------------------------------------------------------
+
+  Edit the .env file with the server's actual passwords and settings:
+
+    cd /opt/mims
+    nano .env
+
+  Fill in ALL values marked with FILL_IN:
+
+  ─────────────────────────────────────────────────────────
+  NODE_ENV=production
+  APP_VERSION=1.0.0
+
+  # Database credentials (choose strong passwords)
+  DB_USERNAME=mims_user
+  DB_PASSWORD=<TYPE A STRONG PASSWORD — e.g. Mims@H0sp!t@l2026>
+  DB_NAME=mims_db
+
+  # Redis password (choose strong password)
+  REDIS_PASSWORD=<TYPE A STRONG REDIS PASSWORD>
+
+  # JWT Secrets — generate each one with:
+  # node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+  JWT_SECRET=<PASTE OUTPUT OF COMMAND ABOVE>
+  JWT_REFRESH_SECRET=<PASTE OUTPUT OF COMMAND AGAIN>
+
+  # NextAuth Secret
+  NEXTAUTH_SECRET=<PASTE OUTPUT OF COMMAND ONE MORE TIME>
+
+  # License Master Key — provided by vendor
+  LICENSE_MASTER_KEY=M1MS-H05P1T4L-PR0T3CT3D-2026-K3Y
+  ─────────────────────────────────────────────────────────
+
+  Save the file: Ctrl+O → Enter → Ctrl+X
+
+  IMPORTANT — Protect the .env file:
+    chmod 600 /opt/mims/.env
+
+------------------------------------------------------------------------
+STEP E-4: VERIFY THE license.key IS IN PLACE
+------------------------------------------------------------------------
+
+    ls -la /opt/mims/license.key
+
+  It must exist. If it is missing, go back to PART D and generate it.
+
+  Check its permissions:
+    chmod 444 /opt/mims/license.key    # read-only for everyone
+
+------------------------------------------------------------------------
+STEP E-5: SET UP LOG DIRECTORY
+------------------------------------------------------------------------
+
+    mkdir -p /opt/mims/logs
+    chmod 755 /opt/mims/logs
+
+------------------------------------------------------------------------
+STEP E-6: SET UP AUTO-START ON BOOT
+------------------------------------------------------------------------
+
+  Create a systemd service so the system starts automatically when the
+  server reboots:
+
+    sudo nano /etc/systemd/system/mims.service
+
+  Paste this content:
+
+  ─────────────────────────────────────────────────────────
+  [Unit]
+  Description=M-IMS Hospital Management System
+  Requires=docker.service
+  After=docker.service network-online.target
+  Wants=network-online.target
+
+  [Service]
+  Type=oneshot
+  RemainAfterExit=yes
+  WorkingDirectory=/opt/mims
+  ExecStart=/usr/bin/docker compose up -d
+  ExecStop=/usr/bin/docker compose down
+  TimeoutStartSec=300
+  User=root
+
+  [Install]
+  WantedBy=multi-user.target
+  ─────────────────────────────────────────────────────────
+
+  Save: Ctrl+O → Enter → Ctrl+X
+
+  Enable the service:
+    sudo systemctl daemon-reload
+    sudo systemctl enable mims.service
+
+------------------------------------------------------------------------
+STEP E-7: CONFIGURE FIREWALL (if ufw is active)
+------------------------------------------------------------------------
+
+  Check if firewall is active:
+    sudo ufw status
+
+  If active, allow the web port:
+    sudo ufw allow 80/tcp comment 'M-IMS Web'
+    sudo ufw allow 22/tcp comment 'SSH'
+    sudo ufw reload
+
+  Do NOT open ports 3000, 3001, 5432, or 6379 — they must stay private.
+
+
+
+================================================================================
+PART F  —  STARTING THE SYSTEM
+================================================================================
+
+------------------------------------------------------------------------
+STEP F-1: START ALL SERVICES
+------------------------------------------------------------------------
+
+    cd /opt/mims
+    docker compose up -d
+
+  You will see output like:
+    [+] Running 5/5
+     ✔ Container mims-postgres-1   Started
+     ✔ Container mims-redis-1      Started
+     ✔ Container mims-backend-1    Started
+     ✔ Container mims-frontend-1   Started
+     ✔ Container mims-nginx-1      Started
+
+------------------------------------------------------------------------
+STEP F-2: WATCH THE BACKEND STARTUP LOGS
+------------------------------------------------------------------------
+
+  The backend validates the license during startup. Watch the logs:
+
+    docker compose logs -f backend
+
+  SUCCESS — you should see lines like:
+
+    [LICENSE] ✅ License valid — client: "Al-Noor General Hospital", expires: 2027-12-31
+    🚀 M-IMS Backend API running on: http://localhost:3001
+
+  FAILURE — if the license is wrong, you will see:
+
+    ╔══════════════════════════════════════════════════╗
+    ║           M-IMS LICENSE VALIDATION FAILED         ║
+    ╠══════════════════════════════════════════════════╣
+    ║  Status  : MACHINE_MISMATCH                       ║
+    ...
+
+  If you see a failure, go to the TROUBLESHOOTING section (PART J).
+
+  Press Ctrl+C to stop watching logs (the containers keep running).
+
+
+
+================================================================================
+PART G  —  VERIFYING THE SYSTEM IS RUNNING
+================================================================================
+
+------------------------------------------------------------------------
+STEP G-1: CHECK ALL CONTAINERS ARE RUNNING
+------------------------------------------------------------------------
+
+    docker compose ps
+
+  Expected output (all containers should show "running"):
+
+    NAME                  IMAGE                  STATUS
+    mims-nginx-1          nginx:alpine           Up 2 minutes
+    mims-frontend-1       mims-frontend:1.0.0    Up 2 minutes (healthy)
+    mims-backend-1        mims-backend:1.0.0     Up 2 minutes (healthy)
+    mims-postgres-1       postgres:16-alpine     Up 2 minutes (healthy)
+    mims-redis-1          redis:7-alpine         Up 2 minutes (healthy)
+
+  If any container shows "Exiting" or "Error" — see PART J.
+
+------------------------------------------------------------------------
+STEP G-2: TEST THE BACKEND API
+------------------------------------------------------------------------
+
+  Run this on the server itself:
+
+    curl -s http://localhost:3001/api/v1/health
+
+  Expected response:
+    {"status":"ok","timestamp":"..."}
+
+  If no response — see PART J.
+
+------------------------------------------------------------------------
+STEP G-3: TEST THE FRONTEND
+------------------------------------------------------------------------
+
+    curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/
+
+  Expected output: 200
+
+------------------------------------------------------------------------
+STEP G-4: TEST VIA NGINX (main access point)
+------------------------------------------------------------------------
+
+    curl -s -o /dev/null -w "%{http_code}" http://localhost/
+
+  Expected output: 200
+
+------------------------------------------------------------------------
+STEP G-5: TEST FROM A WORKSTATION ON THE HOSPITAL LAN
+------------------------------------------------------------------------
+
+  On any PC connected to the same network as the server:
+  Open a web browser and go to:
+
+    http://<SERVER-IP-ADDRESS>/
+
+  Example:  http://192.168.1.100/
+
+  You should see the M-IMS login page.
+
+
+
+================================================================================
+PART H  —  FIRST LOGIN & INITIAL SETUP
+================================================================================
+
+------------------------------------------------------------------------
+STEP H-1: LOG IN AS SUPER ADMIN
+------------------------------------------------------------------------
+
+  Open a browser and go to: http://<SERVER-IP>/
+
+  Default credentials (CHANGE IMMEDIATELY):
+    Email    : admin@hospital.local
+    Password : Admin@123456
+
+  CHANGE THE PASSWORD RIGHT AFTER FIRST LOGIN.
+
+------------------------------------------------------------------------
+STEP H-2: CREATE THE HOSPITAL PROFILE
+------------------------------------------------------------------------
+
+  Go to:  Settings → Hospital Profile
+  Fill in:
+    - Hospital Name
+    - Address
+    - Phone Number
+    - Timezone
+
+------------------------------------------------------------------------
+STEP H-3: CREATE DEPARTMENTS
+------------------------------------------------------------------------
+
+  Go to:  Settings → Departments
+  Add all hospital departments:
+    - Pharmacy
+    - General Ward
+    - ICU
+    - Emergency
+    - Laboratory
+    (etc.)
+
+------------------------------------------------------------------------
+STEP H-4: CREATE USER ACCOUNTS FOR STAFF
+------------------------------------------------------------------------
+
+  Go to:  Users → Add User
+  Create accounts for:
+    - Pharmacists
+    - Ward nurses (if needed)
+    - Department heads
+    - System administrator
+
+------------------------------------------------------------------------
+STEP H-5: SEED INITIAL MEDICINE INVENTORY
+------------------------------------------------------------------------
+
+  Go to:  Inventory → Import
+  Use the bulk import Excel template to load the initial medicine list.
+  The template is at:  doc/bulk-import-format.md  (ask your vendor).
+
+
+
+================================================================================
+PART I  —  DAILY OPERATIONS & MAINTENANCE
+================================================================================
+
+------------------------------------------------------------------------
+CHECKING SYSTEM STATUS (run anytime)
+------------------------------------------------------------------------
+
+    cd /opt/mims
+    docker compose ps
+
+------------------------------------------------------------------------
+VIEWING LOGS
+------------------------------------------------------------------------
+
+  All logs:
+    docker compose logs
+
+  Backend logs only:
+    docker compose logs backend --tail=100
+
+  Follow live logs:
+    docker compose logs -f backend
+
+  License audit log (unauthorized attempt tracking):
+    docker compose exec backend cat /app/license-audit.log
+
+------------------------------------------------------------------------
+RESTARTING THE SYSTEM
+------------------------------------------------------------------------
+
+  Restart everything:
+    cd /opt/mims
+    docker compose restart
+
+  Restart only backend:
+    docker compose restart backend
+
+------------------------------------------------------------------------
+STOPPING THE SYSTEM
+------------------------------------------------------------------------
+
+    cd /opt/mims
+    docker compose down
+
+  Note: Database data is preserved in Docker volumes even when stopped.
+
+------------------------------------------------------------------------
+DATABASE BACKUP (RUN DAILY)
+------------------------------------------------------------------------
+
+  Create a backup script:
+
+    nano /opt/mims/backup.sh
+
+  Paste this:
+  ─────────────────────────────────────────────────────────
+  #!/bin/bash
+  BACKUP_DIR=/opt/mims/backups
+  DATE=$(date +%Y-%m-%d_%H-%M)
+  mkdir -p $BACKUP_DIR
+
+  docker compose exec -T postgres pg_dump \
+    -U $DB_USERNAME $DB_NAME \
+    | gzip > $BACKUP_DIR/mims_backup_$DATE.sql.gz
+
+  # Keep only last 30 days of backups
+  find $BACKUP_DIR -name "*.sql.gz" -mtime +30 -delete
+
+  echo "Backup completed: mims_backup_$DATE.sql.gz"
+  ─────────────────────────────────────────────────────────
+
+  Make it executable and schedule it:
+
+    chmod +x /opt/mims/backup.sh
+
+    # Add to crontab (runs daily at 2:00 AM)
+    crontab -e
+    # Add this line:
+    0 2 * * * /opt/mims/backup.sh >> /opt/mims/logs/backup.log 2>&1
+
+------------------------------------------------------------------------
+RESTORING FROM BACKUP
+------------------------------------------------------------------------
+
+    # Stop the application
+    docker compose down
+
+    # Restart just the database
+    docker compose up -d postgres
+
+    # Wait 10 seconds for database to start
+    sleep 10
+
+    # Restore
+    gunzip < /opt/mims/backups/mims_backup_YYYY-MM-DD_HH-MM.sql.gz | \
+      docker compose exec -T postgres psql -U mims_user mims_db
+
+    # Start everything again
+    docker compose up -d
+
+------------------------------------------------------------------------
+SYSTEM UPDATE PROCEDURE (when new version is available)
+------------------------------------------------------------------------
+
+  1. Receive new image tarballs from vendor
+  2. Copy them to /opt/mims/
+  3. Run:
+       cd /opt/mims
+       docker load < mims-backend-NEW_VERSION.tar.gz
+       docker load < mims-frontend-NEW_VERSION.tar.gz
+       # Update APP_VERSION= in .env file
+       nano .env    # change APP_VERSION=1.0.0 to the new version
+       docker compose up -d --no-build
+  4. Verify everything works (PART G checks)
+
+
+
+================================================================================
+PART J  —  TROUBLESHOOTING
+================================================================================
+
+------------------------------------------------------------------------
+PROBLEM: License validation failed — MACHINE_MISMATCH
+------------------------------------------------------------------------
+
+  Error seen in logs:
+    Status: MACHINE_MISMATCH
+
+  CAUSE: The license.key was generated for a different machine.
+
+  SOLUTION:
+    1. On the server, run:
+         cat /etc/machine-id
+         ip link show | grep "link/ether"
+    2. Send these values to the vendor.
+    3. Vendor generates a new license key with the correct machine info.
+    4. Vendor sends back a new license.key file.
+    5. Replace the old file:
+         cp new-license.key /opt/mims/license.key
+         docker compose restart backend
+
+------------------------------------------------------------------------
+PROBLEM: License validation failed — NOT_FOUND
+------------------------------------------------------------------------
+
+  Error seen in logs:
+    Status: NOT_FOUND
+
+  CAUSE: The license.key file is missing from /app/ inside the container.
+
+  SOLUTION:
+    1. Verify the file exists on the host:
+         ls -la /opt/mims/license.key
+    2. Verify the docker-compose.yml has the volume mount:
+         grep license.key /opt/mims/docker-compose.yml
+       Should show: - ./license.key:/app/license.key:ro
+    3. Restart:
+         docker compose down && docker compose up -d
+
+------------------------------------------------------------------------
+PROBLEM: License validation failed — EXPIRED
+------------------------------------------------------------------------
+
+  CAUSE: The license expiry date has passed.
+
+  SOLUTION:
+    Contact the vendor to renew the license.
+    Vendor will generate a new license.key with an extended expiry date.
+
+------------------------------------------------------------------------
+PROBLEM: Backend container keeps restarting
+------------------------------------------------------------------------
+
+  Check logs:
+    docker compose logs backend --tail=50
+
+  Common causes:
+    A. License failure (see above)
+    B. Database not ready — wait 30 seconds and check again
+    C. Wrong database password in .env — verify DB_PASSWORD is correct
+
+------------------------------------------------------------------------
+PROBLEM: Cannot connect from browser — "This site can't be reached"
+------------------------------------------------------------------------
+
+  Steps:
+    1. Check that all containers are running:
+         docker compose ps
+    2. Check nginx is up:
+         docker compose logs nginx
+    3. Check firewall:
+         sudo ufw status
+         sudo ufw allow 80/tcp
+    4. Check server IP address:
+         ip addr show
+    5. Try from the server itself first:
+         curl http://localhost/
+
+------------------------------------------------------------------------
+PROBLEM: Server rebooted — system did not start automatically
+------------------------------------------------------------------------
+
+  Check the systemd service:
+    sudo systemctl status mims.service
+
+  If inactive, start it:
+    sudo systemctl start mims.service
+
+  If failed, re-enable:
+    sudo systemctl daemon-reload
+    sudo systemctl enable mims.service
+    sudo systemctl start mims.service
+
+------------------------------------------------------------------------
+PROBLEM: Database password mismatch error
+------------------------------------------------------------------------
+
+  If you changed the DB_PASSWORD in .env after the database was already
+  created, the database still has the old password.
+
+  Solution — reset the database password:
+    docker compose exec postgres psql -U postgres -c \
+      "ALTER USER mims_user WITH PASSWORD 'YOUR_NEW_PASSWORD';"
+
+------------------------------------------------------------------------
+PROBLEM: Disk space running low
+------------------------------------------------------------------------
+
+  Check disk usage:
+    df -h /opt/mims/
+
+  Clean up old Docker resources:
+    docker system prune -f --volumes    # WARNING: removes stopped containers
+
+  Clean up old backups manually:
+    ls -lh /opt/mims/backups/
+    rm /opt/mims/backups/mims_backup_OLD_DATE.sql.gz
+
+
+
+================================================================================
+PART K  —  SECURITY CHECKLIST BEFORE HANDOFF
+================================================================================
+
+  Complete this checklist before handing the system to the client.
+
+  [ ] license.key is in place and system starts successfully
+  [ ] Default admin password has been CHANGED
+  [ ] All passwords in .env are strong (not default values)
+  [ ] .env file permissions are 600  (chmod 600 /opt/mims/.env)
+  [ ] license.key file permissions are 444 (read-only)
+  [ ] Firewall is configured — only port 80 is open to the LAN
+  [ ] Ports 3000, 3001, 5432, 6379 are NOT open to the outside
+  [ ] Database backup cron job is configured and tested
+  [ ] System auto-starts on reboot (systemd service enabled)
+  [ ] Client IT staff has been trained to check logs
+  [ ] Vendor records (license.info, machine fingerprint form) are saved
+  [ ] Client has been told NOT to share .env or license.key files
+
+  DO NOT HAND OVER:
+  [ ] Source code (src/ folders) — ❌ Never
+  [ ] TypeScript files (*.ts)    — ❌ Never
+  [ ] Development machine .env   — ❌ Never
+  [ ] license.info vendor record — ❌ Never
+  [ ] Git repository access      — ❌ Never
+
+
+
+================================================================================
+PART L  —  FILES SUMMARY (What Goes Where)
+================================================================================
+
+VENDOR DEVELOPMENT MACHINE (Your Mac/PC)
+─────────────────────────────────────────
+  Keep all source code here. Never share.
+  /Hospital-Medicine-IMS/mims/backend/src/      ← Backend source
+  /Hospital-Medicine-IMS/mims/frontend/src/     ← Frontend source
+  /Hospital-Medicine-IMS/mims/deploy/output/    ← Deployment package
+
+  Vendor-only records (never share):
+  /Hospital-Medicine-IMS/mims/deploy/vendor-records/license-*.info
+
+CLIENT SERVER — /opt/mims/ directory
+──────────────────────────────────────
+  docker-compose.yml          ← How all services run together
+  nginx.conf                  ← Web server configuration
+  .env                        ← Environment variables (passwords etc.)
+  license.key                 ← Machine-locked license (encrypted)
+  mims-backend-1.0.0.tar.gz  ← Backend Docker image (can delete after loading)
+  mims-frontend-1.0.0.tar.gz ← Frontend Docker image (can delete after loading)
+  postgres-16-alpine.tar.gz  ← Database Docker image (can delete after loading)
+  redis-7-alpine.tar.gz      ← Cache Docker image (can delete after loading)
+  nginx-alpine.tar.gz        ← Web server Docker image (can delete after loading)
+  logs/                      ← Application logs
+  backups/                   ← Database backups
+
+  NOTE: After loading the .tar.gz images into Docker, you CAN delete the
+  .tar.gz files to free up disk space. Keep a copy on your USB drive.
+  Command to delete tarballs:
+    cd /opt/mims && rm *.tar.gz
+
+WHAT IS INSIDE THE DOCKER CONTAINERS (not visible to client)
+──────────────────────────────────────────────────────────────
+  /app/app/main.js            ← Obfuscated backend (not readable)
+  /app/app/*.js               ← All obfuscated backend files
+  /app/prisma/schema.prisma   ← Database schema only
+  (NO .ts source files exist inside the container)
+  (NO source maps exist inside the container)
+
+
+================================================================================
+  END OF DOCUMENT
+  M-IMS Deployment Manual v1.0 — February 2026
+  For vendor support: keep this document with your project records.
+================================================================================

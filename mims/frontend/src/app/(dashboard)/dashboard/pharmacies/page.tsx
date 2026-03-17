@@ -414,6 +414,7 @@ export default function PharmaciesPage() {
         hospital={currentHospital}
         onClose={() => setCreateModalOpen(false)}
         onPharmacyCreated={fetchPharmacies}
+        existingCodes={pharmacies.map((pharmacy) => pharmacy.code)}
       />
 
       {/* Edit Pharmacy Modal */}

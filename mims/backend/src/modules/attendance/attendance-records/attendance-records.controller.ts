@@ -206,4 +206,94 @@ export class AttendanceRecordsController {
       reason: 'Record deleted',
     });
   }
+
+  // ==================== DASHBOARD ENDPOINTS ====================
+
+  @Get('dashboard/stats')
+  @ApiOperation({ summary: 'Get dashboard statistics for today or specific date' })
+  @ApiResponse({
+    status: 200,
+    description: 'Dashboard stats retrieved successfully',
+    schema: {
+      example: {
+        present: 245,
+        absent: 12,
+        onLeave: 8,
+        lateArrivals: 23,
+        attendanceRate: 95.2,
+        lastUpdated: '2026-02-19T14:30:00Z',
+      },
+    },
+  })
+  async getDashboardStats(
+    @CurrentHospital() hospitalId: string,
+    @Query('date') date?: string,
+  ) {
+    return this.recordService.getDashboardStats(hospitalId, date);
+  }
+
+  @Get('dashboard/department-breakdown')
+  @ApiOperation({ summary: 'Get department-wise attendance breakdown' })
+  @ApiResponse({
+    status: 200,
+    description: 'Department breakdown retrieved successfully',
+    isArray: true,
+  })
+  async getDepartmentBreakdown(
+    @CurrentHospital() hospitalId: string,
+    @Query('date') date?: string,
+  ) {
+    return this.recordService.getDepartmentBreakdown(hospitalId, date);
+  }
+
+  @Get('dashboard/daily-trend')
+  @ApiOperation({ summary: 'Get daily attendance trend for last N days' })
+  @ApiResponse({
+    status: 200,
+    description: 'Daily trend retrieved successfully',
+    isArray: true,
+  })
+  async getDailyTrend(
+    @CurrentHospital() hospitalId: string,
+    @Query('days') days: number = 30,
+  ) {
+    return this.recordService.getDailyTrend(
+      hospitalId,
+      Math.min(days, 90), // Max 90 days
+    );
+  }
+
+  @Get('dashboard/weekly-pattern')
+  @ApiOperation({ summary: 'Get weekly attendance pattern (Mon-Sun)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Weekly pattern retrieved successfully',
+    isArray: true,
+  })
+  async getWeeklyPattern(
+    @CurrentHospital() hospitalId: string,
+  ) {
+    return this.recordService.getWeeklyPattern(hospitalId);
+  }
+
+  @Get('dashboard/recent-checkins')
+  @ApiOperation({ summary: 'Get recent check-ins for today' })
+  @ApiResponse({
+    status: 200,
+    description: 'Recent check-ins retrieved successfully',
+    isArray: true,
+  })
+  async getRecentCheckIns(
+    @CurrentHospital() hospitalId: string,
+    @Query('limit') limit: number = 20,
+    @Query('departmentId') departmentId?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.recordService.getRecentCheckIns(
+      hospitalId,
+      Math.min(limit, 100), // Max 100 records
+      departmentId,
+      status,
+    );
+  }
 }

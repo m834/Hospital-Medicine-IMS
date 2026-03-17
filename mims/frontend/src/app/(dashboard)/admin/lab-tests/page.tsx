@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLabTests, useLabTestCategories, useCreateLabTest, useUpdateLabTest, useDeleteLabTest, useUpdateLabTestStatus } from "@/hooks/use-lab-tests";
 import { useDepartments, type Department } from "@/hooks/use-departments";
 import { useHospitalStore } from "@/stores/hospital.store";
@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Search, Edit, Trash2, TestTube, DollarSign, Clock, FileText } from "lucide-react";
 import type { LabTest, CreateLabTestInput } from "@/hooks/use-lab-tests";
+import { generateNextCode } from "@/lib/code";
 
 export default function LabTestsPage() {
   const { selectedHospital } = useHospitalStore();
@@ -36,6 +37,11 @@ export default function LabTestsPage() {
   const updateMutation = useUpdateLabTest();
   const deleteMutation = useDeleteLabTest();
   const updateStatusMutation = useUpdateLabTestStatus();
+
+  const nextTestCode = useMemo(
+    () => generateNextCode(labTests?.map((test) => test.testCode) || [], "LAB"),
+    [labTests]
+  );
 
   const [formData, setFormData] = useState<CreateLabTestInput>({
     hospitalId: selectedHospital?.id || "",
@@ -96,7 +102,7 @@ export default function LabTestsPage() {
   const resetForm = () => {
     setFormData({
       hospitalId: selectedHospital?.id || "",
-      testCode: "",
+      testCode: nextTestCode,
       testName: "",
       testCategory: "",
       description: "",
@@ -107,6 +113,16 @@ export default function LabTestsPage() {
       subDepartmentId: undefined,
     });
   };
+
+  useEffect(() => {
+    if (isCreateDialogOpen) {
+      setFormData((prev) => ({
+        ...prev,
+        hospitalId: selectedHospital?.id || "",
+        testCode: nextTestCode,
+      }));
+    }
+  }, [isCreateDialogOpen, nextTestCode, selectedHospital?.id]);
 
   const openEditDialog = (test: LabTest) => {
     setSelectedTest(test);
@@ -360,12 +376,13 @@ export default function LabTestsPage() {
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="testCode">Test Code *</Label>
+                <Label htmlFor="testCode">Test Code (Auto-generated)</Label>
                 <Input
                   id="testCode"
                   value={formData.testCode}
-                  onChange={(e) => setFormData({ ...formData, testCode: e.target.value.toUpperCase() })}
-                  placeholder="e.g., CBC, RBS"
+                  readOnly
+                  placeholder="LAB-001"
+                  className="bg-muted/50"
                 />
               </div>
               <div className="space-y-2">
@@ -474,11 +491,12 @@ export default function LabTestsPage() {
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-testCode">Test Code *</Label>
+                <Label htmlFor="edit-testCode">Test Code (Auto-generated)</Label>
                 <Input
                   id="edit-testCode"
                   value={formData.testCode}
-                  onChange={(e) => setFormData({ ...formData, testCode: e.target.value.toUpperCase() })}
+                  readOnly
+                  className="bg-muted/50"
                 />
               </div>
               <div className="space-y-2">

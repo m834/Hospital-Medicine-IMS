@@ -116,6 +116,7 @@ export default function PatientDetailPage() {
     'SUPER_ADMIN',
     'HOSPITAL_ADMIN',
     'REGISTRATION_STAFF',
+    'RECEPTIONIST',
     'DOCTOR',
     'DOCTOR_ASSISTANT',
     'MAIN_PHARMACY_MANAGER',

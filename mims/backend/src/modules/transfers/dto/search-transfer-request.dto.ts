@@ -5,6 +5,10 @@ import { TransferStatus } from '@prisma/client';
 export class SearchTransferRequestDto {
   @IsString()
   @IsOptional()
+  hospitalId?: string;
+
+  @IsString()
+  @IsOptional()
   fromPharmacyId?: string;
 
   @IsString()

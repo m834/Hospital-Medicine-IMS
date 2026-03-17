@@ -32,7 +32,7 @@ export interface Visit {
   diagnosis: string | null;
   treatment: string | null;
   notes: string | null;
-  status: 'WAITING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+  status: 'WAITING' | 'CALLED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
   consultationFee: string;
   paymentStatus: 'UNPAID' | 'PAID' | 'PARTIALLY_PAID' | 'REFUNDED';
   registeredBy: string;
@@ -130,7 +130,9 @@ export interface UpdateVisitDto {
   chiefComplaint?: string;
   vitalSigns?: VitalSigns;
   diagnosis?: string;
-  treatment?: string;
+  historyOfIllness?: string;
+  examination?: string;
+  treatmentPlan?: string;
   notes?: string;
   status?: 'WAITING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
 }
@@ -207,7 +209,7 @@ export function useGetClinicQueue(clinicId: string) {
   return useQuery({
     queryKey: visitKeys.queue(clinicId),
     queryFn: async () => {
-      const { data } = await api.get(`/visits/clinic/${clinicId}/queue`);
+      const { data } = await api.get(`/visits/clinic/${clinicId}`);
       return data as Visit[];
     },
     enabled: !!clinicId,
@@ -247,7 +249,7 @@ export function useUpdateVisit() {
 
   return useMutation({
     mutationFn: async ({ id, dto }: { id: string; dto: UpdateVisitDto }) => {
-      const { data } = await api.patch(`/visits/${id}`, dto);
+      const { data } = await api.put(`/visits/${id}`, dto);
       return data as Visit;
     },
     onSuccess: (_, variables) => {
@@ -326,14 +328,18 @@ export function useCallNextPatient() {
 
   return useMutation({
     mutationFn: async (clinicId: string) => {
-      const { data } = await api.post(`/visits/clinic/${clinicId}/call-next`);
-      return data as Visit;
+      const { data } = await api.post(`/visits/call-next/${clinicId}`);
+      const visit = data?.visit || data?.token?.visits?.[0] || data;
+      return visit as Visit;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: visitKeys.all });
+      const patientName = data?.patient?.firstName
+        ? `${data.patient.firstName} ${data.patient.lastName || ''}`.trim()
+        : 'Patient';
       toast({
         title: 'Next Patient Called',
-        description: `Token #${data.tokenNumber} - ${data.patient?.firstName} ${data.patient?.lastName}`,
+        description: `Token #${data.tokenNumber} - ${patientName}`,
       });
     },
     onError: (error: any) => {

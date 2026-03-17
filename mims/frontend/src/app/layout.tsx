@@ -1,3 +1,8 @@
+/**
+ * Copyright (c) 2026 Code Hustlers. All rights reserved.
+ * M-IMS — Hospital Medicine Inventory Management System
+ * Unauthorized use or distribution is strictly prohibited.
+ */
 import './globals.css'
 import './print.css'
 import type { Metadata } from 'next'

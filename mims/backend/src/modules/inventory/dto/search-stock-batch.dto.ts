@@ -1,6 +1,11 @@
-import { IsString, IsOptional, IsEnum, IsInt, Min, Max } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsString, IsOptional, IsEnum, IsInt, IsBoolean, Min, Max } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 import { BatchStatus, StorageType } from '@prisma/client';
+
+export enum SortOrder {
+  ASC = 'asc',
+  DESC = 'desc',
+}
 
 export class SearchStockBatchDto {
   @IsString()
@@ -31,6 +36,15 @@ export class SearchStockBatchDto {
   @IsOptional()
   storageType?: StorageType;
 
+  @IsString()
+  @IsOptional()
+  dispensingUnit?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  lowStockOnly?: boolean; // Filter batches below their reorder level
+
   @IsOptional()
   expiringBefore?: string; // ISO date string
 
@@ -42,19 +56,19 @@ export class SearchStockBatchDto {
   @Max(200)
   @Type(() => Number)
   @IsOptional()
-  limit?: number = 50;
+  limit?: number;
 
   @IsInt()
   @Min(1)
   @Type(() => Number)
   @IsOptional()
-  page?: number = 1;
+  page?: number;
 
   @IsString()
   @IsOptional()
-  sortBy?: string = 'receivedDate';
+  sortBy?: string;
 
-  @IsEnum(['asc', 'desc'])
+  @IsEnum(SortOrder)
   @IsOptional()
-  sortOrder?: 'asc' | 'desc' = 'asc';
+  sortOrder?: string;
 }

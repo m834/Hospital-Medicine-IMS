@@ -299,6 +299,7 @@ export default function HospitalsPage() {
       <CreateHospitalModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
+        existingCodes={hospitals.map((hospital) => hospital.code)}
         onSuccess={() => {
           fetchHospitals();
           console.log('[Hospitals] Hospital created successfully');

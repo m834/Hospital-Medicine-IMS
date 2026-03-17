@@ -1,4 +1,10 @@
 import { IsString, IsNotEmpty, IsEmail, IsEnum, MinLength, MaxLength, Matches } from 'class-validator';
+import { Transform } from 'class-transformer';
+
+export enum HospitalStatus {
+  ACTIVE = 'ACTIVE',
+  INACTIVE = 'INACTIVE',
+}
 
 export class CreateHospitalDto {
   @IsString()
@@ -10,7 +16,8 @@ export class CreateHospitalDto {
   @IsNotEmpty()
   @MinLength(2)
   @MaxLength(10)
-  @Matches(/^[A-Z0-9]+$/, { message: 'Hospital code must be uppercase alphanumeric' })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
+  @Matches(/^[A-Z0-9-]+$/, { message: 'Hospital code must be uppercase alphanumeric' })
   code: string;
 
   @IsString()
@@ -27,6 +34,6 @@ export class CreateHospitalDto {
   @IsNotEmpty()
   email: string;
 
-  @IsEnum(['ACTIVE', 'INACTIVE'])
-  status: 'ACTIVE' | 'INACTIVE';
+  @IsEnum(HospitalStatus)
+  status: HospitalStatus;
 }

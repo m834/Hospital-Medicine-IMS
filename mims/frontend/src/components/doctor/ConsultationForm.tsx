@@ -54,6 +54,12 @@ interface Department {
   code: string;
 }
 
+interface DepartmentDoctor {
+  id: string;
+  fullName: string;
+  email?: string;
+}
+
 interface ConsultationFormProps {
   visitId: string;
 }
@@ -81,6 +87,7 @@ export function ConsultationForm({ visitId }: ConsultationFormProps) {
   const [showReferralDialog, setShowReferralDialog] = useState(false);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [departmentDoctors, setDepartmentDoctors] = useState<DepartmentDoctor[]>([]);
 
   const { data: visit, isLoading, refetch } = useGetVisit(visitId);
   const updateVisit = useUpdateVisit();
@@ -109,6 +116,7 @@ export function ConsultationForm({ visitId }: ConsultationFormProps) {
 
   const [referralForm, setReferralForm] = useState({
     toDepartmentId: '',
+    toDoctorId: '',
     referralType: 'SPECIALIST_CONSULTATION' as string,
     priority: 'NORMAL' as string,
     reason: '',
@@ -161,9 +169,11 @@ export function ConsultationForm({ visitId }: ConsultationFormProps) {
         id: visitId,
         dto: {
           chiefComplaint: consultation.chiefComplaint || undefined,
+          historyOfIllness: consultation.historyOfPresentIllness || undefined,
+          examination: consultation.examinationFindings || undefined,
           vitalSigns: Object.values(vitalSigns).some((v) => v) ? vitalSigns : undefined,
           diagnosis: consultation.diagnosis || undefined,
-          treatment: consultation.treatment || undefined,
+          treatmentPlan: consultation.treatment || undefined,
           notes: consultation.notes || undefined,
           status: 'IN_PROGRESS',
         },
@@ -190,7 +200,7 @@ export function ConsultationForm({ visitId }: ConsultationFormProps) {
   };
 
   const handleCreateReferral = async () => {
-    if (!visit?.hospitalId || !visit?.clinic?.department?.id) return;
+    if (!visit?.hospitalId || !visit?.clinic?.department?.id || !user?.id) return;
 
     try {
       await createReferral.mutateAsync({
@@ -198,6 +208,7 @@ export function ConsultationForm({ visitId }: ConsultationFormProps) {
         visitId: visitId,
         fromDepartmentId: visit.clinic.department.id,
         toDepartmentId: referralForm.toDepartmentId,
+        referrerId: user.id,
         referralType: referralForm.referralType as any,
         priority: referralForm.priority as any,
         reason: referralForm.reason,
@@ -206,14 +217,42 @@ export function ConsultationForm({ visitId }: ConsultationFormProps) {
       setShowReferralDialog(false);
       setReferralForm({
         toDepartmentId: '',
+        toDoctorId: '',
         referralType: 'SPECIALIST_CONSULTATION',
         priority: 'NORMAL',
         reason: '',
         notes: '',
       });
+      setDepartmentDoctors([]);
       refetch();
     } catch (error) {
       // Error handled in hook
+    }
+  };
+
+  const fetchDepartmentDoctors = async (departmentId: string) => {
+    if (!departmentId) {
+      setDepartmentDoctors([]);
+      return;
+    }
+
+    try {
+      const response = await api.get(`/clinics/department/${departmentId}`);
+      const clinics = response.data || [];
+      const doctorsMap = new Map<string, DepartmentDoctor>();
+      clinics.forEach((clinic: any) => {
+        if (clinic?.doctor?.id) {
+          doctorsMap.set(clinic.doctor.id, {
+            id: clinic.doctor.id,
+            fullName: clinic.doctor.fullName,
+            email: clinic.doctor.email,
+          });
+        }
+      });
+      setDepartmentDoctors(Array.from(doctorsMap.values()));
+    } catch (error) {
+      console.error('Failed to fetch department doctors:', error);
+      setDepartmentDoctors([]);
     }
   };
 
@@ -669,9 +708,10 @@ export function ConsultationForm({ visitId }: ConsultationFormProps) {
               <Label>To Department</Label>
               <Select
                 value={referralForm.toDepartmentId}
-                onValueChange={(value) =>
-                  setReferralForm({ ...referralForm, toDepartmentId: value })
-                }
+                onValueChange={(value) => {
+                  setReferralForm({ ...referralForm, toDepartmentId: value, toDoctorId: '' });
+                  fetchDepartmentDoctors(value);
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select Department" />
@@ -680,6 +720,35 @@ export function ConsultationForm({ visitId }: ConsultationFormProps) {
                   {departments.map((dept) => (
                     <SelectItem key={dept.id} value={dept.id}>
                       {dept.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Department Doctor</Label>
+              <Select
+                value={referralForm.toDoctorId}
+                onValueChange={(value) =>
+                  setReferralForm({ ...referralForm, toDoctorId: value })
+                }
+                disabled={!referralForm.toDepartmentId || departmentDoctors.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      referralForm.toDepartmentId
+                        ? departmentDoctors.length > 0
+                          ? 'Select Doctor'
+                          : 'No doctors available'
+                        : 'Select department first'
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {departmentDoctors.map((doctor) => (
+                    <SelectItem key={doctor.id} value={doctor.id}>
+                      {doctor.fullName}
                     </SelectItem>
                   ))}
                 </SelectContent>

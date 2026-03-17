@@ -25,7 +25,7 @@ export class PatientsController {
   constructor(private readonly patientsService: PatientsService) {}
 
   @Post()
-  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER')
+  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'RECEPTIONIST', 'DOCTOR', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER')
   create(@Body() createPatientDto: CreatePatientDto, @Query('hospitalId') hospitalId: string, @CurrentUser() user: any) {
     // For SUPER_ADMIN without hospitalId, use hospitalId from query params
     // For other users, use their hospitalId
@@ -41,7 +41,7 @@ export class PatientsController {
   }
 
   @Get()
-  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR', 'DOCTOR_ASSISTANT', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER', 'PHARMACY_STAFF')
+  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'RECEPTIONIST', 'DOCTOR', 'DOCTOR_ASSISTANT', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER', 'PHARMACY_STAFF')
   findAll(@Query() searchDto: SearchPatientsDto, @CurrentUser() user: any) {
     // For SUPER_ADMIN, use hospitalId from query params or user's hospitalId
     const hospitalId = searchDto.hospitalId || user.hospitalId;
@@ -54,7 +54,7 @@ export class PatientsController {
   }
 
   @Get('stats')
-  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF')
+  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'RECEPTIONIST')
   getStats(@Query('hospitalId') hospitalId: string, @CurrentUser() user: any) {
     // For SUPER_ADMIN, use hospitalId from query params or user's hospitalId
     const targetHospitalId = hospitalId || user.hospitalId;
@@ -67,7 +67,7 @@ export class PatientsController {
   }
 
   @Get('nr/:nrNumber')
-  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR', 'DOCTOR_ASSISTANT', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER', 'PHARMACY_STAFF')
+  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'RECEPTIONIST', 'DOCTOR', 'DOCTOR_ASSISTANT', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER', 'PHARMACY_STAFF')
   findByNRNumber(@Param('nrNumber') nrNumber: string, @Query('hospitalId') hospitalId: string, @CurrentUser() user: any) {
     const targetHospitalId = hospitalId || user.hospitalId;
     
@@ -79,7 +79,7 @@ export class PatientsController {
   }
 
   @Get(':id')
-  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR', 'DOCTOR_ASSISTANT', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER', 'PHARMACY_STAFF')
+  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'RECEPTIONIST', 'DOCTOR', 'DOCTOR_ASSISTANT', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER', 'PHARMACY_STAFF')
   findOne(@Param('id') id: string, @Query('hospitalId') hospitalId: string, @CurrentUser() user: any) {
     const targetHospitalId = hospitalId || user.hospitalId;
     
@@ -91,7 +91,7 @@ export class PatientsController {
   }
 
   @Patch(':id')
-  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'DOCTOR')
+  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF', 'RECEPTIONIST', 'DOCTOR')
   update(
     @Param('id') id: string,
     @Body() updatePatientDto: UpdatePatientDto,

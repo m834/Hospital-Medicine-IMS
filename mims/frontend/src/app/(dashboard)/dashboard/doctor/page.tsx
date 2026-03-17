@@ -9,10 +9,10 @@ import StatsCard from '@/components/dashboard/StatsCard';
 import QuickActionsWidget from '@/components/dashboard/QuickActionsWidget';
 import AlertsWidget, { Alert } from '@/components/dashboard/AlertsWidget';
 import RecentActivityWidget, { ActivityItem } from '@/components/dashboard/RecentActivityWidget';
+import api from '@/lib/api';
 import {
   Users,
   FileText,
-  ClipboardList,
   Calendar,
   Clock,
   CheckCircle,
@@ -33,6 +33,9 @@ export default function DoctorDashboard() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [todaySchedule, setTodaySchedule] = useState<
+    { time: string; patient: string; type: string; status: string }[]
+  >([]);
 
   useEffect(() => {
     if (!user || user.role !== UserRole.DOCTOR) {
@@ -40,72 +43,133 @@ export default function DoctorDashboard() {
       return;
     }
 
-    fetchDashboardData();
+    let isMounted = true;
+    fetchDashboardData(isMounted);
+    return () => {
+      isMounted = false;
+    };
   }, [user, router]);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (isMounted: boolean) => {
     try {
       setLoading(true);
 
+      if (!user?.id) return;
+
+      const now = new Date();
+      const todayStart = new Date(now);
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date(now);
+      todayEnd.setHours(23, 59, 59, 999);
+      const weekStart = new Date(todayStart);
+      weekStart.setDate(todayStart.getDate() - 6);
+
+      const [
+        totalVisitsRes,
+        todayVisitsRes,
+        completedTodayRes,
+        weekVisitsRes,
+        pendingPrescriptionsRes,
+        recentVisitsRes,
+      ] = await Promise.all([
+        api.get('/visits', {
+          params: { attendingDoctorId: user.id, page: 1, limit: 1 },
+        }),
+        api.get('/visits', {
+          params: {
+            attendingDoctorId: user.id,
+            startDate: todayStart.toISOString(),
+            endDate: todayEnd.toISOString(),
+            page: 1,
+            limit: 1,
+          },
+        }),
+        api.get('/visits', {
+          params: {
+            attendingDoctorId: user.id,
+            status: 'COMPLETED',
+            startDate: todayStart.toISOString(),
+            endDate: todayEnd.toISOString(),
+            page: 1,
+            limit: 1,
+          },
+        }),
+        api.get('/visits', {
+          params: {
+            attendingDoctorId: user.id,
+            startDate: weekStart.toISOString(),
+            endDate: todayEnd.toISOString(),
+            page: 1,
+            limit: 1,
+          },
+        }),
+        api.get('/prescriptions', {
+          params: { doctorId: user.id, status: 'PENDING', page: 1, limit: 1 },
+        }),
+        api.get('/visits', {
+          params: { attendingDoctorId: user.id, page: 1, limit: 6 },
+        }),
+      ]);
+
+      const totalPatients = totalVisitsRes.data?.meta?.total ?? 0;
+      const todayAppointments = todayVisitsRes.data?.meta?.total ?? 0;
+      const completedToday = completedTodayRes.data?.meta?.total ?? 0;
+      const thisWeekPatients = weekVisitsRes.data?.meta?.total ?? 0;
+      const pendingPrescriptions = pendingPrescriptionsRes.data?.total ?? 0;
+
+      const recentVisits = recentVisitsRes.data?.data ?? [];
+
+      if (!isMounted) return;
+
       setStats({
-        totalPatients: 145,
-        todayAppointments: 12,
-        pendingPrescriptions: 3,
-        completedToday: 8,
-        thisWeekPatients: 67,
+        totalPatients,
+        todayAppointments,
+        pendingPrescriptions,
+        completedToday,
+        thisWeekPatients,
       });
 
-      setAlerts([
-        {
-          id: '1',
+      const nextAlerts: Alert[] = [];
+      if (pendingPrescriptions > 0) {
+        nextAlerts.push({
+          id: 'pending-prescriptions',
           type: 'warning',
           title: 'Pending Prescriptions',
-          message: '3 prescriptions awaiting your review and signature',
+          message: `${pendingPrescriptions} prescription(s) awaiting your review`,
           href: '/dashboard/prescriptions?filter=pending',
-          timestamp: new Date(Date.now() - 30 * 60 * 1000),
-        },
-        {
-          id: '2',
-          type: 'info',
-          title: 'Scheduled Appointments',
-          message: 'You have 4 appointments scheduled for tomorrow',
-          timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-        },
-      ]);
+          timestamp: new Date(),
+        });
+      }
 
-      setActivities([
-        {
-          id: '1',
-          title: 'Prescription Created',
-          description: 'Patient NR-2024-145 - 3 medicines prescribed',
-          timestamp: new Date(Date.now() - 15 * 60 * 1000),
-          user: 'You',
-          type: 'success',
-          href: '/dashboard/prescriptions',
-        },
-        {
-          id: '2',
-          title: 'Patient Consultation',
-          description: 'Patient NR-2024-144 - OPD visit completed',
-          timestamp: new Date(Date.now() - 45 * 60 * 1000),
-          user: 'You',
-          type: 'info',
-          href: '/dashboard/patients',
-        },
-        {
-          id: '3',
-          title: 'Prescription Issued',
-          description: 'Patient NR-2024-143 - Medicines dispensed from pharmacy',
-          timestamp: new Date(Date.now() - 90 * 60 * 1000),
-          user: 'Pharmacy Staff',
-          type: 'success',
-          href: '/dashboard/prescriptions',
-        },
-      ]);
+      setAlerts(nextAlerts);
+
+      const nextActivities: ActivityItem[] = recentVisits.map((visit: any) => ({
+        id: visit.id,
+        title: 'OPD Visit',
+        description: `${visit.patient?.nrNumber || 'N/A'} - ${visit.patient?.fullName || 'Patient'}`,
+        timestamp: new Date(visit.registeredAt || visit.visitDate || Date.now()),
+        user: 'You',
+        type: visit.status === 'COMPLETED' ? 'success' : 'info',
+        href: `/doctor/consult/${visit.id}`,
+      }));
+
+      setActivities(nextActivities);
+
+      const todayVisits = todayVisitsRes.data?.data ?? [];
+      const scheduleItems = todayVisits.slice(0, 4).map((visit: any) => ({
+        time: new Date(visit.registeredAt || visit.visitDate || Date.now()).toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        patient: visit.patient?.nrNumber || 'N/A',
+        type: visit.visitType || 'OPD',
+        status: visit.status || 'Scheduled',
+      }));
+      setTodaySchedule(scheduleItems);
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false);
     }
   };
 
@@ -184,40 +248,41 @@ export default function DoctorDashboard() {
         <div className="rounded-xl bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-lg font-semibold text-gray-900">Today's Schedule</h3>
           <div className="space-y-3">
-            {[
-              { time: '09:00 AM', patient: 'NR-2024-150', type: 'OPD', status: 'Completed' },
-              { time: '10:30 AM', patient: 'NR-2024-151', type: 'OPD', status: 'Completed' },
-              { time: '11:00 AM', patient: 'NR-2024-152', type: 'Emergency', status: 'In Progress' },
-              { time: '02:00 PM', patient: 'NR-2024-153', type: 'OPD', status: 'Scheduled' },
-            ].map((appointment, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between rounded-lg border border-gray-200 p-3"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50">
-                    <Clock className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{appointment.time}</p>
-                    <p className="text-xs text-gray-500">
-                      {appointment.patient} - {appointment.type}
-                    </p>
-                  </div>
-                </div>
-                <span
-                  className={`rounded-full px-2 py-1 text-xs font-medium ${
-                    appointment.status === 'Completed'
-                      ? 'bg-green-100 text-green-700'
-                      : appointment.status === 'In Progress'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  {appointment.status}
-                </span>
+            {todaySchedule.length === 0 ? (
+              <div className="rounded-lg border border-gray-200 p-3 text-sm text-gray-500">
+                No appointments today
               </div>
-            ))}
+            ) : (
+              todaySchedule.map((appointment, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between rounded-lg border border-gray-200 p-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50">
+                      <Clock className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{appointment.time}</p>
+                      <p className="text-xs text-gray-500">
+                        {appointment.patient} - {appointment.type}
+                      </p>
+                    </div>
+                  </div>
+                  <span
+                    className={`rounded-full px-2 py-1 text-xs font-medium ${
+                      appointment.status === 'COMPLETED'
+                        ? 'bg-green-100 text-green-700'
+                        : appointment.status === 'IN_PROGRESS'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    {appointment.status}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

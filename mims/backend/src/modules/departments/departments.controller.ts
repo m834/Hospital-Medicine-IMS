@@ -41,6 +41,8 @@ export class DepartmentsController {
     UserRole.DEPARTMENT_ADMIN,
     UserRole.DOCTOR,
     UserRole.NURSE,
+    UserRole.RECEPTIONIST,
+    UserRole.REGISTRATION_STAFF,
   )
   findAll(@Query('hospitalId') hospitalId: string | undefined, @Request() req: any) {
     // If hospitalId is provided as query param, use it
@@ -51,7 +53,13 @@ export class DepartmentsController {
   }
 
   @Get('hospital/:hospitalId')
-  @Roles(UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN)
+  @Roles(
+    UserRole.MASTER_ADMIN,
+    UserRole.SUPER_ADMIN,
+    UserRole.HOSPITAL_ADMIN,
+    UserRole.RECEPTIONIST,
+    UserRole.REGISTRATION_STAFF,
+  )
   findByHospital(@Param('hospitalId') hospitalId: string, @Request() req: any) {
     return this.departmentsService.findByHospital(hospitalId, req.user);
   }
@@ -68,7 +76,9 @@ export class DepartmentsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.MASTER_ADMIN)
+  @Roles(UserRole.MASTER_ADMIN,
+    UserRole.SUPER_ADMIN,
+    UserRole.HOSPITAL_ADMIN)
   update(
     @Param('id') id: string,
     @Body() updateDepartmentDto: UpdateDepartmentDto,
@@ -78,7 +88,9 @@ export class DepartmentsController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.MASTER_ADMIN)
+  @Roles(UserRole.MASTER_ADMIN,
+    UserRole.SUPER_ADMIN,
+    UserRole.HOSPITAL_ADMIN)
   remove(@Param('id') id: string, @Request() req: any) {
     return this.departmentsService.remove(id, req.user);
   }

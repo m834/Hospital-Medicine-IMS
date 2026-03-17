@@ -18,7 +18,7 @@ const prescriptionItemSchema = z.object({
 });
 
 const prescriptionSchema = z.object({
-  nrNumber: z.string().min(1, 'Patient NR Number is required'),
+  nrNumber: z.string().optional(),
   prescriptionType: z.enum(['E_PRESCRIPTION', 'SCANNED', 'WRITTEN']),
   scannedImageUrl: z.string().optional(),
   notes: z.string().optional(),
@@ -57,6 +57,7 @@ export default function CreatePrescriptionPage() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { selectedHospital } = useHospitalStore();
+  const [searchType, setSearchType] = useState<'NR' | 'CNIC'>('NR');
   const [searchNR, setSearchNR] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [searchingPatient, setSearchingPatient] = useState(false);
@@ -90,46 +91,50 @@ export default function CreatePrescriptionPage() {
     fetchMedicines();
   }, [selectedHospital]);
 
+  const formatCnic = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 13);
+    const part1 = digits.slice(0, 5);
+    const part2 = digits.slice(5, 12);
+    const part3 = digits.slice(12, 13);
+    if (part3) return `${part1}-${part2}-${part3}`;
+    if (part2) return `${part1}-${part2}`;
+    return part1;
+  };
+
   const fetchMedicines = async () => {
     try {
       setLoadingMedicines(true);
-      if (user?.pharmacyId) {
-        const today = new Date();
-        const params: any = {
-          pharmacyId: user.pharmacyId,
-          status: 'AVAILABLE',
-          expiringAfter: today.toISOString(),
-          limit: 200,
-        };
-
-        const response = await api.get('/inventory/batches', { params });
-        const batches: StockBatch[] = response.data.data || [];
-
-        const availableMedicines = new Map<string, Medicine>();
-        batches
-          .filter((batch) => batch.qtyAvailable > 0)
-          .forEach((batch) => {
-            if (!availableMedicines.has(batch.medicine.id)) {
-              availableMedicines.set(batch.medicine.id, batch.medicine);
-            }
-          });
-
-        setMedicines(Array.from(availableMedicines.values()));
-        return;
-      }
-
+      const today = new Date();
       const params: any = {
+        status: 'AVAILABLE',
+        expiringAfter: today.toISOString(),
+        sortBy: 'expiryDate',
+        sortOrder: 'asc',
         limit: 200,
-        status: 'ACTIVE',
       };
 
-      // Only add hospitalId for SUPER_ADMIN with selected hospital
-      if (user?.role === 'SUPER_ADMIN' && selectedHospital?.id) {
-        params.hospitalId = selectedHospital.id;
+      if (user?.pharmacyId) {
+        params.pharmacyId = user.pharmacyId;
       }
 
-      const response = await api.get('/medicines', { params });
-      setMedicines(response.data.data || []);
+      const response = await api.get('/inventory/batches', { params });
+      const batches: StockBatch[] = response.data.data || [];
+
+      const availableMedicines = new Map<string, { medicine: Medicine; expiryDate: string }>();
+
+      batches
+        .filter((batch) => batch.qtyAvailable > 0 && new Date(batch.expiryDate) >= today)
+        .forEach((batch) => {
+          const existing = availableMedicines.get(batch.medicine.id);
+          if (!existing || new Date(batch.expiryDate) < new Date(existing.expiryDate)) {
+            availableMedicines.set(batch.medicine.id, {
+              medicine: batch.medicine,
+              expiryDate: batch.expiryDate,
+            });
+          }
+        });
+
+      setMedicines(Array.from(availableMedicines.values()).map((entry) => entry.medicine));
     } catch (error: any) {
       console.error('Failed to fetch medicines:', error);
       alert('Failed to load medicines');
@@ -140,15 +145,18 @@ export default function CreatePrescriptionPage() {
 
   const searchPatient = async () => {
     if (!searchNR.trim()) {
-      alert('Please enter NR Number');
+      alert(`Please enter ${searchType === 'NR' ? 'NR Number' : 'CNIC'}`);
       return;
     }
 
     try {
       setSearchingPatient(true);
-      const response = await api.get(`/patients`, {
-        params: { nrNumber: searchNR.trim() },
-      });
+      const params =
+        searchType === 'NR'
+          ? { nrNumber: searchNR.trim() }
+          : { cnic: searchNR.trim() };
+
+      const response = await api.get(`/patients`, { params });
 
       const patients = response.data.data || [];
       if (patients.length === 0) {
@@ -222,14 +230,30 @@ export default function CreatePrescriptionPage() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Search Patient by NR Number <span className="text-red-500">*</span>
+                Search Patient by {searchType === 'NR' ? 'NR Number' : 'CNIC'}
               </label>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <select
+                  value={searchType}
+                  onChange={(e) => setSearchType(e.target.value as 'NR' | 'CNIC')}
+                  className="w-full sm:w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="NR">NR Number</option>
+                  <option value="CNIC">CNIC</option>
+                </select>
                 <input
                   type="text"
-                  placeholder="Enter NR Number (e.g., NR-20251128-0001)"
+                  placeholder={
+                    searchType === 'NR'
+                      ? 'Enter NR Number (e.g., NR-20251128-0001)'
+                      : 'Enter CNIC (e.g., 12345-1234567-1)'
+                  }
                   value={searchNR}
-                  onChange={(e) => setSearchNR(e.target.value)}
+                  onChange={(e) =>
+                    setSearchNR(
+                      searchType === 'CNIC' ? formatCnic(e.target.value) : e.target.value,
+                    )
+                  }
                   onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), searchPatient())}
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
@@ -242,9 +266,6 @@ export default function CreatePrescriptionPage() {
                   {searchingPatient ? 'Searching...' : 'Search'}
                 </button>
               </div>
-              {errors.nrNumber && (
-                <p className="text-red-500 text-sm mt-1">{errors.nrNumber.message}</p>
-              )}
             </div>
 
             {selectedPatient && (

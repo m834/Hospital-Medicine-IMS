@@ -31,7 +31,7 @@ interface DashboardStats {
 export default function SuperAdminDashboard() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { selectedHospital, setHospitals } = useHospitalStore();
+  const { selectedHospital, hospitals, setHospitals } = useHospitalStore();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
@@ -421,6 +421,7 @@ export default function SuperAdminDashboard() {
       <CreateHospitalModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
+        existingCodes={hospitals.map((hospital) => hospital.code)}
         onSuccess={() => {
           // Refresh hospitals list
           refreshHospitals();

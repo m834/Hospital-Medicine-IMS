@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -148,9 +149,11 @@ export class VisitsController {
 
   /**
    * PUT /visits/:id
+   * PATCH /visits/:id
    * Update visit (consultation)
    */
   @Put(':id')
+  @Patch(':id')
   @Roles(
     UserRole.MASTER_ADMIN,
     UserRole.DOCTOR,

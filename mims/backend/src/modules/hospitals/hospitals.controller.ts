@@ -6,11 +6,11 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
   Request,
   HttpCode,
   HttpStatus,
-  Query,
 } from '@nestjs/common';
 import { HospitalsService } from './hospitals.service';
 import { CreateHospitalDto, UpdateHospitalDto, CreateHospitalUserDto } from './dto';
@@ -91,7 +91,7 @@ export class HospitalsController {
    * Get all users for a specific hospital
    */
   @Get(':id/users')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.RECEPTIONIST, UserRole.REGISTRATION_STAFF)
   async findHospitalUsers(
     @Param('id') id: string,
     @Query('role') role?: UserRole,

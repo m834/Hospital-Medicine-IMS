@@ -126,6 +126,7 @@ export interface DischargeAdmissionData {
   dischargedAt: string;
   diagnosisOnDischarge: string;
   dischargeSummary: string;
+  estimatedTotal?: number;
 }
 
 // API Functions

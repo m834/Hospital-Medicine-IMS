@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import api, { getErrorMessage } from '@/lib/api';
+import { generateNextCode } from '@/lib/code';
 
 const hospitalSchema = z.object({
   name: z.string().min(3, 'Hospital name must be at least 3 characters'),
@@ -30,16 +31,23 @@ interface CreateHospitalModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  existingCodes?: string[];
 }
 
-export function CreateHospitalModal({ isOpen, onClose, onSuccess }: CreateHospitalModalProps) {
+export function CreateHospitalModal({ isOpen, onClose, onSuccess, existingCodes = [] }: CreateHospitalModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const nextHospitalCode = useMemo(
+    () => generateNextCode(existingCodes, 'HOSP'),
+    [existingCodes]
+  );
 
   const {
     register,
     handleSubmit,
     formState: { errors },
+    setValue,
     reset,
   } = useForm<HospitalFormData>({
     resolver: zodResolver(hospitalSchema),
@@ -47,6 +55,12 @@ export function CreateHospitalModal({ isOpen, onClose, onSuccess }: CreateHospit
       status: 'ACTIVE',
     },
   });
+
+  useEffect(() => {
+    if (isOpen) {
+      setValue('code', nextHospitalCode, { shouldValidate: true });
+    }
+  }, [isOpen, nextHospitalCode, setValue]);
 
   const onSubmit = async (data: HospitalFormData) => {
     setIsSubmitting(true);
@@ -118,13 +132,14 @@ export function CreateHospitalModal({ isOpen, onClose, onSuccess }: CreateHospit
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="code">Hospital Code *</Label>
+                  <Label htmlFor="code">Hospital Code (Auto-generated)</Label>
                   <Input
                     id="code"
-                    placeholder="CGH001"
+                    placeholder="HOSP-001"
                     {...register('code')}
                     disabled={isSubmitting}
-                    className="uppercase"
+                    readOnly
+                    className="bg-muted/50 uppercase"
                   />
                   {errors.code && (
                     <p className="text-sm text-destructive">{errors.code.message}</p>

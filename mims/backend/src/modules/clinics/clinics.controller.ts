@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -196,9 +197,11 @@ export class ClinicsController {
 
   /**
    * PUT /clinics/:id
+   * PATCH /clinics/:id
    * Update a clinic
    */
   @Put(':id')
+  @Patch(':id')
   @Roles(
     UserRole.MASTER_ADMIN,
     UserRole.HOSPITAL_ADMIN,

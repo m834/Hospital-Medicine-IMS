@@ -142,13 +142,14 @@ export function EditHospitalModal({ isOpen, hospital, onClose, onSuccess }: Edit
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="code">Hospital Code *</Label>
+                  <Label htmlFor="code">Hospital Code (Auto-generated)</Label>
                   <Input
                     id="code"
-                    placeholder="CGH001"
+                    placeholder="HOSP-001"
                     {...register('code')}
                     disabled={isSubmitting}
-                    className="uppercase"
+                    readOnly
+                    className="bg-muted/50 uppercase"
                   />
                   {errors.code && (
                     <p className="text-sm text-destructive">{errors.code.message}</p>

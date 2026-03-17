@@ -55,6 +55,15 @@ export class ShiftsController {
     return this.shiftsService.getShifts(hospitalId, query);
   }
 
+  @ApiOperation({ summary: 'Get all shift assignments' })
+  @Get('assignments')
+  @HttpCode(HttpStatus.OK)
+  async getAllAssignments(
+    @CurrentHospital() hospitalId: string,
+  ) {
+    return this.shiftsService.getAllShiftAssignments(hospitalId);
+  }
+
   @ApiOperation({ summary: 'Get shift by ID' })
   @Get(':id')
   @HttpCode(HttpStatus.OK)
@@ -177,4 +186,5 @@ export class ShiftsController {
   ) {
     return this.shiftsService.getShiftStatistics(hospitalId);
   }
+
 }

@@ -1,11 +1,202 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { PaymentStatus } from '@prisma/client';
 import { DailyTransactionReportDto } from './dto/daily-transaction-report.dto';
 import { DateRangeReportDto } from './dto/date-range-report.dto';
+import { FinancialReportPeriod, FinancialSummaryDto } from './dto/financial-summary.dto';
 
 @Injectable()
 export class ReportsService {
   constructor(private prisma: PrismaService) {}
+
+  private getPeriodRange(period: FinancialReportPeriod, date: Date) {
+    const start = new Date(date);
+    const end = new Date(date);
+
+    if (period === FinancialReportPeriod.DAILY) {
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+
+    if (period === FinancialReportPeriod.WEEKLY) {
+      const day = start.getDay();
+      const diffToMonday = (day === 0 ? -6 : 1) - day;
+      start.setDate(start.getDate() + diffToMonday);
+      start.setHours(0, 0, 0, 0);
+      end.setTime(start.getTime());
+      end.setDate(start.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+
+    if (period === FinancialReportPeriod.MONTHLY) {
+      start.setDate(1);
+      start.setHours(0, 0, 0, 0);
+      end.setMonth(start.getMonth() + 1);
+      end.setDate(0);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+
+    start.setMonth(0, 1);
+    start.setHours(0, 0, 0, 0);
+    end.setMonth(11, 31);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+
+  async getFinancialSummary(dto: FinancialSummaryDto) {
+    const { hospitalId, period, date } = dto;
+    const targetDate = new Date(date);
+    const { start, end } = this.getPeriodRange(period, targetDate);
+
+    const [incomeAgg, expenseAgg, payrollAgg] = await Promise.all([
+      this.prisma.receipt.aggregate({
+        where: {
+          hospitalId,
+          paymentStatus: PaymentStatus.PAID,
+          OR: [
+            { paidAt: { gte: start, lte: end } },
+            { paidAt: null, createdAt: { gte: start, lte: end } },
+          ],
+        },
+        _sum: { paidAmount: true },
+      }),
+      this.prisma.expenditure.aggregate({
+        where: {
+          hospitalId,
+          date: { gte: start, lte: end },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.payrollRecord.aggregate({
+        where: {
+          hospitalId,
+          generatedAt: { gte: start, lte: end },
+        },
+        _sum: { netPay: true },
+      }),
+    ]);
+
+    const income = Number(incomeAgg._sum.paidAmount || 0);
+    const expenses = Number(expenseAgg._sum.amount || 0);
+    const payroll = Number(payrollAgg._sum.netPay || 0);
+    const profitLoss = income - (expenses + payroll);
+
+    return {
+      period,
+      range: {
+        start: start.toISOString(),
+        end: end.toISOString(),
+      },
+      income,
+      expenses,
+      payroll,
+      profitLoss,
+    };
+  }
+
+  async getComprehensiveFinancialReport(dto: FinancialSummaryDto) {
+    const { hospitalId, period, date } = dto;
+    const targetDate = new Date(date);
+    const { start, end } = this.getPeriodRange(period, targetDate);
+
+    const [incomeByType, expenseAgg, payrollAgg, payrollRecords] = await Promise.all([
+      this.prisma.receipt.groupBy({
+        by: ['receiptType'],
+        where: {
+          hospitalId,
+          paymentStatus: PaymentStatus.PAID,
+          OR: [
+            { paidAt: { gte: start, lte: end } },
+            { paidAt: null, createdAt: { gte: start, lte: end } },
+          ],
+        },
+        _sum: { paidAmount: true },
+      }),
+      this.prisma.expenditure.aggregate({
+        where: {
+          hospitalId,
+          date: { gte: start, lte: end },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.payrollRecord.aggregate({
+        where: {
+          hospitalId,
+          generatedAt: { gte: start, lte: end },
+        },
+        _sum: { netPay: true },
+      }),
+      this.prisma.payrollRecord.findMany({
+        where: {
+          hospitalId,
+          generatedAt: { gte: start, lte: end },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              department: { select: { name: true } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const incomeTotals = incomeByType.reduce<Record<string, number>>((acc, item) => {
+      acc[item.receiptType] = Number(item._sum.paidAmount || 0);
+      return acc;
+    }, {});
+
+    const opdIncome = incomeTotals.OPD_CONSULTATION || 0;
+    const labIncome = (incomeTotals.LAB_TEST || 0) + (incomeTotals.RADIOLOGY || 0);
+    const operationIncome = incomeTotals.PROCEDURE || 0;
+    const roomIncome = (incomeTotals.ROOM_CHARGES || 0) + (incomeTotals.ADMISSION || 0);
+    const pharmacyIncome = incomeTotals.PHARMACY || 0;
+    const otherIncome = incomeTotals.OTHER || 0;
+
+    const totalIncome =
+      opdIncome +
+      labIncome +
+      operationIncome +
+      roomIncome +
+      pharmacyIncome +
+      otherIncome;
+
+    const expenses = Number(expenseAgg._sum.amount || 0);
+    const payroll = Number(payrollAgg._sum.netPay || 0);
+
+    const departmentPayroll = payrollRecords.reduce<Record<string, number>>((acc, record) => {
+      const name = record.user?.department?.name || 'Unassigned';
+      acc[name] = (acc[name] || 0) + Number(record.netPay || 0);
+      return acc;
+    }, {});
+
+    const profitLoss = totalIncome - (expenses + payroll);
+
+    return {
+      period,
+      range: {
+        start: start.toISOString(),
+        end: end.toISOString(),
+      },
+      income: {
+        opd: opdIncome,
+        lab: labIncome,
+        operation: operationIncome,
+        room: roomIncome,
+        pharmacy: pharmacyIncome,
+        other: otherIncome,
+      },
+      expenses,
+      payroll,
+      payrollByDepartment: departmentPayroll,
+      totalIncome,
+      profitLoss,
+    };
+  }
 
   /**
    * Get daily transaction summary for a pharmacy

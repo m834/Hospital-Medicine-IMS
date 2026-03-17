@@ -221,7 +221,6 @@ export default function PrescriptionsPage() {
               <option value="">All Status</option>
               <option value="PENDING">Pending</option>
               <option value="ISSUED">Issued</option>
-              <option value="PARTIALLY_ISSUED">Partially Issued</option>
               <option value="CANCELLED">Cancelled</option>
             </select>
           </div>

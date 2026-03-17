@@ -1,0 +1,58 @@
+# Docker ignore — prevents source from leaking into image layers
+# ─────────────────────────────────────────────────────────────
+# Git & Version Control
+.git
+.gitignore
+.gitattributes
+
+# Node modules (re-installed inside container)
+node_modules/
+*/node_modules/
+
+# TypeScript source (NEVER in production image)
+src/
+test/
+scripts/
+*.ts
+!*.d.ts
+
+# Config & Dev files
+.eslintrc*
+.prettierrc*
+tsconfig*.json
+nest-cli.json
+jest*.json
+jest*.config.js
+obfuscator.config.js
+
+# Documentation & Notes
+docs/
+*.md
+*.txt
+*.log
+
+# Environment files (injected at runtime)
+.env
+.env.*
+
+# Build artifacts (only dist-protected should be used)
+dist/
+
+# Coverage & reports
+coverage/
+.nyc_output/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor configs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Prisma source (only generated client needed)
+prisma/migrations/
+prisma/seed.ts
+prisma/seeds/

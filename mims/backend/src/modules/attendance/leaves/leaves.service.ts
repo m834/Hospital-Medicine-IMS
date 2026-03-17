@@ -46,10 +46,8 @@ export class LeavesService {
         userId,
         hospitalId,
         status: { in: ['PENDING', 'APPROVED'] },
-        OR: [
-          { startDate: { lte: endDate } },
-          { endDate: { gte: startDate } },
-        ],
+        startDate: { lte: endDate },
+        endDate: { gte: startDate },
       },
     });
 

@@ -17,6 +17,32 @@ export class InventoryService {
     private cacheService: CacheService,
   ) {}
 
+  /**
+   * Calculate total dispensing units from purchase units.
+   * Formula: qtyReceivedPurchase × unitsPerPurchaseUnit × unitsPerSubUnit
+   */
+  private calculateDispensingUnits(
+    qtyReceivedPurchase: number,
+    unitsPerPurchaseUnit: number = 1,
+    unitsPerSubUnit: number = 1,
+  ): number {
+    return qtyReceivedPurchase * unitsPerPurchaseUnit * unitsPerSubUnit;
+  }
+
+  /**
+   * Calculate cost per dispensing unit.
+   * Formula: purchaseUnitPrice / (unitsPerPurchaseUnit × unitsPerSubUnit)
+   */
+  private calculateCostPerDispensingUnit(
+    purchaseUnitPrice: number,
+    unitsPerPurchaseUnit: number = 1,
+    unitsPerSubUnit: number = 1,
+  ): number {
+    const totalUnitsPerPurchase = unitsPerPurchaseUnit * unitsPerSubUnit;
+    if (totalUnitsPerPurchase === 0) return 0;
+    return purchaseUnitPrice / totalUnitsPerPurchase;
+  }
+
   async create(createStockBatchDto: CreateStockBatchDto, hospitalId: string) {
     let medicineId = createStockBatchDto.medicineId;
 
@@ -100,6 +126,27 @@ export class InventoryService {
         receivedDate: createStockBatchDto.receivedDate
           ? new Date(createStockBatchDto.receivedDate)
           : new Date(),
+        // Unit-based tracking fields
+        purchaseUnit: createStockBatchDto.purchaseUnit,
+        purchaseUnitPrice: createStockBatchDto.purchaseUnitPrice,
+        unitsPerPurchaseUnit: createStockBatchDto.unitsPerPurchaseUnit ?? 1,
+        subUnit: createStockBatchDto.subUnit,
+        unitsPerSubUnit: createStockBatchDto.unitsPerSubUnit ?? 1,
+        dispensingUnit: createStockBatchDto.dispensingUnit,
+        qtyReceivedPurchase: createStockBatchDto.qtyReceivedPurchase ?? createStockBatchDto.qtyReceived,
+        qtyAvailableDispensing: this.calculateDispensingUnits(
+          createStockBatchDto.qtyReceivedPurchase ?? createStockBatchDto.qtyReceived,
+          createStockBatchDto.unitsPerPurchaseUnit ?? 1,
+          createStockBatchDto.unitsPerSubUnit ?? 1,
+        ),
+        costPerDispensingUnit: createStockBatchDto.purchaseUnitPrice
+          ? this.calculateCostPerDispensingUnit(
+              createStockBatchDto.purchaseUnitPrice,
+              createStockBatchDto.unitsPerPurchaseUnit ?? 1,
+              createStockBatchDto.unitsPerSubUnit ?? 1,
+            )
+          : null,
+        reorderLevel: createStockBatchDto.reorderLevel ?? 10,
       },
       include: {
         medicine: {
@@ -229,6 +276,8 @@ export class InventoryService {
       batchNo,
       status,
       storageType,
+      dispensingUnit,
+      lowStockOnly,
       expiringBefore,
       expiringAfter,
       limit = 50,
@@ -264,6 +313,28 @@ export class InventoryService {
     if (batchNo) where.batchNo = { contains: batchNo, mode: 'insensitive' };
     if (status) where.status = status;
     if (storageType) where.storageType = storageType;
+    if (dispensingUnit) where.dispensingUnit = { contains: dispensingUnit, mode: 'insensitive' };
+
+    // Filter batches where qtyAvailableDispensing is at or below reorderLevel
+    if (lowStockOnly) {
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            // Batches with unit tracking: dispensing qty <= reorder level
+            {
+              qtyAvailableDispensing: { not: null },
+              // Raw filter handled below via Prisma
+            },
+            // Legacy batches without unit tracking: fall back to qtyAvailable
+            {
+              qtyAvailableDispensing: null,
+              qtyAvailable: { lte: 10 },
+            },
+          ],
+        },
+      ];
+    }
 
     if (expiringBefore) {
       where.expiryDate = { ...where.expiryDate, lte: new Date(expiringBefore) };
@@ -427,6 +498,70 @@ export class InventoryService {
   }
 
   /**
+   * Dispense medicine from a batch (deducts from qtyAvailableDispensing)
+   * Used when issuing medicine to patients.
+   * Returns updated batch and whether it triggered low-stock alert.
+   */
+  async dispenseBatch(
+    batchId: string,
+    dispensingQty: number,
+    hospitalId: string,
+  ): Promise<{ batch: any; lowStockAlert: boolean }> {
+    const batch = await this.findOne(batchId, hospitalId);
+
+    if (batch.status !== 'AVAILABLE') {
+      throw new BadRequestException('Batch is not available for dispensing');
+    }
+
+    // Use dispensing-unit tracking if available, otherwise fall back to qtyAvailable
+    const currentDispensing = batch.qtyAvailableDispensing ?? batch.qtyAvailable;
+
+    if (currentDispensing < dispensingQty) {
+      throw new BadRequestException(
+        `Insufficient stock. Requested: ${dispensingQty}, Available: ${currentDispensing} ${batch.dispensingUnit || 'units'}`,
+      );
+    }
+
+    const newDispensingQty = currentDispensing - dispensingQty;
+    const newQtyAvailable = batch.qtyAvailable - dispensingQty;
+
+    const updatedBatch = await this.prisma.stockBatch.update({
+      where: { id: batch.id },
+      data: {
+        qtyAvailable: Math.max(0, newQtyAvailable),
+        qtyAvailableDispensing: Math.max(0, newDispensingQty),
+        status: newDispensingQty <= 0 ? 'DEPLETED' : batch.status,
+      },
+      include: {
+        medicine: {
+          select: {
+            id: true,
+            name: true,
+            genericName: true,
+            form: true,
+            strength: true,
+          },
+        },
+        pharmacy: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        },
+      },
+    });
+
+    // Check low stock alert based on reorder level
+    const lowStockAlert = newDispensingQty <= (batch.reorderLevel ?? 10);
+
+    // Invalidate cache
+    await this.invalidateCache(hospitalId);
+
+    return { batch: updatedBatch, lowStockAlert };
+  }
+
+  /**
    * Calculate total available stock for a medicine at a pharmacy
    */
   async getTotalAvailableStock(
@@ -440,7 +575,8 @@ export class InventoryService {
 
   /**
    * Get low stock alerts
-   * Returns medicines with stock below threshold
+   * Returns medicines with stock below their reorder level (per batch)
+   * Falls back to threshold parameter if reorderLevel is not set
    */
   async getLowStockAlerts(hospitalId: string, pharmacyId?: string, threshold: number = 10): Promise<any[]> {
     const cacheKey = `inventory:low-stock:${hospitalId}:${pharmacyId || 'all'}:${threshold}`;
@@ -465,6 +601,9 @@ export class InventoryService {
           },
           select: {
             qtyAvailable: true,
+            qtyAvailableDispensing: true,
+            reorderLevel: true,
+            dispensingUnit: true,
             pharmacyId: true,
           },
         },
@@ -477,6 +616,15 @@ export class InventoryService {
           (sum, batch) => sum + batch.qtyAvailable,
           0,
         );
+        const totalDispensingStock = medicine.stockBatches.reduce(
+          (sum, batch) => sum + (batch.qtyAvailableDispensing ?? batch.qtyAvailable),
+          0,
+        );
+        // Use the max reorderLevel across batches, or fallback to threshold
+        const effectiveReorderLevel = medicine.stockBatches.length > 0
+          ? Math.max(...medicine.stockBatches.map(b => b.reorderLevel ?? threshold))
+          : threshold;
+        const dispensingUnit = medicine.stockBatches.find(b => b.dispensingUnit)?.dispensingUnit;
         return {
           medicineId: medicine.id,
           medicineName: medicine.name,
@@ -484,9 +632,13 @@ export class InventoryService {
           form: medicine.form,
           strength: medicine.strength,
           totalStock,
+          totalDispensingStock,
+          reorderLevel: effectiveReorderLevel,
+          dispensingUnit,
+          belowReorderLevel: totalDispensingStock <= effectiveReorderLevel,
         };
       })
-      .filter((med) => med.totalStock <= threshold && med.totalStock >= 0);
+      .filter((med) => med.totalDispensingStock <= med.reorderLevel && med.totalDispensingStock >= 0);
 
     // Cache the result for 3 minutes
     this.cacheService.set(cacheKey, lowStockMedicines, 3 * 60 * 1000);
@@ -577,6 +729,7 @@ export class InventoryService {
       where: { ...where, status: 'AVAILABLE' },
       _sum: {
         qtyAvailable: true,
+        qtyAvailableDispensing: true,
       },
     });
 
@@ -585,11 +738,20 @@ export class InventoryService {
       where: { ...where, status: 'AVAILABLE' },
       select: {
         qtyAvailable: true,
+        qtyAvailableDispensing: true,
         purchasePrice: true,
+        costPerDispensingUnit: true,
       },
     });
 
     const totalValue = availableBatches_data.reduce((sum, batch) => {
+      return sum + (batch.qtyAvailable * Number(batch.purchasePrice));
+    }, 0);
+
+    const totalDispensingValue = availableBatches_data.reduce((sum, batch) => {
+      if (batch.costPerDispensingUnit && batch.qtyAvailableDispensing) {
+        return sum + (batch.qtyAvailableDispensing * Number(batch.costPerDispensingUnit));
+      }
       return sum + (batch.qtyAvailable * Number(batch.purchasePrice));
     }, 0);
 
@@ -602,7 +764,9 @@ export class InventoryService {
       expiredBatches,
       depletedBatches,
       totalQuantity: totalQuantityResult._sum.qtyAvailable || 0,
-      totalValue: Math.round(totalValue * 100) / 100, // Round to 2 decimal places
+      totalDispensingQuantity: totalQuantityResult._sum.qtyAvailableDispensing || 0,
+      totalValue: Math.round(totalValue * 100) / 100,
+      totalDispensingValue: Math.round(totalDispensingValue * 100) / 100,
       lowStock: lowStockCount,
       expiringSoon: expiringCount,
     };

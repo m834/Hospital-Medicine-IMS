@@ -418,4 +418,18 @@ export class ShiftsService {
       })),
     };
   }
+
+  /**
+   * Get all employee shift assignments for hospital
+   */
+  async getAllShiftAssignments(hospitalId: string): Promise<any[]> {
+    return this.prisma.employeeShift.findMany({
+      where: { hospitalId },
+      orderBy: { effectiveFrom: 'desc' },
+      include: {
+        user: true,
+        shift: true,
+      },
+    });
+  }
 }

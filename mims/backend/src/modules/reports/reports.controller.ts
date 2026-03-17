@@ -6,6 +6,7 @@ import { ReportsService } from './reports.service';
 import { DailyTransactionReportDto } from './dto/daily-transaction-report.dto';
 import { DateRangeReportDto } from './dto/date-range-report.dto';
 import { DetailedDailyReportDto, MedicineConsumptionDto } from './dto/detailed-daily-report.dto';
+import { FinancialSummaryDto } from './dto/financial-summary.dto';
 
 @Controller('reports')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -128,5 +129,55 @@ export class ReportsController {
       startDate,
       endDate,
     );
+  }
+
+  /**
+   * Financial summary report (Income, Expenses, Payroll, Profit/Loss)
+   * Period: DAILY | WEEKLY | MONTHLY | YEARLY
+   * Authorized roles: SUPER_ADMIN, HOSPITAL_ADMIN, AUDITOR
+   */
+  @Get('financial-summary')
+  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'AUDITOR')
+  async getFinancialSummary(@Query() query: FinancialSummaryDto, @Request() req) {
+    const user = req.user;
+    const hospitalId = query.hospitalId || user.hospitalId;
+
+    if (!hospitalId) {
+      throw new Error('Hospital ID is required');
+    }
+
+    if (user.role !== 'SUPER_ADMIN' && hospitalId !== user.hospitalId) {
+      throw new Error('Unauthorized to access this hospital data');
+    }
+
+    return this.reportsService.getFinancialSummary({
+      ...query,
+      hospitalId,
+    });
+  }
+
+  /**
+   * Comprehensive financial report with categorized income and payroll breakdown
+   * Period: DAILY | WEEKLY | MONTHLY | YEARLY
+   * Authorized roles: SUPER_ADMIN, HOSPITAL_ADMIN, AUDITOR
+   */
+  @Get('financial-detailed')
+  @Roles('SUPER_ADMIN', 'HOSPITAL_ADMIN', 'AUDITOR')
+  async getFinancialDetailed(@Query() query: FinancialSummaryDto, @Request() req) {
+    const user = req.user;
+    const hospitalId = query.hospitalId || user.hospitalId;
+
+    if (!hospitalId) {
+      throw new Error('Hospital ID is required');
+    }
+
+    if (user.role !== 'SUPER_ADMIN' && hospitalId !== user.hospitalId) {
+      throw new Error('Unauthorized to access this hospital data');
+    }
+
+    return this.reportsService.getComprehensiveFinancialReport({
+      ...query,
+      hospitalId,
+    });
   }
 }

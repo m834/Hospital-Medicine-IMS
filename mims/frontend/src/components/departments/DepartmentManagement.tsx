@@ -33,6 +33,7 @@ import { UserRole } from '@/lib/constants';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import api from '@/lib/api';
+import { generateNextCode } from '@/lib/code';
 
 interface Hospital {
   id: string;
@@ -104,6 +105,9 @@ export function DepartmentManagement() {
     departmentId: '',
     status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
   });
+
+  const getNextDeptCode = () => generateNextCode(departments.map((dept) => dept.code), 'DEP');
+  const getNextSubDeptCode = () => generateNextCode(subDepartments.map((subDept) => subDept.code), 'SUB');
 
   useEffect(() => {
     if (currentHospitalId) {
@@ -315,8 +319,11 @@ export function DepartmentManagement() {
     } else {
       setEditingSubDept(null);
       setSubDeptForm({
-        ...subDeptForm,
+        name: '',
+        description: '',
+        code: getNextSubDeptCode(),
         departmentId: selectedDepartment?.id || '',
+        status: 'ACTIVE',
       });
     }
     setShowSubDeptDialog(true);
@@ -325,7 +332,7 @@ export function DepartmentManagement() {
   const resetDeptForm = () => {
     setDeptForm({
       name: '',
-      code: '',
+      code: getNextDeptCode(),
       description: '',
       status: 'ACTIVE',
     });
@@ -334,7 +341,7 @@ export function DepartmentManagement() {
   const resetSubDeptForm = () => {
     setSubDeptForm({
       name: '',
-      code: '',
+      code: getNextSubDeptCode(),
       description: '',
       departmentId: selectedDepartment?.id || '',
       status: 'ACTIVE',
@@ -579,14 +586,13 @@ export function DepartmentManagement() {
               />
             </div>
             <div>
-              <Label htmlFor="code">
-                Code <span className="text-red-500">*</span>
-              </Label>
+              <Label htmlFor="code">Code (Auto-generated)</Label>
               <Input
                 id="code"
                 value={deptForm.code}
-                onChange={(e) => setDeptForm({ ...deptForm, code: e.target.value })}
-                placeholder="e.g., CARD"
+                readOnly
+                placeholder="DEP-001"
+                className="bg-muted/50"
               />
             </div>
             <div>
@@ -665,14 +671,13 @@ export function DepartmentManagement() {
               />
             </div>
             <div>
-              <Label htmlFor="subCode">
-                Code <span className="text-red-500">*</span>
-              </Label>
+              <Label htmlFor="subCode">Code (Auto-generated)</Label>
               <Input
                 id="subCode"
                 value={subDeptForm.code}
-                onChange={(e) => setSubDeptForm({ ...subDeptForm, code: e.target.value })}
-                placeholder="e.g., CARD-INT"
+                readOnly
+                placeholder="SUB-001"
+                className="bg-muted/50"
               />
             </div>
             <div>

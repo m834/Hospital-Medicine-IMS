@@ -1,4 +1,5 @@
-import { IsString, IsUUID, IsDateString } from 'class-validator';
+import { IsString, IsUUID, IsDateString, IsNumber, IsOptional, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class DischargeAdmissionDto {
@@ -17,4 +18,11 @@ export class DischargeAdmissionDto {
   @ApiProperty({ example: 'Complete bed rest for 2 weeks, follow-up in 1 month' })
   @IsString()
   diagnosisOnDischarge: string;
+
+  @ApiProperty({ example: 12500, required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  estimatedTotal?: number;
 }

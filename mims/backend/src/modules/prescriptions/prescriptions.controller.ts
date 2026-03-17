@@ -7,6 +7,7 @@ import {
   Param,
   Query,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import { PrescriptionsService } from './prescriptions.service';
 import { CreatePrescriptionDto } from './dto/create-prescription.dto';
@@ -105,7 +106,8 @@ export class PrescriptionsController {
   updateStatus(
     @Param('id') id: string,
     @Body() updateStatusDto: UpdatePrescriptionStatusDto,
+    @Request() req,
   ) {
-    return this.prescriptionsService.updateStatus(id, updateStatusDto);
+    return this.prescriptionsService.updateStatus(id, updateStatusDto, req.user);
   }
 }

@@ -94,6 +94,10 @@ describe('OperationsService', () => {
       update: jest.fn(),
       count: jest.fn(),
     },
+    receipt: {
+      findFirst: jest.fn(),
+      create: jest.fn(),
+    },
   };
 
   beforeEach(async () => {
@@ -140,7 +144,10 @@ describe('OperationsService', () => {
       mockPrismaService.operation.findMany.mockResolvedValue([]);
       mockPrismaService.operation.create.mockResolvedValue(mockOperation);
 
-      const result = await service.create(createDto);
+      mockPrismaService.receipt.findFirst.mockResolvedValue(null);
+      mockPrismaService.receipt.create.mockResolvedValue({ id: 'receipt-1' });
+
+      const result = await service.create(createDto, 'user-1');
 
       expect(result).toEqual(mockOperation);
       expect(prisma.operation.create).toHaveBeenCalled();
@@ -151,7 +158,7 @@ describe('OperationsService', () => {
         service.create({
           ...createDto,
           visitId: undefined,
-        }),
+        }, 'user-1'),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -170,7 +177,7 @@ describe('OperationsService', () => {
         },
       ]);
 
-      await expect(service.create(createDto)).rejects.toThrow(ConflictException);
+      await expect(service.create(createDto, 'user-1')).rejects.toThrow(ConflictException);
     });
   });
 

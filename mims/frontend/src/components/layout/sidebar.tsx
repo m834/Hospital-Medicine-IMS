@@ -8,7 +8,7 @@ import {
   Settings, UserCog, Building2, PackagePlus, ArrowLeftRight,
   AlertCircle, Syringe, HeartPulse, Activity, ChevronLeft, ChevronRight,
   Store, Flag, Shield, Stethoscope, ClipboardList, Clock, UserPlus, Receipt,
-  DoorOpen, Bed, UserRoundPlus, UserRoundX, TestTube, Microscope, CheckSquare, FileCheck,
+  DoorOpen, Bed, UserRoundPlus, UserRoundX, TestTube, Microscope, CheckSquare, FileCheck, Wallet, DollarSign,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -79,25 +79,25 @@ const menuItems: MenuItem[] = [
     label: 'OPD Registration',
     href: '/reception/opd',
     icon: ClipboardList,
-    roles: [UserRole.RECEPTIONIST, UserRole.REGISTRATION_STAFF,UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN]
+    roles: [UserRole.RECEPTIONIST, UserRole.REGISTRATION_STAFF,UserRole.SUPER_ADMIN, UserRole.MASTER_ADMIN]
   },
   {
     label: 'Doctor Queue',
     href: '/doctor/queue',
     icon: Clock,
-    roles: [UserRole.DOCTOR, UserRole.DOCTOR_ASSISTANT, UserRole.NURSE, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN]
+    roles: [UserRole.DOCTOR, UserRole.DOCTOR_ASSISTANT, UserRole.NURSE,  UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN]
   },
   {
     label: 'Referrals',
     href: '/referrals',
     icon: ArrowLeftRight,
-    roles: [UserRole.DOCTOR, UserRole.LAB_TECHNICIAN, UserRole.RADIOLOGIST, UserRole.NURSE, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN]
+    roles: [ UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.DOCTOR]
   },
   {
     label: 'Receipts',
     href: '/finance/receipts',
     icon: Receipt,
-    roles: [UserRole.RECEPTIONIST, UserRole.BILLING_STAFF, UserRole.HOSPITAL_ADMIN, UserRole.SUPER_ADMIN, UserRole.MASTER_ADMIN, UserRole.AUDITOR]
+    roles: [UserRole.SUPER_ADMIN, UserRole.MASTER_ADMIN, UserRole.AUDITOR]
   },
   
   // Ward Management - Admission & Discharge
@@ -105,13 +105,13 @@ const menuItems: MenuItem[] = [
     label: 'Patient Admission',
     href: '/ward/admissions',
     icon: UserRoundPlus,
-    roles: [UserRole.NURSE, UserRole.DOCTOR,UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.REGISTRATION_STAFF]
+    roles: [UserRole.NURSE,UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.REGISTRATION_STAFF, UserRole.RECEPTIONIST]
   },
   {
     label: 'Patient Discharge',
     href: '/ward/discharge',
     icon: UserRoundX,
-    roles: [UserRole.NURSE, UserRole.DOCTOR, UserRole.SUPER_ADMIN,     UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.BILLING_STAFF]
+    roles: [UserRole.NURSE, UserRole.SUPER_ADMIN,UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.BILLING_STAFF, UserRole.RECEPTIONIST]
   },
   
   // Lab Services - Phase 3
@@ -119,7 +119,7 @@ const menuItems: MenuItem[] = [
     label: 'Lab Tests Catalog',
     href: '/admin/lab-tests',
     icon: TestTube,
-    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.DEPARTMENT_ADMIN]
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN]
   },
   {
     label: 'Lab Services',
@@ -146,13 +146,13 @@ const menuItems: MenuItem[] = [
     label: 'Inventory', 
     href: '/dashboard/inventory', 
     icon: PackagePlus, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER,UserRole.SUPER_ADMIN, UserRole.SUB_PHARMACY_MANAGER, UserRole.PHARMACY_STAFF, UserRole.AUDITOR] 
+    roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER,UserRole.HOSPITAL_ADMIN,UserRole.SUPER_ADMIN, UserRole.SUB_PHARMACY_MANAGER, UserRole.PHARMACY_STAFF, UserRole.AUDITOR] 
   },
   { 
     label: 'Stock Alerts', 
     href: '/dashboard/inventory/alerts', 
     icon: AlertCircle, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER] 
+    roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.HOSPITAL_ADMIN] 
   },
   
   // Patient Management - SUPER_ADMIN has full access
@@ -160,13 +160,13 @@ const menuItems: MenuItem[] = [
     label: 'Patients', 
     href: '/dashboard/patients', 
     icon: Users, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.REGISTRATION_STAFF,UserRole.SUPER_ADMIN, UserRole.DOCTOR, UserRole.DOCTOR_ASSISTANT, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER] 
+    roles: [UserRole.SUPER_ADMIN,UserRole.HOSPITAL_ADMIN, UserRole.REGISTRATION_STAFF, UserRole.RECEPTIONIST, UserRole.DOCTOR_ASSISTANT, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER]
   },
   { 
     label: 'Prescriptions', 
     href: '/dashboard/prescriptions', 
     icon: FileText, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.DOCTOR, UserRole.DOCTOR_ASSISTANT, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.PHARMACY_STAFF] 
+    roles: [UserRole.SUPER_ADMIN, UserRole.DOCTOR,UserRole.HOSPITAL_ADMIN, UserRole.DOCTOR_ASSISTANT, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.PHARMACY_STAFF] 
   },
   
   // Medicine Issuance - SUPER_ADMIN has full access
@@ -190,7 +190,13 @@ const menuItems: MenuItem[] = [
     label: 'Reports', 
     href: '/dashboard/reports/daily-transactions', 
     icon: BarChart3, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.AUDITOR] 
+    roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.AUDITOR] 
+  },
+  { 
+    label: 'Financial Reports', 
+    href: '/dashboard/reports/financial', 
+    icon: DollarSign, 
+    roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.AUDITOR] 
   },
   
   // Analytics - SUPER_ADMIN has full access
@@ -198,7 +204,39 @@ const menuItems: MenuItem[] = [
     label: 'Analytics', 
     href: '/dashboard/analytics', 
     icon: Activity, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.AUDITOR] 
+    roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.AUDITOR] 
+  },
+
+  // Attendance Dashboard - Admin and HR
+  { 
+    label: 'Attendance Dashboard', 
+    href: '/dashboard/attendance', 
+    icon: CheckSquare, 
+    roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.DEPARTMENT_ADMIN] 
+  },
+  { 
+    label: 'Shifts', 
+    href: '/dashboard/attendance/shifts', 
+    icon: Clock, 
+    roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.DEPARTMENT_ADMIN] 
+  },
+  { 
+    label: 'Leaves', 
+    href: '/dashboard/attendance/leaves', 
+    icon: ClipboardList, 
+    roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.DEPARTMENT_ADMIN] 
+  },
+  { 
+    label: 'Payroll', 
+    href: '/dashboard/payroll', 
+    icon: Receipt, 
+    roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN] 
+  },
+  { 
+    label: 'Expenditure', 
+    href: '/dashboard/expenditure', 
+    icon: Wallet, 
+    roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN] 
   },
   
   // Feature Flags - Admin only
@@ -206,7 +244,7 @@ const menuItems: MenuItem[] = [
     label: 'Feature Flags', 
     href: '/admin/feature-flags', 
     icon: Flag, 
-    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN] 
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN] 
   },
   
   // Permissions - Admin only
@@ -214,7 +252,7 @@ const menuItems: MenuItem[] = [
     label: 'Permissions', 
     href: '/admin/permissions', 
     icon: Shield, 
-    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN] 
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN] 
   },
   
   // Settings - SUPER_ADMIN has full access
@@ -222,7 +260,7 @@ const menuItems: MenuItem[] = [
     label: 'Settings', 
     href: '/dashboard/settings', 
     icon: Settings, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER] 
+    roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER] 
   },
 ];
 

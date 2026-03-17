@@ -7,6 +7,7 @@ import {
   Post,
   Query,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -32,8 +33,8 @@ export class OperationsController {
   @Post()
   @ApiOperation({ summary: 'Create a new operation' })
   @ApiResponse({ status: 201, description: 'Operation created successfully' })
-  create(@Body() createOperationDto: CreateOperationDto) {
-    return this.operationsService.create(createOperationDto);
+  create(@Body() createOperationDto: CreateOperationDto, @Request() req: any) {
+    return this.operationsService.create(createOperationDto, req.user.id);
   }
 
   @Get()

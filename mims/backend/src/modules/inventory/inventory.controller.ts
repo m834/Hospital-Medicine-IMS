@@ -15,6 +15,7 @@ import { CreateStockBatchDto } from './dto/create-stock-batch.dto';
 import { BulkCreateStockBatchDto } from './dto/create-stock-batch-bulk.dto';
 import { UpdateStockBatchDto } from './dto/update-stock-batch.dto';
 import { SearchStockBatchDto } from './dto/search-stock-batch.dto';
+import { DispenseBatchDto } from './dto/dispense-batch.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -63,6 +64,8 @@ export class InventoryController {
     UserRole.MAIN_PHARMACY_MANAGER,
     UserRole.SUB_PHARMACY_MANAGER,
     UserRole.PHARMACY_STAFF,
+    UserRole.DOCTOR,
+    UserRole.DOCTOR_ASSISTANT,
   )
   async findAll(@Query() searchDto: SearchStockBatchDto, @Request() req) {
     // For Super Admin, get hospitalId from pharmacy if available
@@ -214,6 +217,33 @@ export class InventoryController {
       hospitalId = pharmacy.hospitalId;
     }
     return this.inventoryService.getStats(hospitalId, pharmacyId);
+  }
+
+  @Post('batches/dispense')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HOSPITAL_ADMIN,
+    UserRole.MAIN_PHARMACY_MANAGER,
+    UserRole.SUB_PHARMACY_MANAGER,
+    UserRole.PHARMACY_STAFF,
+  )
+  async dispenseBatch(@Body() dispenseDto: DispenseBatchDto, @Request() req) {
+    let hospitalId = req.user.hospitalId;
+
+    // For Super Admin, get hospitalId from the batch
+    if (!hospitalId) {
+      const batch = await this.inventoryService['prisma'].stockBatch.findUnique({
+        where: { id: dispenseDto.batchId },
+        select: { hospitalId: true },
+      });
+      hospitalId = batch?.hospitalId;
+    }
+
+    return this.inventoryService.dispenseBatch(
+      dispenseDto.batchId,
+      dispenseDto.dispensingQty,
+      hospitalId,
+    );
   }
 
   @Get('batches/:id')

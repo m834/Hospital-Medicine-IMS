@@ -1,5 +1,9 @@
-import {
-  IsOptional,
+/**
+ * Copyright (c) 2026 Code Hustlers. All rights reserved.
+ * M-IMS — Hospital Medicine Inventory Management System
+ * Unauthorized use or distribution is strictly prohibited.
+ */
+  import{IsOptional,
   IsString,
   IsEnum,
   IsNumber,
@@ -7,6 +11,13 @@ import {
   Min,
   Max,
 } from 'class-validator';
+
+export enum ThreatSeverity {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+  CRITICAL = 'CRITICAL',
+}
 import { Type } from 'class-transformer';
 
 export class ThreatAlertDto {
@@ -34,8 +45,8 @@ export class CreateThreatAlertDto {
   @IsString()
   alertType: string;
 
-  @IsEnum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])
-  severity: string;
+  @IsEnum(ThreatSeverity)
+  severity: ThreatSeverity;
 
   @IsString()
   description: string;
@@ -46,8 +57,8 @@ export class CreateThreatAlertDto {
 
 export class ThreatAlertFilterDto {
   @IsOptional()
-  @IsEnum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])
-  severity?: string;
+  @IsEnum(ThreatSeverity)
+  severity?: ThreatSeverity;
 
   @IsOptional()
   @IsBoolean()
@@ -162,8 +173,8 @@ export class AlertQueryDto {
   offset?: number = 0;
 
   @IsOptional()
-  @IsEnum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])
-  severity?: string;
+  @IsEnum(ThreatSeverity)
+  severity?: ThreatSeverity;
 
   @IsOptional()
   @IsBoolean()

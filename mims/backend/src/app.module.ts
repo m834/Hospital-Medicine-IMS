@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
@@ -43,9 +44,14 @@ import { OperationsModule } from './modules/operations/operations.module';
 // Phase 3: Lab Services modules
 import { LabTestsModule } from './modules/lab-tests/lab-tests.module';
 import { LabOrdersModule } from './modules/lab-orders/lab-orders.module';
+import { PayrollModule } from './modules/payroll/payroll.module';
+import { ExpenditureModule } from './modules/expenditure/expenditure.module';
 
 // Attendance & HR modules
 import { AttendanceModule } from './modules/attendance/attendance.module';
+
+// License & IP Protection
+import { LicenseModule } from './common/license/license.module';
 
 // Import configuration
 import { DatabaseModule } from './database/database.module';
@@ -55,6 +61,9 @@ import appConfig from './config/app.config';
 
 @Module({
   imports: [
+    // License Protection (must be first)
+    LicenseModule,
+
     // Configuration
     ConfigModule.forRoot({
       isGlobal: true,
@@ -69,6 +78,9 @@ import appConfig from './config/app.config';
         limit: 100, // 100 requests per minute
       },
     ]),
+
+    // Scheduling (cron jobs)
+    ScheduleModule.forRoot(),
 
     // Database
     DatabaseModule,
@@ -112,6 +124,8 @@ import appConfig from './config/app.config';
     LabOrdersModule,
     // Attendance & HR
     AttendanceModule,
+    PayrollModule,
+    ExpenditureModule,
   ],
   providers: [
     {

@@ -1,6 +1,12 @@
 import { IsOptional, IsString, IsEnum, IsISO8601, IsNumber, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
+export enum AuditAction {
+  CREATE = 'CREATE',
+  UPDATE = 'UPDATE',
+  DELETE = 'DELETE',
+}
+
 export class AuditLogFilterDto {
   @IsOptional()
   @IsString()
@@ -15,8 +21,8 @@ export class AuditLogFilterDto {
   entityType?: string;
 
   @IsOptional()
-  @IsEnum(['CREATE', 'UPDATE', 'DELETE'])
-  action?: 'CREATE' | 'UPDATE' | 'DELETE';
+  @IsEnum(AuditAction)
+  action?: AuditAction;
 
   @IsOptional()
   @IsISO8601()
@@ -41,7 +47,7 @@ export class PaginationDto {
   @Type(() => Number)
   @Min(1)
   @Max(500)
-  limit?: number = 50;
+  limit?: number;
 }
 
 export class AuditLogResponseDto {

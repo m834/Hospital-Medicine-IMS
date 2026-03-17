@@ -1,5 +1,17 @@
 import { IsOptional, IsString, IsEnum, IsDateString, Matches } from 'class-validator';
 
+export enum Gender {
+  MALE = 'MALE',
+  FEMALE = 'FEMALE',
+  OTHER = 'OTHER',
+}
+
+export enum VisitType {
+  OPD = 'OPD',
+  EMERGENCY = 'EMERGENCY',
+  WARD_INDOOR = 'WARD_INDOOR',
+}
+
 export class UpdatePatientDto {
   @IsString()
   @IsOptional()
@@ -9,9 +21,9 @@ export class UpdatePatientDto {
   @IsOptional()
   dob?: string;
 
-  @IsEnum(['MALE', 'FEMALE', 'OTHER'], { message: 'Invalid gender' })
+  @IsEnum(Gender, { message: 'Invalid gender' })
   @IsOptional()
-  gender?: 'MALE' | 'FEMALE' | 'OTHER';
+  gender?: Gender;
 
   @IsString()
   @IsOptional()
@@ -27,9 +39,9 @@ export class UpdatePatientDto {
   @IsOptional()
   address?: string;
 
-  @IsEnum(['OPD', 'EMERGENCY', 'WARD_INDOOR'], { message: 'Invalid visit type' })
+  @IsEnum(VisitType, { message: 'Invalid visit type' })
   @IsOptional()
-  visitType?: 'OPD' | 'EMERGENCY' | 'WARD_INDOOR';
+  visitType?: VisitType;
 
   @IsString()
   @IsOptional()

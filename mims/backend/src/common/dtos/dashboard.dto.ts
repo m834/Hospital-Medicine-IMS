@@ -440,6 +440,17 @@ export class ComplianceReportDto {
  * ============ Export Request DTOs ============
  */
 
+export enum ReportFormat {
+  CSV = 'CSV',
+  JSON = 'JSON',
+  PDF = 'PDF',
+}
+
+export enum DataType {
+  AUDIT = 'audit',
+  THREATS = 'threats',
+}
+
 export class ExportRequestDto {
   @ApiPropertyOptional({ example: '2026-02-01T00:00:00Z' })
   @IsOptional()
@@ -451,13 +462,13 @@ export class ExportRequestDto {
   @IsDate()
   endDate?: Date;
 
-  @ApiProperty({ enum: ['CSV', 'JSON', 'PDF'] })
-  @IsEnum(['CSV', 'JSON', 'PDF'])
-  format: 'CSV' | 'JSON' | 'PDF';
+  @ApiProperty({ enum: ReportFormat })
+  @IsEnum(ReportFormat)
+  format: ReportFormat;
 
-  @ApiProperty({ enum: ['audit', 'threats'] })
-  @IsEnum(['audit', 'threats'])
-  dataType: 'audit' | 'threats';
+  @ApiProperty({ enum: DataType })
+  @IsEnum(DataType)
+  dataType: DataType;
 }
 
 export class ExportResponseDto {

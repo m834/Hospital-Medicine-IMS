@@ -3,7 +3,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { CreatePrescriptionDto } from './dto/create-prescription.dto';
 import { SearchPrescriptionsDto } from './dto/search-prescriptions.dto';
 import { UpdatePrescriptionStatusDto } from './dto/update-prescription-status.dto';
-import { PrescriptionStatus } from '@prisma/client';
+import { PrescriptionStatus, PaymentMethod, PaymentStatus, Prisma, ReceiptType } from '@prisma/client';
 
 @Injectable()
 export class PrescriptionsService {
@@ -224,10 +224,17 @@ export class PrescriptionsService {
     return prescription;
   }
 
-  async updateStatus(id: string, updateStatusDto: UpdatePrescriptionStatusDto) {
+  async updateStatus(
+    id: string,
+    updateStatusDto: UpdatePrescriptionStatusDto,
+    user?: { id?: string; hospitalId?: string; pharmacyId?: string },
+  ) {
     // Verify prescription exists
     const prescription = await this.prisma.prescription.findUnique({
       where: { id },
+      include: {
+        items: true,
+      },
     });
 
     if (!prescription) {
@@ -251,6 +258,184 @@ export class PrescriptionsService {
       throw new BadRequestException(
         `Cannot transition from ${currentStatus} to ${status}`,
       );
+    }
+
+    if (statusEnum === PrescriptionStatus.ISSUED) {
+      const now = new Date();
+      const hospitalId = prescription.hospitalId || user?.hospitalId;
+
+      let pharmacyId = user?.pharmacyId;
+      if (!pharmacyId && hospitalId) {
+        const mainPharmacy = await this.prisma.pharmacy.findFirst({
+          where: { hospitalId, type: 'MAIN', status: 'ACTIVE' },
+          select: { id: true },
+        });
+        pharmacyId = mainPharmacy?.id;
+      }
+
+      if (!hospitalId || !pharmacyId) {
+        throw new BadRequestException(
+          'Pharmacy context is required to issue a prescription',
+        );
+      }
+
+      // Get patient for receipt
+      const patient = await this.prisma.patient.findFirst({
+        where: { nrNumber: prescription.nrNumber },
+      });
+
+      if (!patient) {
+        throw new NotFoundException('Patient not found');
+      }
+
+      const updated = await this.prisma.$transaction(async (tx) => {
+        let totalAmount = new Prisma.Decimal(0);
+
+        for (const item of prescription.items) {
+          const batch = await tx.stockBatch.findFirst({
+            where: {
+              hospitalId,
+              pharmacyId,
+              medicineId: item.medicineId,
+              status: 'AVAILABLE',
+              qtyAvailable: { gt: 0 },
+              expiryDate: { gte: now },
+            },
+            orderBy: [{ expiryDate: 'asc' }, { receivedDate: 'asc' }],
+          });
+
+          if (!batch) {
+            throw new BadRequestException(
+              `No available stock for medicine ${item.medicineId}`,
+            );
+          }
+
+          if (batch.qtyAvailable < item.qtyPrescribed) {
+            throw new BadRequestException(
+              `Insufficient stock for medicine ${item.medicineId}. ` +
+                `Requested: ${item.qtyPrescribed}, Available: ${batch.qtyAvailable}`,
+            );
+          }
+
+          const newQtyAvailable = batch.qtyAvailable - item.qtyPrescribed;
+
+          await tx.stockBatch.update({
+            where: { id: batch.id },
+            data: {
+              qtyAvailable: newQtyAvailable,
+              status: newQtyAvailable === 0 ? 'DEPLETED' : batch.status,
+            },
+          });
+
+          await tx.prescriptionItem.update({
+            where: { id: item.id },
+            data: { status: 'ISSUED' },
+          });
+
+          // Calculate cost using retail price from the batch
+          const itemCost = batch.retailPrice.mul(item.qtyPrescribed);
+          totalAmount = totalAmount.add(itemCost);
+        }
+
+        // Generate receipt number
+        const today = new Date();
+        const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+        const lastReceipt = await tx.receipt.findFirst({
+          where: { receiptNumber: { startsWith: `REC-${dateStr}` } },
+          orderBy: { receiptNumber: 'desc' },
+        });
+        const sequence = lastReceipt
+          ? parseInt(lastReceipt.receiptNumber.split('-')[2]) + 1
+          : 1;
+        const receiptNumber = `REC-${dateStr}-${sequence.toString().padStart(4, '0')}`;
+
+        // Find department for receipt
+        const latestVisit = await (tx as any).visit.findFirst({
+          where: { patientId: patient.id, hospitalId },
+          orderBy: { visitDate: 'desc' },
+          select: { id: true, departmentId: true },
+        });
+
+        const doctorDepartmentId = prescription.doctorId
+          ? (
+              await tx.user.findUnique({
+                where: { id: prescription.doctorId },
+                select: { departmentId: true },
+              })
+            )?.departmentId
+          : null;
+
+        const fallbackDepartment = await tx.department.findFirst({
+          where: { hospitalId },
+          select: { id: true },
+        });
+
+        const departmentId =
+          latestVisit?.departmentId || doctorDepartmentId || fallbackDepartment?.id;
+
+        if (!departmentId) {
+          throw new BadRequestException(
+            'Department is required to generate pharmacy receipt',
+          );
+        }
+
+        // Create pharmacy receipt
+        const txAny = tx as any;
+        await txAny.receipt.create({
+          data: {
+            hospitalId,
+            patientId: patient.id,
+            visitId: latestVisit?.id || undefined,
+            departmentId,
+            generatedById: user?.id || prescription.doctorId || patient.attendingDoctorId,
+            receiptNumber,
+            receiptType: ReceiptType.PHARMACY,
+            description: `Prescription Issued - ${id.slice(0, 8)}`,
+            amount: totalAmount,
+            totalAmount: totalAmount,
+            paidAmount: new Prisma.Decimal(0),
+            paymentMethod: PaymentMethod.CASH,
+            paymentStatus: PaymentStatus.UNPAID,
+            notes: JSON.stringify({ prescriptionId: id }),
+          },
+        });
+
+        return tx.prescription.update({
+          where: { id },
+          data: { status: statusEnum },
+          include: {
+            patient: {
+              select: {
+                id: true,
+                nrNumber: true,
+                fullName: true,
+              },
+            },
+            doctor: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+              },
+            },
+            items: {
+              include: {
+                medicine: {
+                  select: {
+                    id: true,
+                    name: true,
+                    genericName: true,
+                    strength: true,
+                    form: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+      });
+
+      return updated;
     }
 
     // Update status

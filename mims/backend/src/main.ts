@@ -1,3 +1,8 @@
+/**
+ * Copyright (c) 2026 Code Hustlers. All rights reserved.
+ * M-IMS — Hospital Medicine Inventory Management System
+ * Unauthorized use or distribution is strictly prohibited.
+ */
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
@@ -6,8 +11,14 @@ import helmet from 'helmet';
 import * as compression from 'compression';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { enforeceLicenseOrExit } from './common/license/license-validator';
 
 async function bootstrap() {
+  // ─────────────────────────────────────────────────────────
+  // LICENSE VALIDATION — must pass before anything initializes
+  // ─────────────────────────────────────────────────────────
+  await enforeceLicenseOrExit();
+
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
 

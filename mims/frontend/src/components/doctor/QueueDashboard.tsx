@@ -36,6 +36,7 @@ import { useGetClinicQueue, useCallNextPatient, Visit } from '@/hooks/use-visits
 
 const STATUS_COLORS = {
   WAITING: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  CALLED: 'bg-orange-100 text-orange-800 border-orange-300',
   IN_PROGRESS: 'bg-blue-100 text-blue-800 border-blue-300',
   COMPLETED: 'bg-green-100 text-green-800 border-green-300',
   CANCELLED: 'bg-red-100 text-red-800 border-red-300',
@@ -60,11 +61,12 @@ export function QueueDashboard() {
 
   const queue = queueData || [];
   const waitingPatients = queue.filter((v) => v.status === 'WAITING');
+  const calledPatients = queue.filter((v) => v.status === 'CALLED');
   const inProgressPatients = queue.filter((v) => v.status === 'IN_PROGRESS');
   const completedPatients = queue.filter((v) => v.status === 'COMPLETED');
 
   // Current patient being consulted
-  const currentPatient = inProgressPatients[0];
+  const currentPatient = inProgressPatients[0] || calledPatients[0];
   
   // Next patient in queue
   const nextPatient = waitingPatients[0];
@@ -203,7 +205,7 @@ export function QueueDashboard() {
                 <PlayCircle className="h-6 w-6 text-blue-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{inProgressPatients.length}</p>
+                <p className="text-2xl font-bold">{inProgressPatients.length + calledPatients.length}</p>
                 <p className="text-sm text-muted-foreground">In Progress</p>
               </div>
             </div>

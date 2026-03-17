@@ -49,7 +49,7 @@ export class LeavesController {
     @CurrentUser() user: any,
     @Body() dto: ApplyLeaveDto,
   ) {
-    return this.leavesService.applyForLeave(hospitalId, user.sub, dto);
+    return this.leavesService.applyForLeave(hospitalId, user.id, dto);
   }
 
   @ApiOperation({ summary: 'Get leave request by ID' })
@@ -92,7 +92,7 @@ export class LeavesController {
     @Param('leaveRequestId') leaveRequestId: string,
     @Body() dto: ProcessLeaveRequestDto,
   ) {
-    return this.leavesService.processLeaveRequest(hospitalId, leaveRequestId, user.sub, dto);
+    return this.leavesService.processLeaveRequest(hospitalId, leaveRequestId, user.id, dto);
   }
 
   @ApiOperation({ summary: 'Cancel leave request' })

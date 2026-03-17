@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useHospitalStore } from "@/stores/hospital.store";
 import { useAuthStore } from "@/stores/auth.store";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,6 +27,89 @@ export default function LabPage() {
   // Check if user should see hospital selection warning
   const isMasterOrSuper = user?.role === UserRole.MASTER_ADMIN || user?.role === UserRole.SUPER_ADMIN;
   const shouldWarnNoHospital = isMasterOrSuper && !currentHospitalId;
+
+  const tabItems = useMemo(
+    () => [
+      {
+        value: "new-order",
+        label: "New Order",
+        icon: PackagePlus,
+        roles: [
+          UserRole.MASTER_ADMIN,
+          UserRole.SUPER_ADMIN,
+          UserRole.HOSPITAL_ADMIN,
+          UserRole.DEPARTMENT_ADMIN,
+          UserRole.RECEPTIONIST,
+          UserRole.REGISTRATION_STAFF,
+          UserRole.LAB_TECHNICIAN,
+        ],
+      },
+      {
+        value: "queue",
+        label: "Queue",
+        icon: Microscope,
+        roles: [
+          UserRole.MASTER_ADMIN,
+          UserRole.SUPER_ADMIN,
+          UserRole.HOSPITAL_ADMIN,
+          UserRole.DEPARTMENT_ADMIN,
+          UserRole.LAB_TECHNICIAN,
+        ],
+      },
+      {
+        value: "results",
+        label: "Results",
+        icon: FileText,
+        roles: [
+          UserRole.MASTER_ADMIN,
+          UserRole.SUPER_ADMIN,
+          UserRole.HOSPITAL_ADMIN,
+          UserRole.DEPARTMENT_ADMIN,
+          UserRole.LAB_TECHNICIAN,
+        ],
+      },
+      {
+        value: "approval",
+        label: "Approval",
+        icon: CheckSquare,
+        roles: [
+          UserRole.MASTER_ADMIN,
+          UserRole.SUPER_ADMIN,
+          UserRole.HOSPITAL_ADMIN,
+          UserRole.DEPARTMENT_ADMIN,
+          UserRole.LAB_TECHNICIAN,
+        ],
+      },
+      {
+        value: "reports",
+        label: "Reports",
+        icon: FileCheck,
+        roles: [
+          UserRole.MASTER_ADMIN,
+          UserRole.SUPER_ADMIN,
+          UserRole.HOSPITAL_ADMIN,
+          UserRole.DEPARTMENT_ADMIN,
+          UserRole.DOCTOR,
+          UserRole.RECEPTIONIST,
+          UserRole.REGISTRATION_STAFF,
+          UserRole.LAB_TECHNICIAN,
+        ],
+      },
+    ],
+    [],
+  );
+
+  const userRole = user?.role as UserRole | undefined;
+  const visibleTabs = useMemo(
+    () => tabItems.filter((tab) => !userRole || tab.roles.includes(userRole)),
+    [tabItems, userRole],
+  );
+
+  useEffect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.some((tab) => tab.value === activeTab)) {
+      setActiveTab(visibleTabs[0].value);
+    }
+  }, [activeTab, visibleTabs]);
 
   if (shouldWarnNoHospital) {
     return (
@@ -60,27 +143,13 @@ export default function LabPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 w-full">
-          <TabsTrigger value="new-order" className="flex items-center gap-2">
-            <PackagePlus className="h-4 w-4" />
-            <span className="hidden sm:inline">New Order</span>
-          </TabsTrigger>
-          <TabsTrigger value="queue" className="flex items-center gap-2">
-            <Microscope className="h-4 w-4" />
-            <span className="hidden sm:inline">Queue</span>
-          </TabsTrigger>
-          <TabsTrigger value="results" className="flex items-center gap-2">
-            <FileText className="h-4 w-4" />
-            <span className="hidden sm:inline">Results</span>
-          </TabsTrigger>
-          <TabsTrigger value="approval" className="flex items-center gap-2">
-            <CheckSquare className="h-4 w-4" />
-            <span className="hidden sm:inline">Approval</span>
-          </TabsTrigger>
-          <TabsTrigger value="reports" className="flex items-center gap-2">
-            <FileCheck className="h-4 w-4" />
-            <span className="hidden sm:inline">Reports</span>
-          </TabsTrigger>
+        <TabsList className="flex w-full flex-wrap gap-2">
+          {visibleTabs.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value} className="flex items-center gap-2">
+              <tab.icon className="h-4 w-4" />
+              <span className="hidden sm:inline">{tab.label}</span>
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         <TabsContent value="new-order">

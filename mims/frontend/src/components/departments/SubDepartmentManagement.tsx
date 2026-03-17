@@ -40,6 +40,7 @@ import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
+import { generateNextCode } from '@/lib/code';
 
 interface Department {
   id: string;
@@ -103,6 +104,8 @@ export function SubDepartmentManagement() {
     departmentId: '',
     status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
   });
+
+  const getNextSubDeptCode = () => generateNextCode(subDepartments.map((subDept) => subDept.code), 'SUB');
 
   useEffect(() => {
     if (currentHospitalId) {
@@ -230,7 +233,7 @@ export function SubDepartmentManagement() {
   const resetForm = () => {
     setSubDeptForm({
       name: '',
-      code: '',
+      code: getNextSubDeptCode(),
       description: '',
       departmentId: '',
       status: 'ACTIVE',
@@ -512,14 +515,13 @@ export function SubDepartmentManagement() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="code">
-                Code <span className="text-destructive">*</span>
-              </Label>
+              <Label htmlFor="code">Code (Auto-generated)</Label>
               <Input
                 id="code"
-                placeholder="Enter sub-department code (e.g., CARD-OPD)"
                 value={subDeptForm.code}
-                onChange={(e) => setSubDeptForm({ ...subDeptForm, code: e.target.value.toUpperCase() })}
+                readOnly
+                placeholder="SUB-001"
+                className="bg-muted/50"
               />
             </div>
 

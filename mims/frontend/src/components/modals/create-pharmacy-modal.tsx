@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -37,6 +37,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import api from '@/lib/api';
+import { generateNextCode } from '@/lib/code';
 
 interface Hospital {
   id: string;
@@ -49,6 +50,7 @@ interface CreatePharmacyModalProps {
   hospital: Hospital | null;
   onClose: () => void;
   onPharmacyCreated: () => void;
+  existingCodes?: string[];
 }
 
 const PHARMACY_TYPES = [
@@ -71,8 +73,14 @@ export function CreatePharmacyModal({
   hospital,
   onClose,
   onPharmacyCreated,
+  existingCodes = [],
 }: CreatePharmacyModalProps) {
   const [loading, setLoading] = useState(false);
+
+  const nextPharmacyCode = useMemo(
+    () => generateNextCode(existingCodes, 'PHAR'),
+    [existingCodes]
+  );
 
   const form = useForm<CreatePharmacyFormData>({
     resolver: zodResolver(createPharmacySchema),
@@ -86,8 +94,9 @@ export function CreatePharmacyModal({
   useEffect(() => {
     if (isOpen) {
       form.reset();
+      form.setValue('code', nextPharmacyCode, { shouldValidate: true });
     }
-  }, [isOpen]);
+  }, [isOpen, nextPharmacyCode, form]);
 
   const onSubmit = async (data: CreatePharmacyFormData) => {
     if (!hospital) return;
@@ -156,12 +165,12 @@ export function CreatePharmacyModal({
               name="code"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Pharmacy Code</FormLabel>
+                  <FormLabel>Pharmacy Code (Auto-generated)</FormLabel>
                   <FormControl>
-                    <Input placeholder="MAIN-PH" {...field} />
+                    <Input placeholder="PHAR-001" readOnly className="bg-muted/50" {...field} />
                   </FormControl>
                   <FormDescription>
-                    Unique code for this pharmacy (e.g., MAIN-PH, SUB-PH-1)
+                    System-generated code for this pharmacy
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

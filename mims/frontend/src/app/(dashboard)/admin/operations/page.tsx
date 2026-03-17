@@ -841,16 +841,7 @@ export default function OperationsPage() {
             </div>
             <div className="space-y-2">
               <Label>Code (Auto-generated)</Label>
-              <div className="flex gap-2">
-                <Input value={theatreForm.code} readOnly />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setTheatreForm({ ...theatreForm, code: generateTheatreCode() })}
-                >
-                  Regenerate
-                </Button>
-              </div>
+              <Input value={theatreForm.code} readOnly className="bg-muted/50" />
             </div>
             <div className="space-y-2">
               <Label>Department</Label>

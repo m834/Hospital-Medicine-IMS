@@ -223,8 +223,10 @@ export class SubDepartmentsService {
     }
 
     // Only MASTER_ADMIN can update
-    if (user.role !== UserRole.MASTER_ADMIN) {
-      throw new ForbiddenException('Only MASTER_ADMIN can update sub-departments');
+    if (user.role !== UserRole.MASTER_ADMIN &&
+        user.role !== UserRole.SUPER_ADMIN &&
+        user.role !== UserRole.HOSPITAL_ADMIN) {
+      throw new ForbiddenException('Only MASTER_ADMIN, SUPER_ADMIN, or HOSPITAL_ADMIN can update sub-departments');
     }
 
     // Check for code conflict if code is being updated
@@ -285,8 +287,10 @@ export class SubDepartmentsService {
     }
 
     // Only MASTER_ADMIN can delete
-    if (user.role !== UserRole.MASTER_ADMIN) {
-      throw new ForbiddenException('Only MASTER_ADMIN can delete sub-departments');
+    if (user.role !== UserRole.MASTER_ADMIN &&
+        user.role !== UserRole.SUPER_ADMIN &&
+        user.role !== UserRole.HOSPITAL_ADMIN) {
+      throw new ForbiddenException('Only MASTER_ADMIN, SUPER_ADMIN, or HOSPITAL_ADMIN can delete sub-departments');
     }
 
     // Check if sub-department has users

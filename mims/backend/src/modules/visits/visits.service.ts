@@ -335,7 +335,7 @@ export class VisitsService {
    * Get a single visit by ID
    */
   async findOne(id: string) {
-    const visit = await this.prisma.visit.findUnique({
+    let visit = await this.prisma.visit.findUnique({
       where: { id },
       include: {
         patient: true,
@@ -358,6 +358,30 @@ export class VisitsService {
     });
 
     if (!visit) {
+      visit = await this.prisma.visit.findFirst({
+        where: { tokenId: id },
+        include: {
+          patient: true,
+          clinic: {
+            include: {
+              department: true,
+              doctor: { select: { id: true, fullName: true, email: true, phone: true } },
+            },
+          },
+          token: true,
+          registrar: { select: { id: true, fullName: true } },
+          consultant: { select: { id: true, fullName: true } },
+          referrals: {
+            include: {
+              toDepartment: { select: { id: true, name: true } },
+            },
+          },
+          receipts: true,
+        },
+      });
+    }
+
+    if (!visit) {
       throw new NotFoundException(`Visit with ID ${id} not found`);
     }
 
@@ -369,7 +393,7 @@ export class VisitsService {
    */
   async update(id: string, updateVisitDto: UpdateVisitDto, consultantId?: string) {
     // Ensure visit exists
-    await this.findOne(id);
+    const visit = await this.findOne(id);
 
     const data: any = { ...updateVisitDto };
 
@@ -380,7 +404,7 @@ export class VisitsService {
     }
 
     return this.prisma.visit.update({
-      where: { id },
+      where: { id: visit.id },
       data,
       include: {
         patient: { select: { id: true, fullName: true, nrNumber: true } },
@@ -408,7 +432,7 @@ export class VisitsService {
     // Update visit and token status
     await this.prisma.$transaction([
       this.prisma.visit.update({
-        where: { id },
+        where: { id: visit.id },
         data: { status: VisitStatus.CANCELLED },
       }),
       ...(visit.tokenId
@@ -440,7 +464,7 @@ export class VisitsService {
     // Update visit and token status
     await this.prisma.$transaction([
       this.prisma.visit.update({
-        where: { id },
+        where: { id: visit.id },
         data: {
           status: VisitStatus.COMPLETED,
           completedAt: new Date(),

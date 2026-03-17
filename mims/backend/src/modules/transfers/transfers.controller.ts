@@ -56,7 +56,12 @@ export class TransfersController {
   async findAll(@Query() searchDto: SearchTransferRequestDto, @Request() req) {
     let hospitalId = req.user.hospitalId;
 
-    // For Super Admin, get hospitalId from pharmacy filter if available
+    // For Super Admin, use hospitalId from query param
+    if (!hospitalId && searchDto.hospitalId) {
+      hospitalId = searchDto.hospitalId;
+    }
+
+    // Fallback: get hospitalId from pharmacy filter if available
     if (!hospitalId && (searchDto.fromPharmacyId || searchDto.toPharmacyId)) {
       const pharmacyId = searchDto.fromPharmacyId || searchDto.toPharmacyId;
       const pharmacy = await this.transfersService['prisma'].pharmacy.findUnique({

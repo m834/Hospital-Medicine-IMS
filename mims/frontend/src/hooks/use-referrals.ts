@@ -88,6 +88,7 @@ export interface CreateReferralDto {
   visitId: string;
   fromDepartmentId: string;
   toDepartmentId: string;
+  referrerId: string;
   referralType: 'LAB_TEST' | 'RADIOLOGY' | 'PHARMACY' | 'ADMISSION' | 'SPECIALIST_CONSULTATION';
   priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
   reason: string;

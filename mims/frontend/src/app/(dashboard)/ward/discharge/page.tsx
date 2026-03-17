@@ -161,6 +161,7 @@ export default function DischargeFormPage() {
     }
 
     try {
+      const detailsSnapshot = details;
       await dischargeMutation.mutateAsync({
         id: selectedAdmissionId,
         data: {
@@ -168,6 +169,7 @@ export default function DischargeFormPage() {
           dischargedAt: new Date(formData.dischargeDate).toISOString(),
           diagnosisOnDischarge: formData.diagnosisOnDischarge || '',
           dischargeSummary: formData.dischargeSummary,
+          estimatedTotal: detailsSnapshot?.estimatedTotal,
         },
       });
 

@@ -2,6 +2,11 @@ import { IsOptional, IsString, IsEnum, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { MedicineForm, MedicineStatus } from '@prisma/client';
 
+export enum SortOrder {
+  ASC = 'asc',
+  DESC = 'desc',
+}
+
 export class SearchMedicinesDto {
   @IsString()
   @IsOptional()
@@ -36,19 +41,19 @@ export class SearchMedicinesDto {
   @Max(200)
   @Type(() => Number)
   @IsOptional()
-  limit?: number = 50;
+  limit?: number;
 
   @IsInt()
   @Min(1)
   @Type(() => Number)
   @IsOptional()
-  page?: number = 1;
+  page?: number;
 
   @IsString()
   @IsOptional()
-  sortBy?: string = 'name';
+  sortBy?: string;
 
-  @IsEnum(['asc', 'desc'])
+  @IsEnum(SortOrder)
   @IsOptional()
-  sortOrder?: 'asc' | 'desc' = 'asc';
+  sortOrder?: string;
 }

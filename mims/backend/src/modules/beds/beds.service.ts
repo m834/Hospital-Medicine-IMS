@@ -46,10 +46,25 @@ export class BedsService {
     if (rest.roomId) {
       const room = await this.prisma.room.findUnique({
         where: { id: rest.roomId },
+        select: { id: true, hospitalId: true, capacity: true },
       });
 
       if (!room) {
         throw new NotFoundException(`Room with ID ${rest.roomId} not found`);
+      }
+
+      if (room.hospitalId !== hospitalId) {
+        throw new BadRequestException('Room does not belong to this hospital');
+      }
+
+      const bedsInRoom = await this.prisma.bed.count({
+        where: { roomId: rest.roomId },
+      });
+
+      if (bedsInRoom >= room.capacity) {
+        throw new BadRequestException(
+          `Room capacity reached. Maximum beds allowed: ${room.capacity}`,
+        );
       }
     }
 
@@ -181,6 +196,28 @@ export class BedsService {
       if (existingBed) {
         throw new ConflictException(
           `Bed with number ${updateBedDto.bedNumber} already exists in this hospital`,
+        );
+      }
+    }
+
+    // If moving to a room, validate capacity
+    if (updateBedDto.roomId && updateBedDto.roomId !== bed.roomId) {
+      const room = await this.prisma.room.findUnique({
+        where: { id: updateBedDto.roomId },
+        select: { id: true, capacity: true },
+      });
+
+      if (!room) {
+        throw new NotFoundException(`Room with ID ${updateBedDto.roomId} not found`);
+      }
+
+      const bedsInRoom = await this.prisma.bed.count({
+        where: { roomId: updateBedDto.roomId },
+      });
+
+      if (bedsInRoom >= room.capacity) {
+        throw new BadRequestException(
+          `Room capacity reached. Maximum beds allowed: ${room.capacity}`,
         );
       }
     }
