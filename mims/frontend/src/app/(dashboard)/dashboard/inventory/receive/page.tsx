@@ -52,6 +52,8 @@ interface Medicine {
   strength?: string;
   form: string;
   status?: string;
+  quantityPerPack?: number; // tablets per strip
+  stripsPerBox?: number;   // strips per box
 }
 
 interface Pharmacy {
@@ -112,7 +114,7 @@ const receiveStockSchema = z.object({
   
   pharmacyId: z.string().min(1, 'Pharmacy is required'),
   batchNo: z.string().min(3, 'Batch number must be at least 3 characters'),
-  qtyReceived: z.number().min(1, 'Quantity must be at least 1'),
+  qtyReceived: z.number().min(0, 'Quantity must be non-negative'),
   expiryDate: z.string().min(1, 'Expiry date is required'),
   manufacturer: z.string().optional(),
   storageType: z.enum(['ROOM_TEMPERATURE', 'COLD_STORAGE', 'REFRIGERATED'], {
@@ -121,11 +123,22 @@ const receiveStockSchema = z.object({
   purchasePrice: z.number().min(0, 'Purchase price must be non-negative'),
   governmentPrice: z.number().min(0, 'Government price must be non-negative'),
   retailPrice: z.number().min(0, 'Retail price must be non-negative'),
+  // Box-based receiving for tablets/capsules
+  receiveByBox: z.boolean().optional(),
+  boxCount: z.number().int().min(1).optional(),
+  stripsPerBoxInput: z.number().int().min(1).optional(),
+  tabletsPerStripInput: z.number().int().min(1).optional(),
 }).refine(
   (data) => data.medicineId || (data.medicineName && data.form),
   {
     message: 'Either select a medicine or enter medicine name with form',
     path: ['medicineId'],
+  }
+).refine(
+  (data) => !!data.receiveByBox || data.qtyReceived >= 1,
+  {
+    message: 'Quantity must be at least 1',
+    path: ['qtyReceived'],
   }
 );
 
@@ -169,6 +182,10 @@ export default function ReceiveStockPage() {
       purchasePrice: 0,
       governmentPrice: 0,
       retailPrice: 0,
+      receiveByBox: false,
+      boxCount: 1,
+      stripsPerBoxInput: undefined,
+      tabletsPerStripInput: undefined,
     },
   });
 
@@ -296,6 +313,11 @@ export default function ReceiveStockPage() {
       data.batchNo = `${pharmacyCode}-${timestamp}-${random}`;
     }
 
+    // If receiving by box, calculate total tablets as qtyReceived
+    if (data.receiveByBox && data.boxCount && data.stripsPerBoxInput && data.tabletsPerStripInput) {
+      data.qtyReceived = data.boxCount * data.stripsPerBoxInput * data.tabletsPerStripInput;
+    }
+
     const newItem: StockItem = {
       ...data,
       tempId: Date.now().toString() + Math.random().toString(36).substring(7),
@@ -319,6 +341,10 @@ export default function ReceiveStockPage() {
       purchasePrice: 0,
       governmentPrice: 0,
       retailPrice: 0,
+      receiveByBox: false,
+      boxCount: 1,
+      stripsPerBoxInput: undefined,
+      tabletsPerStripInput: undefined,
     });
   };
 
@@ -480,6 +506,7 @@ export default function ReceiveStockPage() {
         open={bulkImportOpen}
         onOpenChange={setBulkImportOpen}
         pharmacies={pharmacies}
+        hospitalId={currentHospitalId}
         onSuccess={() => {
           fetchRecentBatches();
           alert('Bulk import completed successfully!');
@@ -664,27 +691,98 @@ export default function ReceiveStockPage() {
                     )}
                   />
 
-                  {/* Quantity */}
-                  <FormField
-                    control={form.control}
-                    name="qtyReceived"
-                    render={({ field }) => (
-                      <FormItem className="col-span-1">
-                        <FormLabel>Qty *</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            min="1"
-                            placeholder="0"
-                            {...field}
-                            value={field.value ?? 0}
-                            onChange={(e) => field.onChange(Number(e.target.value))}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {/* Quantity / Box-based input */}
+                  {(() => {
+                    const selectedMedId = form.watch('medicineId');
+                    const selectedMed = medicines.find(m => m.id === selectedMedId);
+                    const isTabletCapsule = selectedMed?.form === 'TABLET' || selectedMed?.form === 'CAPSULE' || form.watch('form') === 'TABLET' || form.watch('form') === 'CAPSULE';
+                    const receiveByBox = form.watch('receiveByBox');
+                    const boxCount = form.watch('boxCount') || 0;
+                    const stripsPerBoxVal = form.watch('stripsPerBoxInput') || 0;
+                    const tabletsPerStripVal = form.watch('tabletsPerStripInput') || 0;
+                    const totalTablets = receiveByBox ? boxCount * stripsPerBoxVal * tabletsPerStripVal : 0;
+
+                    return isTabletCapsule ? (
+                      <>
+                        {/* Toggle receive by box */}
+                        <div className="col-span-1 flex flex-col justify-end">
+                          <label className="text-xs font-medium mb-1">By Box?</label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = !receiveByBox;
+                              form.setValue('receiveByBox', next);
+                              if (next && selectedMed) {
+                                if (selectedMed.stripsPerBox) form.setValue('stripsPerBoxInput', selectedMed.stripsPerBox);
+                                if (selectedMed.quantityPerPack) form.setValue('tabletsPerStripInput', selectedMed.quantityPerPack);
+                              }
+                            }}
+                            className={`px-2 py-1.5 text-xs rounded border ${receiveByBox ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
+                          >
+                            {receiveByBox ? 'ON' : 'OFF'}
+                          </button>
+                        </div>
+
+                        {receiveByBox ? (
+                          <>
+                            <FormField control={form.control} name="boxCount" render={({ field }) => (
+                              <FormItem className="col-span-1">
+                                <FormLabel>Boxes *</FormLabel>
+                                <FormControl>
+                                  <Input type="number" min="1" placeholder="0" {...field} value={field.value ?? 1} onChange={e => field.onChange(Number(e.target.value))} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
+                            <FormField control={form.control} name="stripsPerBoxInput" render={({ field }) => (
+                              <FormItem className="col-span-1">
+                                <FormLabel>Strips/Box</FormLabel>
+                                <FormControl>
+                                  <Input type="number" min="1" placeholder="10" {...field} value={field.value ?? ''} readOnly className="bg-muted cursor-not-allowed" onChange={e => field.onChange(Number(e.target.value))} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
+                            <FormField control={form.control} name="tabletsPerStripInput" render={({ field }) => (
+                              <FormItem className="col-span-1">
+                                <FormLabel>Tabs/Strip</FormLabel>
+                                <FormControl>
+                                  <Input type="number" min="1" placeholder="10" {...field} value={field.value ?? ''} readOnly className="bg-muted cursor-not-allowed" onChange={e => field.onChange(Number(e.target.value))} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
+                            <div className="col-span-1 flex flex-col justify-end">
+                              <label className="text-xs font-medium text-muted-foreground mb-1">Total Tabs</label>
+                              <div className="px-2 py-1.5 text-sm font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded">
+                                {totalTablets > 0 ? totalTablets : '—'}
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <FormField control={form.control} name="qtyReceived" render={({ field }) => (
+                            <FormItem className="col-span-1">
+                              <FormLabel>Qty *</FormLabel>
+                              <FormControl>
+                                <Input type="number" min="1" placeholder="0" {...field} value={field.value ?? 0} onChange={(e) => field.onChange(Number(e.target.value))} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )} />
+                        )}
+                      </>
+                    ) : (
+                      <FormField control={form.control} name="qtyReceived" render={({ field }) => (
+                        <FormItem className="col-span-1">
+                          <FormLabel>Qty *</FormLabel>
+                          <FormControl>
+                            <Input type="number" min="1" placeholder="0" {...field} value={field.value ?? 0} onChange={(e) => field.onChange(Number(e.target.value))} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    );
+                  })()}
 
                   {/* Expiry Date */}
                   <FormField

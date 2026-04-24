@@ -192,11 +192,11 @@ export default function PrescriptionsPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Search by NR Number
+              Search by MRN
             </label>
             <input
               type="text"
-              placeholder="Enter NR Number..."
+              placeholder="Enter MRN..."
               value={searchNR}
               onChange={(e) => {
                 setSearchNR(e.target.value);
@@ -255,7 +255,7 @@ export default function PrescriptionsPage() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      NR Number
+                      MRN
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Patient
@@ -342,7 +342,8 @@ export default function PrescriptionsPage() {
                             <select
                               value={statusEdits[prescription.id] || prescription.status}
                               onChange={(event) => handleStatusChange(prescription.id, event.target.value)}
-                              className="px-2 py-1 border border-gray-300 rounded-md text-sm"
+                              disabled={prescription.status === 'ISSUED' || prescription.status === 'CANCELLED'}
+                              className="px-2 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-100"
                             >
                               {statusOptions.map((status) => (
                                 <option key={status} value={status}>
@@ -354,6 +355,8 @@ export default function PrescriptionsPage() {
                               onClick={() => handleStatusUpdate(prescription)}
                               disabled={
                                 updatingId === prescription.id ||
+                                prescription.status === 'ISSUED' ||
+                                prescription.status === 'CANCELLED' ||
                                 (statusEdits[prescription.id] || prescription.status) === prescription.status
                               }
                               className="px-2 py-1 text-xs font-semibold rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"

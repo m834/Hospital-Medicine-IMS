@@ -14,7 +14,7 @@ describe('ReferralsService', () => {
   const mockPatient = {
     id: 'patient-1',
     fullName: 'John Patient',
-    nrNumber: 'NR-2026-0001',
+    nrNumber: 'MRN-2026-0001',
   };
 
   const mockVisit = {

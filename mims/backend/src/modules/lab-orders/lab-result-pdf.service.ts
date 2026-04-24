@@ -64,7 +64,7 @@ export class LabResultPdfService {
           .text('Patient Information:', leftColumn, yPosition)
           .font('Helvetica')
           .moveDown(0.3)
-          .text(`NR Number: ${labOrder.patient.nrNumber}`, leftColumn)
+          .text(`MRN: ${labOrder.patient.nrNumber}`, leftColumn)
           .text(`Name: ${labOrder.patient.fullName}`, leftColumn)
           .text(`Gender: ${labOrder.patient.gender}`, leftColumn)
           .text(

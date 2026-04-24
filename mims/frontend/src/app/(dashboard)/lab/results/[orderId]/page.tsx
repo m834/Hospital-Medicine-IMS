@@ -116,7 +116,7 @@ export default function ResultEntryPage({ params }: { params: Promise<{ orderId:
               <p className="font-medium">{order.patient?.fullName}</p>
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">NR Number</Label>
+              <Label className="text-xs text-muted-foreground">MRN</Label>
               <p className="font-mono text-sm">{order.patient?.nrNumber}</p>
             </div>
             {order.patient?.gender && (

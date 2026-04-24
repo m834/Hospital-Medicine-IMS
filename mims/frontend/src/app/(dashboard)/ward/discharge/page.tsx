@@ -225,7 +225,7 @@ export default function DischargeFormPage() {
           <h2>Patient Information</h2>
           <div class="grid">
             <div><div class="label">Name</div><div class="value">${selectedAdmission.patient?.fullName || '-'}</div></div>
-            <div><div class="label">NR Number</div><div class="value">${selectedAdmission.patient?.nrNumber || '-'}</div></div>
+            <div><div class="label">MRN</div><div class="value">${selectedAdmission.patient?.nrNumber || '-'}</div></div>
             <div><div class="label">Gender</div><div class="value">${selectedAdmission.patient?.gender || '-'}</div></div>
             <div><div class="label">Mobile</div><div class="value">${selectedAdmission.patient?.mobile || '-'}</div></div>
           </div>
@@ -444,7 +444,7 @@ export default function DischargeFormPage() {
                       </p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground">NR Number</p>
+                      <p className="text-muted-foreground">MRN</p>
                       <p className="font-semibold">
                         {selectedAdmission.patient?.nrNumber}
                       </p>

@@ -137,10 +137,10 @@ export default function NewLabOrderPageComponent() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="patientNr">Patient NR Number</Label>
+                <Label htmlFor="patientNr">Patient MRN</Label>
                 <Input
                   id="patientNr"
-                  placeholder="e.g., NR-2024-001"
+                  placeholder="e.g., MRN-2024-001"
                   value={patientNrNumber}
                   onChange={(e) => setPatientNrNumber(e.target.value)}
                 />

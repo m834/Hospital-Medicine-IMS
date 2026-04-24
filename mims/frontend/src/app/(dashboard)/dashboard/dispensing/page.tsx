@@ -49,8 +49,10 @@ interface Prescription {
 interface DispenseItem {
   medicineId: string;
   medicineName: string;
+  medicineForm?: string;
   quantity: number;
   customPrice?: number;
+  dispenseByTablet?: boolean;
 }
 
 export default function DispensingPage() {
@@ -98,7 +100,7 @@ export default function DispensingPage() {
 
   const searchPatient = async () => {
     if (!searchNR.trim()) {
-      alert('Please enter NR Number');
+      alert('Please enter MRN');
       return;
     }
 
@@ -151,8 +153,10 @@ export default function DispensingPage() {
     const items: DispenseItem[] = prescription.items.map((item) => ({
       medicineId: item.medicineId,
       medicineName: item.medicine.name,
+      medicineForm: item.medicine?.form,
       quantity: item.qtyPrescribed,
       customPrice: undefined,
+      dispenseByTablet: true,
     }));
     
     setDispenseItems(items);
@@ -182,8 +186,10 @@ export default function DispensingPage() {
         {
           medicineId: manualMedicineId,
           medicineName: medicine.name,
+          medicineForm: medicine.form,
           quantity: manualQuantity,
           customPrice: undefined,
+          dispenseByTablet: true,
         },
       ]);
     }
@@ -202,6 +208,12 @@ export default function DispensingPage() {
   const updateItemPrice = (index: number, price: number) => {
     const updated = [...dispenseItems];
     updated[index].customPrice = price;
+    setDispenseItems(updated);
+  };
+
+  const updateDispenseByTablet = (index: number, value: boolean) => {
+    const updated = [...dispenseItems];
+    updated[index].dispenseByTablet = value;
     setDispenseItems(updated);
   };
 
@@ -241,6 +253,7 @@ export default function DispensingPage() {
           medicineId: item.medicineId,
           quantity: item.quantity,
           customPrice: priceType === 'CUSTOM' ? item.customPrice : undefined,
+          dispenseByTablet: item.dispenseByTablet !== false,
         })),
       };
 
@@ -278,7 +291,7 @@ export default function DispensingPage() {
         <div className="flex gap-2">
           <input
             type="text"
-            placeholder="Enter NR Number (e.g., NR-20251128-0001)"
+            placeholder="Enter MRN (e.g., MRN-20251128-0001)"
             value={searchNR}
             onChange={(e) => setSearchNR(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && searchPatient()}
@@ -301,7 +314,7 @@ export default function DispensingPage() {
                 <p className="font-semibold">{selectedPatient.fullName}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-600">NR Number</p>
+                <p className="text-sm text-gray-600">MRN</p>
                 <p className="font-semibold">{selectedPatient.nrNumber}</p>
               </div>
               <div>
@@ -479,6 +492,9 @@ export default function DispensingPage() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       Quantity
                     </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Unit
+                    </th>
                     {priceType === 'CUSTOM' && (
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                         Custom Price
@@ -501,6 +517,28 @@ export default function DispensingPage() {
                           onChange={(e) => updateItemQuantity(index, Number(e.target.value))}
                           className="w-20 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
                         />
+                      </td>
+                      <td className="px-4 py-3">
+                        {(item.medicineForm === 'TABLET' || item.medicineForm === 'CAPSULE') ? (
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() => updateDispenseByTablet(index, true)}
+                              className={`px-2 py-1 text-xs rounded border ${item.dispenseByTablet !== false ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300'}`}
+                            >
+                              Tab
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateDispenseByTablet(index, false)}
+                              className={`px-2 py-1 text-xs rounded border ${item.dispenseByTablet === false ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-600 border-gray-300'}`}
+                            >
+                              Strip
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
                       </td>
                       {priceType === 'CUSTOM' && (
                         <td className="px-4 py-3">

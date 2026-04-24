@@ -244,7 +244,7 @@ export function QueueDashboard() {
                     {currentPatient.patient?.firstName} {currentPatient.patient?.lastName}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    NR: {currentPatient.patient?.nrNumber}
+                    MRN: {currentPatient.patient?.nrNumber}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {currentPatient.patient?.gender} •{' '}
@@ -324,7 +324,7 @@ export function QueueDashboard() {
                           )}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          NR: {visit.patient?.nrNumber} •{' '}
+                          MRN: {visit.patient?.nrNumber} •{' '}
                           {visit.patient?.gender} •{' '}
                           {calculateAge(visit.patient?.dateOfBirth || '')}y
                         </p>

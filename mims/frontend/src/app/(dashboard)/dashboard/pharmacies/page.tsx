@@ -96,6 +96,9 @@ export default function PharmaciesPage() {
 
   const isSuperAdmin = user?.role === UserRole.SUPER_ADMIN;
   const canModify = user?.role ? canModifyResources(user.role as UserRole) : false;
+  const canAddPharmacy = user?.role === UserRole.SUPER_ADMIN ||
+    user?.role === UserRole.MASTER_ADMIN ||
+    user?.role === UserRole.HOSPITAL_ADMIN;
 
   // Determine current hospital for create modal
   const currentHospital = selectedHospital || (user?.hospitalId ? {
@@ -211,6 +214,7 @@ export default function PharmaciesPage() {
             Refresh
           </Button>
           <div className="relative group">
+            {canAddPharmacy && (
             <Button 
               size="sm" 
               onClick={() => setCreateModalOpen(true)}
@@ -219,7 +223,8 @@ export default function PharmaciesPage() {
               <Plus className="w-4 h-4 mr-2" />
               Add Pharmacy
             </Button>
-            {!currentHospital && (
+            )}
+            {canAddPharmacy && !currentHospital && (
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 text-xs text-white bg-gray-900 rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
                 Please select a hospital first
               </div>

@@ -9,6 +9,10 @@ export class SearchTransferRequestDto {
 
   @IsString()
   @IsOptional()
+  pharmacyId?: string;
+
+  @IsString()
+  @IsOptional()
   fromPharmacyId?: string;
 
   @IsString()

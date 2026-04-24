@@ -171,9 +171,10 @@ export async function validateToken(): Promise<boolean> {
     console.log('[Auth] Token validated successfully');
     return data.valid === true;
   } catch (error) {
-    console.error('[Auth] Token validation error:', error);
-    clearAuthTokens();
-    return false;
+    // Network error (backend unreachable) — do NOT clear tokens or log out.
+    // Trust the client-side expiry check that already passed above.
+    console.warn('[Auth] Token validation network error (backend unreachable) - using local expiry check:', error);
+    return true;
   }
 }
 

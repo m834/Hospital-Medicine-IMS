@@ -123,8 +123,8 @@ export default function SubPharmacyDashboard() {
   };
 
   const formatCurrency = (value: number | undefined) => {
-    if (value === undefined || value === null) return 'Nu. 0.00';
-    return `Nu. ${value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (value === undefined || value === null) return 'PKR 0.00';
+    return `PKR ${value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const formatDate = (dateString: string) => {

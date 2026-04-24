@@ -57,6 +57,7 @@ export class VisitsController {
    */
   @Get()
   @Roles(
+    UserRole.SUPER_ADMIN,
     UserRole.MASTER_ADMIN,
     UserRole.HOSPITAL_ADMIN,
     UserRole.DEPARTMENT_ADMIN,
@@ -64,6 +65,9 @@ export class VisitsController {
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
     UserRole.NURSE,
+    UserRole.MAIN_PHARMACY_MANAGER,
+    UserRole.SUB_PHARMACY_MANAGER,
+    UserRole.PHARMACY_STAFF,
   )
   @ApiOperation({ summary: 'Get all visits with filters' })
   @ApiResponse({ status: 200, description: 'List of visits' })
@@ -77,6 +81,7 @@ export class VisitsController {
    */
   @Get('today')
   @Roles(
+    UserRole.SUPER_ADMIN,
     UserRole.MASTER_ADMIN,
     UserRole.HOSPITAL_ADMIN,
     UserRole.DOCTOR,
@@ -94,6 +99,7 @@ export class VisitsController {
    */
   @Get('patient/:patientId')
   @Roles(
+    UserRole.SUPER_ADMIN,
     UserRole.MASTER_ADMIN,
     UserRole.HOSPITAL_ADMIN,
     UserRole.DOCTOR,
@@ -133,6 +139,7 @@ export class VisitsController {
    */
   @Get(':id')
   @Roles(
+    UserRole.SUPER_ADMIN,
     UserRole.MASTER_ADMIN,
     UserRole.HOSPITAL_ADMIN,
     UserRole.DEPARTMENT_ADMIN,

@@ -209,9 +209,13 @@ export class InventoryController {
     UserRole.MAIN_PHARMACY_MANAGER,
     UserRole.SUB_PHARMACY_MANAGER,
   )
-  async getStats(@Query('pharmacyId') pharmacyId: string, @Request() req) {
-    // For Super Admin, get hospitalId from pharmacy
-    let hospitalId = req.user.hospitalId;
+  async getStats(
+    @Query('pharmacyId') pharmacyId: string,
+    @Query('hospitalId') queryHospitalId: string,
+    @Request() req,
+  ) {
+    // Use req.user.hospitalId if available, otherwise fall back to query param (Super Admin)
+    let hospitalId = req.user.hospitalId || queryHospitalId;
     if (!hospitalId && pharmacyId) {
       const pharmacy = await this.inventoryService.getPharmacyHospital(pharmacyId);
       hospitalId = pharmacy.hospitalId;

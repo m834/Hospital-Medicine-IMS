@@ -35,6 +35,7 @@ interface BulkImportModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   pharmacies: Pharmacy[];
+  hospitalId?: string;
   onSuccess: () => void;
 }
 
@@ -54,7 +55,7 @@ interface ImportResult {
   medicinesCreated: number;
 }
 
-export function BulkImportModal({ open, onOpenChange, pharmacies, onSuccess }: BulkImportModalProps) {
+export function BulkImportModal({ open, onOpenChange, pharmacies, hospitalId, onSuccess }: BulkImportModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [selectedPharmacy, setSelectedPharmacy] = useState('');
   const [loading, setLoading] = useState(false);
@@ -174,28 +175,38 @@ export function BulkImportModal({ open, onOpenChange, pharmacies, onSuccess }: B
       // Parse Excel file
       const excelData = await parseExcelFile(file);
 
+      // Generate a unique suffix per import run so batch numbers never collide
+      const importSuffix = `-${Date.now()}`;
+
       // Transform Excel data to API format
-      const batches = excelData.map((row: any) => ({
-        medicineName: row['Medicine Name'],
-        genericName: row['Generic Name'] || undefined,
-        form: row['Form'],
-        strength: row['Strength'] || undefined,
-        medicineManufacturer: row['Manufacturer'] || undefined,
-        pharmacyId: selectedPharmacy,
-        batchNo: row['Batch Number'],
-        qtyReceived: Number(row['Quantity']),
-        expiryDate: row['Expiry Date'],
-        manufacturer: row['Manufacturer'] || undefined,
-        storageType: row['Storage Type'],
-        purchasePrice: Number(row['Purchase Price']),
-        governmentPrice: Number(row['Government Price']),
-        retailPrice: Number(row['Retail Price']),
-      }));
+      const batches = excelData.map((row: any) => {
+        const rawBatchNo = row['Batch Number'] ? String(row['Batch Number']).trim() : '';
+        const batchNo = rawBatchNo
+          ? `${rawBatchNo}${importSuffix}`
+          : `BATCH${importSuffix}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+        return {
+          medicineName: row['Medicine Name'],
+          genericName: row['Generic Name'] || undefined,
+          form: row['Form'],
+          strength: row['Strength'] || undefined,
+          medicineManufacturer: row['Manufacturer'] || undefined,
+          pharmacyId: selectedPharmacy,
+          batchNo,
+          qtyReceived: Number(row['Quantity']),
+          expiryDate: row['Expiry Date'],
+          manufacturer: row['Manufacturer'] || undefined,
+          storageType: row['Storage Type'],
+          purchasePrice: Number(row['Purchase Price']),
+          governmentPrice: Number(row['Government Price']),
+          retailPrice: Number(row['Retail Price']),
+        };
+      });
 
       // Submit to API
       const response = await api.post('/inventory/batches/bulk', {
         batches,
-        hospitalId: '', // Will be extracted from pharmacy
+        hospitalId: hospitalId || '',
       });
 
       setResult(response.data);

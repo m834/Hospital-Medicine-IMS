@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsOptional, IsEnum } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsEnum, IsInt, Min } from 'class-validator';
 import { MedicineForm } from '@prisma/client';
 
 export class CreateMedicineDto {
@@ -25,4 +25,14 @@ export class CreateMedicineDto {
   @IsString()
   @IsOptional()
   manufacturer?: string;
+
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  quantityPerPack?: number; // tablets/capsules per strip
+
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  stripsPerBox?: number; // strips per box (for tablets/capsules)
 }

@@ -25,7 +25,7 @@ export class SearchPatientsDto {
 
   @IsString()
   @IsOptional()
-  search?: string; // Search by NR-Number, name, CNIC, or mobile
+  search?: string; // Search by MRN, name, CNIC, or mobile
 
   @IsString()
   @IsOptional()

@@ -106,6 +106,7 @@ export class TransfersService {
     const {
       fromPharmacyId,
       toPharmacyId,
+      pharmacyId,
       status,
       limit = 100,
       page = 1,
@@ -124,8 +125,12 @@ export class TransfersService {
       where.hospitalId = hospitalId;
     }
 
-    if (fromPharmacyId) where.fromPharmacyId = fromPharmacyId;
-    if (toPharmacyId) where.toPharmacyId = toPharmacyId;
+    if (pharmacyId) {
+      where.OR = [{ fromPharmacyId: pharmacyId }, { toPharmacyId: pharmacyId }];
+    } else {
+      if (fromPharmacyId) where.fromPharmacyId = fromPharmacyId;
+      if (toPharmacyId) where.toPharmacyId = toPharmacyId;
+    }
     if (status) where.status = status;
 
     const skip = (page - 1) * limit;

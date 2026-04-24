@@ -75,7 +75,7 @@ export default function PharmacyStaffDashboard() {
         {
           id: '1',
           title: 'Medicine Issued',
-          description: 'Patient NR-2024-145 - 3 medicines dispensed',
+          description: 'Patient MRN-2024-145 - 3 medicines dispensed',
           timestamp: new Date(Date.now() - 10 * 60 * 1000),
           user: 'You',
           type: 'success',
@@ -84,7 +84,7 @@ export default function PharmacyStaffDashboard() {
         {
           id: '2',
           title: 'Prescription Completed',
-          description: 'Patient NR-2024-144 - All medicines issued',
+          description: 'Patient MRN-2024-144 - All medicines issued',
           timestamp: new Date(Date.now() - 30 * 60 * 1000),
           user: 'You',
           type: 'success',
@@ -181,9 +181,9 @@ export default function PharmacyStaffDashboard() {
           </div>
           <div className="space-y-3">
             {[
-              { patient: 'NR-2024-150', medicines: 3, priority: 'Normal', time: '5 min ago' },
-              { patient: 'NR-2024-149', medicines: 2, priority: 'Urgent', time: '12 min ago' },
-              { patient: 'NR-2024-148', medicines: 4, priority: 'Normal', time: '20 min ago' },
+              { patient: 'MRN-2024-150', medicines: 3, priority: 'Normal', time: '5 min ago' },
+              { patient: 'MRN-2024-149', medicines: 2, priority: 'Urgent', time: '12 min ago' },
+              { patient: 'MRN-2024-148', medicines: 4, priority: 'Normal', time: '20 min ago' },
             ].map((prescription, index) => (
               <div
                 key={index}

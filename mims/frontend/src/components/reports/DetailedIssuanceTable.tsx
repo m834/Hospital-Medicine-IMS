@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
   Table,
   TableBody,
@@ -59,7 +59,7 @@ export function DetailedIssuanceTable({ data }: DetailedIssuanceTableProps) {
   };
 
   const formatCurrency = (value: number) => {
-    return `Nu. ${value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `PKR ${value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const formatDate = (dateString: string) => {
@@ -138,7 +138,7 @@ export function DetailedIssuanceTable({ data }: DetailedIssuanceTableProps) {
           <TableRow>
             <TableHead className="w-10"></TableHead>
             <TableHead>Issue Date/Time</TableHead>
-            <TableHead>NR Number</TableHead>
+            <TableHead>MRN</TableHead>
             <TableHead>Patient Details</TableHead>
             <TableHead>Visit Type</TableHead>
             <TableHead>Issued By</TableHead>
@@ -148,7 +148,7 @@ export function DetailedIssuanceTable({ data }: DetailedIssuanceTableProps) {
         </TableHeader>
         <TableBody>
           {data.map((issue) => (
-            <>
+            <React.Fragment key={issue.issueId}>
               {/* Issue Row */}
               <TableRow
                 key={issue.issueId}
@@ -259,7 +259,7 @@ export function DetailedIssuanceTable({ data }: DetailedIssuanceTableProps) {
                   </TableCell>
                 </TableRow>
               )}
-            </>
+            </React.Fragment>
           ))}
         </TableBody>
       </Table>

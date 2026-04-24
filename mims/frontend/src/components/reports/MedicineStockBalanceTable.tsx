@@ -56,7 +56,7 @@ export function MedicineStockBalanceTable({ data, title, type }: MedicineStockBa
   };
 
   const formatCurrency = (value: number) => {
-    return `Nu. ${value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `PKR ${value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const formatDate = (dateString: string) => {

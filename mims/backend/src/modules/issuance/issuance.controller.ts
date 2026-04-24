@@ -54,8 +54,13 @@ export class IssuanceController {
     UserRole.MAIN_PHARMACY_MANAGER,
     UserRole.SUB_PHARMACY_MANAGER,
   )
-  getStats(@Query('pharmacyId') pharmacyId: string, @Request() req) {
-    return this.issuanceService.getStats(req.user.hospitalId, pharmacyId);
+  getStats(
+    @Query('pharmacyId') pharmacyId: string,
+    @Query('hospitalId') queryHospitalId: string,
+    @Request() req,
+  ) {
+    const hospitalId = req.user.hospitalId || queryHospitalId;
+    return this.issuanceService.getStats(hospitalId, pharmacyId);
   }
 
   @Get(':id')

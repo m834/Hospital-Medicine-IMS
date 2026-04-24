@@ -27,7 +27,10 @@ async function bootstrap() {
   app.useGlobalFilters(new GlobalExceptionFilter());
 
   // Security
-  app.use(helmet());
+  // crossOriginResourcePolicy must be 'cross-origin' to not block CORS requests
+  app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  }));
 
   // PERFORMANCE OPTIMIZATION: Enable gzip compression
   // Reduces response size by 60-80% for JSON/text
@@ -37,9 +40,13 @@ async function bootstrap() {
   }));
   
   // CORS configuration
+  const frontendUrl = configService.get('FRONTEND_URL') || 'http://localhost:3000';
   app.enableCors({
-    origin: configService.get('FRONTEND_URL') || 'http://localhost:3000',
+    origin: frontendUrl,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
     credentials: true,
+    optionsSuccessStatus: 204,
   });
 
   // Global validation pipe

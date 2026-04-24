@@ -66,7 +66,7 @@ export default function DoctorAssistantDashboard() {
         {
           id: '1',
           title: 'Prescription Prepared',
-          description: 'Patient NR-2024-145 - Draft ready for doctor review',
+          description: 'Patient MRN-2024-145 - Draft ready for doctor review',
           timestamp: new Date(Date.now() - 20 * 60 * 1000),
           user: 'You',
           type: 'info',
@@ -75,7 +75,7 @@ export default function DoctorAssistantDashboard() {
         {
           id: '2',
           title: 'Patient Registered',
-          description: 'New patient NR-2024-146 registered',
+          description: 'New patient MRN-2024-146 registered',
           timestamp: new Date(Date.now() - 45 * 60 * 1000),
           user: 'You',
           type: 'success',
@@ -149,8 +149,8 @@ export default function DoctorAssistantDashboard() {
           <h3 className="mb-4 text-lg font-semibold text-gray-900">Pending Doctor Reviews</h3>
           <div className="space-y-3">
             {[
-              { patient: 'NR-2024-150', medicines: 3, time: '15 min ago' },
-              { patient: 'NR-2024-149', medicines: 2, time: '1 hour ago' },
+              { patient: 'MRN-2024-150', medicines: 3, time: '15 min ago' },
+              { patient: 'MRN-2024-149', medicines: 2, time: '1 hour ago' },
             ].map((item, index) => (
               <div
                 key={index}

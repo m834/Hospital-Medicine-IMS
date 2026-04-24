@@ -291,7 +291,7 @@ export default function PatientDetailPage() {
           <h2>Patient Information</h2>
           <div class="grid">
             <div>
-              <div class="label">NR Number</div>
+              <div class="label">MRN</div>
               <div class="value">${patient.nrNumber}</div>
             </div>
             <div>
@@ -418,7 +418,7 @@ export default function PatientDetailPage() {
           <h2>Patient</h2>
           <div class="grid">
             <div>
-              <div class="label">NR Number</div>
+              <div class="label">MRN</div>
               <div class="value">${patient.nrNumber}</div>
             </div>
             <div>
@@ -549,7 +549,7 @@ export default function PatientDetailPage() {
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>{patient.fullName}</CardTitle>
-          <CardDescription>NR Number: {patient.nrNumber}</CardDescription>
+          <CardDescription>MRN: {patient.nrNumber}</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>

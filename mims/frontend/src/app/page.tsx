@@ -49,7 +49,7 @@ export default function Home() {
               <Users className="h-12 w-12 text-primary mb-4" />
               <h4 className="text-xl font-semibold mb-2">Patient Registration</h4>
               <p className="text-sm text-muted-foreground">
-                Register patients with NR-Number generation, ward assignment, and complete medical history.
+                Register patients with MRN generation, ward assignment, and complete medical history.
               </p>
             </div>
 

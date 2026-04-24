@@ -52,13 +52,17 @@ export class PharmaciesController {
     UserRole.PHARMACY_STAFF,
     UserRole.AUDITOR,
   )
-  findAll(@Query('hospitalId') hospitalId?: string, @Request() req?) {
+  findAll(
+    @Query('hospitalId') hospitalId?: string,
+    @Query('type') type?: string,
+    @Request() req?,
+  ) {
     // Hospital users can only see pharmacies in their hospital
     if (req.user.role !== UserRole.SUPER_ADMIN) {
       hospitalId = req.user.hospitalId;
     }
 
-    return this.pharmaciesService.findAll(hospitalId);
+    return this.pharmaciesService.findAll(hospitalId, type);
   }
 
   @Get('stats/:hospitalId')

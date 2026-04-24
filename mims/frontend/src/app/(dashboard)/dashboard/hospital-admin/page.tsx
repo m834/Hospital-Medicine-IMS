@@ -510,7 +510,7 @@ export default function HospitalAdminDashboard() {
             <table className="min-w-full text-sm">
               <thead><tr className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
                 <th className="px-4 py-2">Patient</th>
-                <th className="px-4 py-2">NR Number</th>
+                <th className="px-4 py-2">MRN</th>
                 <th className="px-4 py-2">Room/Bed</th>
                 <th className="px-4 py-2">Admitted</th>
                 <th className="px-4 py-2">Status</th>

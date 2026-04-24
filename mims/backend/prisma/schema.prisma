@@ -308,6 +308,8 @@ model Medicine {
   strength     String?
   form         MedicineForm
   manufacturer String?
+  quantityPerPack Int?        @map("quantity_per_pack")   // tablets per strip
+  stripsPerBox    Int?        @map("strips_per_box")      // strips per box (for tablets/capsules)
   status       MedicineStatus @default(ACTIVE)
   version      Int            @default(1)
   createdAt    DateTime       @default(now()) @map("created_at")
@@ -1248,6 +1250,7 @@ enum UserRole {
   DOCTOR
   DOCTOR_ASSISTANT
   REGISTRATION_STAFF
+  REGISTRATION_STAFF_MANAGER
   PHARMACY_STAFF
   AUDITOR
   LAB_TECHNICIAN

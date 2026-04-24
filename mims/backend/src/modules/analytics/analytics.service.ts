@@ -666,37 +666,44 @@ export class AnalyticsService {
   }
 
   private getDateRange(period: TimePeriod, customStart?: string, customEnd?: string) {
-    const now = new Date();
+    // Use a fixed reference for endDate so mutations to 'now' don't affect it
+    const endDate = new Date();
     let startDate: Date;
-    let endDate: Date = now;
 
     switch (period) {
       case TimePeriod.TODAY:
-        startDate = new Date(now.setHours(0, 0, 0, 0));
-        endDate = new Date(now.setHours(23, 59, 59, 999));
+        startDate = new Date(endDate);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         break;
       case TimePeriod.WEEK:
-        startDate = new Date(now.setDate(now.getDate() - 7));
+        startDate = new Date(endDate);
+        startDate.setDate(startDate.getDate() - 7);
         break;
       case TimePeriod.MONTH:
-        startDate = new Date(now.setMonth(now.getMonth() - 1));
+        startDate = new Date(endDate);
+        startDate.setMonth(startDate.getMonth() - 1);
         break;
       case TimePeriod.QUARTER:
-        startDate = new Date(now.setMonth(now.getMonth() - 3));
+        startDate = new Date(endDate);
+        startDate.setMonth(startDate.getMonth() - 3);
         break;
       case TimePeriod.YEAR:
-        startDate = new Date(now.setFullYear(now.getFullYear() - 1));
+        startDate = new Date(endDate);
+        startDate.setFullYear(startDate.getFullYear() - 1);
         break;
       case TimePeriod.CUSTOM:
         if (customStart && customEnd) {
           startDate = new Date(customStart);
-          endDate = new Date(customEnd);
+          return { startDate, endDate: new Date(customEnd) };
         } else {
-          startDate = new Date(now.setMonth(now.getMonth() - 1));
+          startDate = new Date(endDate);
+          startDate.setMonth(startDate.getMonth() - 1);
         }
         break;
       default:
-        startDate = new Date(now.setMonth(now.getMonth() - 1));
+        startDate = new Date(endDate);
+        startDate.setMonth(startDate.getMonth() - 1);
     }
 
     return { startDate, endDate };

@@ -137,6 +137,94 @@ export default function DailyTransactionsPage() {
     }
   };
 
+  // ── Normalizers: map backend field names → component interface field names ──
+
+  const normalizeIssues = (issues: any[]) =>
+    issues.map((issue) => ({
+      issueId: issue.id,
+      issueDate: issue.issuedAt,
+      nrNumber: issue.patientNrNumber,
+      patientName: issue.patientName,
+      age: issue.patientAge ?? null,
+      gender: issue.patientGender,
+      visitType: issue.visitType,
+      issuedBy: issue.issuedBy || '—',
+      totalItems: issue.itemCount ?? issue.items?.length ?? 0,
+      totalAmount: issue.totalAmount,
+      items: (issue.items || []).map((item: any) => ({
+        medicineId: item.medicineId,
+        medicineName: item.medicineName,
+        genericName: item.genericName ?? null,
+        form: item.form,
+        strength: item.strength ?? null,
+        batchId: item.issueItemId ?? item.medicineId,
+        batchNo: item.batchNo,
+        expiryDate: item.expiryDate,
+        quantity: item.qtyIssued,
+        unitPrice: item.unitPrice,
+        totalPrice: item.totalAmount,
+      })),
+    }));
+
+  const normalizeTransfers = (transfers: any[]) =>
+    transfers.map((t) => ({
+      transferId: t.id,
+      requestedAt: t.requestedAt,
+      approvedAt: t.approvedAt ?? null,
+      dispatchedAt: t.dispatchedAt ?? null,
+      receivedAt: t.receivedAt ?? null,
+      status: t.status,
+      fromPharmacy: t.fromPharmacyName,
+      toPharmacy: t.toPharmacyName,
+      requester: t.requestedBy || '—',
+      approver: t.approvedBy ?? null,
+      totalItems: t.itemCount ?? t.items?.length ?? 0,
+      items: (t.items || []).map((item: any) => ({
+        medicineId: item.medicineId,
+        medicineName: item.medicineName,
+        genericName: item.genericName ?? null,
+        form: item.form,
+        strength: item.strength ?? null,
+        totalQuantity: item.qtyApproved ?? item.qtyRequested ?? 0,
+        batchMappings: (item.batchMappings || []).map((m: any, idx: number) => ({
+          sourceBatchId: `src-${idx}`,
+          sourceBatchNo: m.sourceBatchNo,
+          sourceExpiry: m.sourceExpiryDate,
+          destinationBatchId: m.destinationBatchNo ? `dst-${idx}` : null,
+          destinationBatchNo: m.destinationBatchNo || null,
+          destinationExpiry: m.destinationExpiryDate ?? null,
+          quantity: m.qtyTransferred,
+        })),
+      })),
+    }));
+
+  const normalizeGRNs = (grns: any[]) =>
+    grns.map((grn) => ({
+      grnId: grn.id,
+      grnNumber: grn.grnNumber,
+      receivedDate: grn.receivedDate,
+      receivedBy: grn.receivedBy || '—',
+      invoiceNumber: grn.invoiceNumber ?? null,
+      supplierName: grn.supplierName ?? null,
+      totalItems: grn.itemCount ?? grn.items?.length ?? 0,
+      totalValue: grn.totalValue,
+      items: (grn.items || []).map((item: any) => ({
+        medicineId: item.medicineId,
+        medicineName: item.medicineName,
+        genericName: item.genericName ?? null,
+        form: item.form,
+        strength: item.strength ?? null,
+        batchNo: item.batchNo,
+        expiryDate: item.expiryDate,
+        quantity: item.qtyReceived,
+        purchasePrice: item.purchasePrice,
+        governmentPrice: item.governmentPrice,
+        retailPrice: item.retailPrice,
+        storageType: item.storageType,
+        totalValue: item.totalValue,
+      })),
+    }));
+
   const handlePrint = () => {
     exportToPDF();
   };
@@ -152,8 +240,8 @@ export default function DailyTransactionsPage() {
   };
 
   const formatCurrency = (value: number | undefined) => {
-    if (value === undefined || value === null) return 'Nu. 0.00';
-    return `Nu. ${value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (value === undefined || value === null) return 'PKR 0.00';
+    return `PKR ${value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const formatDate = (dateString: string) => {
@@ -167,159 +255,87 @@ export default function DailyTransactionsPage() {
 
   // Transform report data into consolidated medicine-wise stock format
   const transformToConsolidatedData = () => {
-    if (!reportData) {
-      console.log('No report data available');
-      return [];
-    }
+    if (!reportData) return [];
 
-    console.log('=== TRANSFORMATION DEBUG ===');
-    console.log('Full Report Data:', JSON.stringify(reportData, null, 2));
-    console.log('Medicine Wise Opening:', reportData.medicineWiseOpening);
-    console.log('Medicine Wise Closing:', reportData.medicineWiseClosing);
-    console.log('Detailed Transfers Out:', reportData.detailedTransfersOut);
-    console.log('Detailed Issues:', reportData.detailedIssues);
-    console.log('Sub Pharmacies:', subPharmacies);
-    console.log('===========================');
+    const medicineMap = new Map<string, any>();
 
-    const medicineMap = new Map();
-
-    // Process opening stock
-    reportData.medicineWiseOpening?.forEach((medicine: any) => {
+    const ensure = (medicine: any) => {
       const key = medicine.medicineId;
       if (!medicineMap.has(key)) {
         medicineMap.set(key, {
           medicineId: medicine.medicineId,
           medicineName: medicine.medicineName,
-          strength: medicine.strength,
-          form: medicine.form,
-          openingStock: medicine.totalQuantity || 0,
-          openingStockValue: medicine.totalValue || 0,
+          strength: medicine.strength ?? '',
+          form: medicine.form ?? '',
+          openingStock: 0,
+          openingStockValue: 0,
           transfersToSubPharmacies: [],
           patientTransfers: 0,
           closingStock: 0,
           closingStockValue: 0,
         });
       }
+      return medicineMap.get(key);
+    };
+
+    // Opening stock
+    (reportData.medicineWiseOpening || []).forEach((med: any) => {
+      const m = ensure(med);
+      m.openingStock = med.totalQuantity || 0;
+      m.openingStockValue = med.totalValue || 0;
     });
-    console.log('After opening stock:', medicineMap.size, 'medicines');
 
-    // Process transfers out (to sub-pharmacies)
-    // Note: Backend naming is from requester's perspective, not source
-    // In detailedTransfersOut: fromPharmacy = requester, toPharmacy = source
-    const allTransfers = [
-      ...(reportData.detailedTransfersOut || []),
-      ...(reportData.detailedTransfersIn || []),
-    ];
-    
-    allTransfers.forEach((transfer: any) => {
-      // Main Pharmacy is the source if it's in toPharmacyId (backward naming)
-      // This means Main is sending to fromPharmacy (the requester)
-      const isMainPharmacySource = transfer.toPharmacyId === reportData.pharmacy.id;
-      
-      if (isMainPharmacySource) {
-        // Main Pharmacy is sending to fromPharmacy (the requester/destination)
-        const destinationPharmacy = subPharmacies.find((sp) => sp.id === transfer.fromPharmacyId);
-        
-        if (destinationPharmacy) {
-          console.log('Found transfer to sub-pharmacy:', destinationPharmacy.name);
-          
-          transfer.items?.forEach((item: any) => {
-            const key = item.medicineId;
-            if (!medicineMap.has(key)) {
-              medicineMap.set(key, {
-                medicineId: item.medicineId,
-                medicineName: item.medicineName,
-                strength: item.strength,
-                form: item.form,
-                openingStock: 0,
-                openingStockValue: 0,
-                transfersToSubPharmacies: [],
-                patientTransfers: 0,
-                closingStock: 0,
-                closingStockValue: 0,
-              });
-            }
+    // Closing stock
+    (reportData.medicineWiseClosing || []).forEach((med: any) => {
+      const m = ensure(med);
+      m.closingStock = med.totalQuantity || 0;
+      m.closingStockValue = med.totalValue || 0;
+    });
 
-            const medicine = medicineMap.get(key);
-            
-            // Calculate total quantity transferred from batch mappings
-            const totalQty = item.batchMappings?.reduce((sum: number, mapping: any) => {
-              return sum + (mapping.qtyTransferred || 0);
-            }, 0) || item.qtyApproved || item.qtyRequested || 0;
+    // Transfers OUT from this pharmacy to sub-pharmacies
+    // detailedTransfersOut: fromPharmacyId === selectedPharmacy (main is the sender)
+    // toPharmacyId = the sub-pharmacy that received the stock
+    (reportData.detailedTransfersOut || []).forEach((transfer: any) => {
+      const destination = subPharmacies.find(
+        (sp) => sp.id === transfer.toPharmacyId
+      );
+      if (!destination) return;
 
-            console.log(`  ${item.medicineName}: ${totalQty} units to ${destinationPharmacy.name}`);
+      (transfer.items || []).forEach((item: any) => {
+        const m = ensure(item);
+        const qty =
+          (item.batchMappings || []).reduce(
+            (s: number, bm: any) => s + (bm.qtyTransferred || 0),
+            0
+          ) ||
+          item.qtyApproved ||
+          item.qtyRequested ||
+          0;
 
-            const existingTransfer = medicine.transfersToSubPharmacies.find(
-              (t: any) => t.subPharmacyId === destinationPharmacy.id
-            );
-
-            if (existingTransfer) {
-              existingTransfer.quantity += totalQty;
-            } else {
-              medicine.transfersToSubPharmacies.push({
-                subPharmacyId: destinationPharmacy.id,
-                subPharmacyName: destinationPharmacy.name,
-                quantity: totalQty,
-              });
-            }
-          });
+        const existing = m.transfersToSubPharmacies.find(
+          (t: any) => t.subPharmacyId === destination.id
+        );
+        if (existing) {
+          existing.quantity += qty;
         } else {
-          console.log('Transfer destination not a sub-pharmacy:', transfer.fromPharmacyName);
-        }
-      }
-    });
-    console.log('After transfers out:', medicineMap.size, 'medicines');
-
-    // Process patient transfers (issues)
-    reportData.detailedIssues?.forEach((issue: any) => {
-      issue.items?.forEach((item: any) => {
-        const key = item.medicineId;
-        if (!medicineMap.has(key)) {
-          medicineMap.set(key, {
-            medicineId: item.medicineId,
-            medicineName: item.medicineName,
-            strength: item.strength,
-            form: item.form,
-            openingStock: 0,
-            openingStockValue: 0,
-            transfersToSubPharmacies: [],
-            patientTransfers: 0,
-            closingStock: 0,
-            closingStockValue: 0,
+          m.transfersToSubPharmacies.push({
+            subPharmacyId: destination.id,
+            subPharmacyName: destination.name,
+            quantity: qty,
           });
         }
-
-        const medicine = medicineMap.get(key);
-        medicine.patientTransfers += item.qtyIssued || 0;
       });
     });
 
-    // Process closing stock
-    reportData.medicineWiseClosing?.forEach((medicine: any) => {
-      const key = medicine.medicineId;
-      if (medicineMap.has(key)) {
-        const med = medicineMap.get(key);
-        med.closingStock = medicine.totalQuantity || 0;
-        med.closingStockValue = medicine.totalValue || 0;
-      } else {
-        medicineMap.set(key, {
-          medicineId: medicine.medicineId,
-          medicineName: medicine.medicineName,
-          strength: medicine.strength,
-          form: medicine.form,
-          openingStock: 0,
-          openingStockValue: 0,
-          transfersToSubPharmacies: [],
-          patientTransfers: 0,
-          closingStock: medicine.totalQuantity || 0,
-          closingStockValue: medicine.totalValue || 0,
-        });
-      }
+    // Patient issuances
+    (reportData.detailedIssues || []).forEach((issue: any) => {
+      (issue.items || []).forEach((item: any) => {
+        const m = ensure(item);
+        m.patientTransfers += item.qtyIssued || 0;
+      });
     });
 
-    const result = Array.from(medicineMap.values());
-    console.log('Final consolidated data:', result.length, 'medicines', result);
-    return result;
+    return Array.from(medicineMap.values());
   };
 
   return (
@@ -488,43 +504,24 @@ export default function DailyTransactionsPage() {
             showValues={true}
           />
 
-          {/* Debug Info - Remove after testing */}
-          {reportData && transformToConsolidatedData().length === 0 && (
-            <Card className="border-yellow-500 bg-yellow-50">
-              <CardHeader>
-                <CardTitle className="text-yellow-800">Debug Information</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm text-yellow-900">
-                <div className="space-y-2">
-                  <p><strong>Opening Stock Items:</strong> {reportData.medicineWiseOpening?.length || 0}</p>
-                  <p><strong>Closing Stock Items:</strong> {reportData.medicineWiseClosing?.length || 0}</p>
-                  <p><strong>Transfers Out:</strong> {reportData.detailedTransfersOut?.length || 0}</p>
-                  <p><strong>Issues:</strong> {reportData.detailedIssues?.length || 0}</p>
-                  <p><strong>Sub Pharmacies:</strong> {subPharmacies.length}</p>
-                  <p className="mt-4 text-xs">Check browser console (F12) for detailed data</p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           {/* GRNs */}
           {reportData.detailedGRNs && reportData.detailedGRNs.length > 0 && (
-            <DetailedGRNTable data={reportData.detailedGRNs} />
+            <DetailedGRNTable data={normalizeGRNs(reportData.detailedGRNs)} />
           )}
 
           {/* Transfers In */}
           {reportData.detailedTransfersIn && reportData.detailedTransfersIn.length > 0 && (
-            <DetailedTransferTable data={reportData.detailedTransfersIn} direction="IN" />
+            <DetailedTransferTable data={normalizeTransfers(reportData.detailedTransfersIn)} direction="IN" />
           )}
 
           {/* Issues */}
           {reportData.detailedIssues && reportData.detailedIssues.length > 0 && (
-            <DetailedIssuanceTable data={reportData.detailedIssues} />
+            <DetailedIssuanceTable data={normalizeIssues(reportData.detailedIssues)} />
           )}
 
           {/* Transfers Out */}
           {reportData.detailedTransfersOut && reportData.detailedTransfersOut.length > 0 && (
-            <DetailedTransferTable data={reportData.detailedTransfersOut} direction="OUT" />
+            <DetailedTransferTable data={normalizeTransfers(reportData.detailedTransfersOut)} direction="OUT" />
           )}
         </>
       )}

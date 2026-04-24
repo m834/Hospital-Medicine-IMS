@@ -77,7 +77,7 @@ export function exportToExcel(data: ExportData) {
     // Issues
     if (data.detailedIssues && data.detailedIssues.length > 0) {
       csv += `\nPatient Issuances\n`;
-      csv += `NR Number,Patient Name,Age,Gender,Visit Type,Issued At,Total Items,Total Amount\n`;
+      csv += `MRN,Patient Name,Age,Gender,Visit Type,Issued At,Total Items,Total Amount\n`;
       data.detailedIssues.forEach((issue) => {
         csv += `${issue.nrNumber},"${issue.patientName}",${issue.age || ''},${issue.gender},${issue.visitType},${new Date(issue.issueDate).toLocaleDateString()},${issue.totalItems},${issue.totalAmount}\n`;
       });

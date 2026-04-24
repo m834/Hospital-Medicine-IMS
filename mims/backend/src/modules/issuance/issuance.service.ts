@@ -31,7 +31,7 @@ export class IssuanceService {
     });
 
     if (!patient) {
-      throw new NotFoundException(`Patient with NR Number ${nrNumber} not found`);
+      throw new NotFoundException(`Patient with MRN ${nrNumber} not found`);
     }
 
     // Verify pharmacy exists
@@ -57,6 +57,23 @@ export class IssuanceService {
     // Process each medicine item and prepare batch allocations
     const itemAllocations = await Promise.all(
       items.map(async (item) => {
+        // Fetch medicine to determine form and tablets-per-strip for unit conversion
+        const medicine = await this.prisma.medicine.findUnique({
+          where: { id: item.medicineId },
+          select: { name: true, form: true, quantityPerPack: true },
+        });
+
+        const isTabletOrCapsule =
+          medicine?.form === 'TABLET' || medicine?.form === 'CAPSULE';
+
+        // Resolve actual quantity to deduct from stock (always in tablets)
+        // dispenseByTablet=true (or undefined) → qty is already in tablets
+        // dispenseByTablet=false → qty is in strips; multiply by tabletsPerStrip
+        let actualQty = item.quantity;
+        if (item.dispenseByTablet === false && isTabletOrCapsule && medicine?.quantityPerPack) {
+          actualQty = item.quantity * medicine.quantityPerPack;
+        }
+
         // Get FIFO batches for this medicine
         const availableBatches = await this.inventoryService.getAvailableBatchesFIFO(
           item.medicineId,
@@ -76,15 +93,18 @@ export class IssuanceService {
           0,
         );
 
-        if (totalAvailable < item.quantity) {
+        if (totalAvailable < actualQty) {
+          const requested = item.dispenseByTablet === false && isTabletOrCapsule && medicine?.quantityPerPack
+            ? `${item.quantity} strips (${actualQty} tablets)`
+            : `${actualQty}`;
           throw new BadRequestException(
             `Insufficient stock for medicine ${availableBatches[0].medicine.name}. ` +
-              `Requested: ${item.quantity}, Available: ${totalAvailable}`,
+              `Requested: ${requested}, Available: ${totalAvailable}`,
           );
         }
 
         // Allocate quantity across batches using FIFO
-        let remainingQty = item.quantity;
+        let remainingQty = actualQty;
         const batchAllocations = [];
 
         for (const batch of availableBatches) {

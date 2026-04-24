@@ -337,7 +337,7 @@ export function ConsultationForm({ visitId }: ConsultationFormProps) {
                 </p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">NR Number</p>
+                <p className="text-sm text-muted-foreground">MRN</p>
                 <p className="font-semibold">{visit.patient?.nrNumber}</p>
               </div>
               <div>

@@ -72,8 +72,8 @@ export class PatientsService {
   }
 
   /**
-   * Generate NR-Number in format: NR-YYYYMMDD-XXXX
-   * Example: NR-20251120-0001
+   * Generate MRN in format: MRN-YYYYMMDD-XXXX
+   * Example: MRN-20251120-0001
    */
   private async generateNRNumber(hospitalId: string): Promise<string> {
     const today = new Date();
@@ -97,7 +97,7 @@ export class PatientsService {
     });
 
     const sequence = String(todayCount + 1).padStart(4, '0');
-    return `NR-${datePrefix}-${sequence}`;
+    return `MRN-${datePrefix}-${sequence}`;
   }
 
   /**
@@ -165,7 +165,7 @@ export class PatientsService {
       }
     }
 
-    // Generate NR-Number
+    // Generate MRN
     const nrNumber = await this.generateNRNumber(hospitalId);
 
     // Create patient
@@ -497,7 +497,7 @@ export class PatientsService {
   }
 
   /**
-   * Find patient by NR-Number
+   * Find patient by MRN
    */
   async findByNRNumber(nrNumber: string, hospitalId: string) {
     const patient = await this.prisma.patient.findFirst({
@@ -517,7 +517,7 @@ export class PatientsService {
     });
 
     if (!patient) {
-      throw new NotFoundException(`Patient with NR-Number ${nrNumber} not found`);
+      throw new NotFoundException(`Patient with MRN ${nrNumber} not found`);
     }
 
     return patient;

@@ -67,7 +67,7 @@ export default function RegistrationDashboard() {
         {
           id: '1',
           title: 'Patient Registered',
-          description: 'NR-2024-150 - OPD Visit',
+          description: 'MRN-2024-150 - OPD Visit',
           timestamp: new Date(Date.now() - 10 * 60 * 1000),
           user: 'You',
           type: 'success',
@@ -76,7 +76,7 @@ export default function RegistrationDashboard() {
         {
           id: '2',
           title: 'Emergency Registration',
-          description: 'NR-2024-149 - Emergency Visit',
+          description: 'MRN-2024-149 - Emergency Visit',
           timestamp: new Date(Date.now() - 25 * 60 * 1000),
           user: 'You',
           type: 'warning',
@@ -85,7 +85,7 @@ export default function RegistrationDashboard() {
         {
           id: '3',
           title: 'Patient Registered',
-          description: 'NR-2024-148 - OPD Visit',
+          description: 'MRN-2024-148 - OPD Visit',
           timestamp: new Date(Date.now() - 40 * 60 * 1000),
           user: 'You',
           type: 'success',

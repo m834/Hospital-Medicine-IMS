@@ -50,6 +50,8 @@ interface Medicine {
   strength?: string;
   form: string;
   manufacturer?: string;
+  quantityPerPack?: number;  // tablets per strip
+  stripsPerBox?: number;    // strips per box
   status: string;
   hospital?: {
     id: string;
@@ -343,6 +345,8 @@ export default function MedicinesPage() {
                 <TableHead>Generic Name</TableHead>
                 <TableHead>Form</TableHead>
                 <TableHead>Strength</TableHead>
+                <TableHead>Tabs/Strip</TableHead>
+                <TableHead>Strips/Box</TableHead>
                 <TableHead>Manufacturer</TableHead>
                 <TableHead>Stock Batches</TableHead>
                 <TableHead>Status</TableHead>
@@ -352,7 +356,7 @@ export default function MedicinesPage() {
             <TableBody>
               {filteredMedicines.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                     No medicines found
                   </TableCell>
                 </TableRow>
@@ -369,6 +373,20 @@ export default function MedicinesPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>{medicine.strength || '-'}</TableCell>
+                    <TableCell>
+                      {(medicine.form === 'TABLET' || medicine.form === 'CAPSULE')
+                        ? medicine.quantityPerPack
+                          ? <Badge variant="outline">{medicine.quantityPerPack}</Badge>
+                          : <span className="text-muted-foreground">-</span>
+                        : <span className="text-muted-foreground text-xs">N/A</span>}
+                    </TableCell>
+                    <TableCell>
+                      {(medicine.form === 'TABLET' || medicine.form === 'CAPSULE')
+                        ? medicine.stripsPerBox
+                          ? <Badge variant="outline">{medicine.stripsPerBox}</Badge>
+                          : <span className="text-muted-foreground">-</span>
+                        : <span className="text-muted-foreground text-xs">N/A</span>}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {medicine.manufacturer || '-'}
                     </TableCell>

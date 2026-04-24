@@ -10,6 +10,10 @@ export enum SortOrder {
 export class SearchIssuanceDto {
   @IsString()
   @IsOptional()
+  hospitalId?: string;
+
+  @IsString()
+  @IsOptional()
   nrNumber?: string;
 
   @IsString()

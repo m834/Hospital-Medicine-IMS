@@ -89,7 +89,7 @@ export default function ReferralsPage() {
                       <TableCell>
                         <div className="space-y-1">
                           <p className="font-medium">{patientName}</p>
-                          <p className="text-xs text-muted-foreground">NR: {referral.visit?.patient?.nrNumber || 'N/A'}</p>
+                          <p className="text-xs text-muted-foreground">MRN: {referral.visit?.patient?.nrNumber || 'N/A'}</p>
                         </div>
                       </TableCell>
                       <TableCell>{referral.fromDepartment?.name || 'N/A'}</TableCell>

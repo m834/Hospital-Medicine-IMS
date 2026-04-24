@@ -246,7 +246,7 @@ export default function VisitPaymentsPage() {
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>Visit Details</CardTitle>
-          <CardDescription>NR Number: {summary.visit.patient.nrNumber}</CardDescription>
+          <CardDescription>MRN: {summary.visit.patient.nrNumber}</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>

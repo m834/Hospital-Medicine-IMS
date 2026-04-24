@@ -8,6 +8,7 @@ import {
   IsEnum,
   IsOptional,
   IsNumber,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PriceType } from '@prisma/client';
@@ -21,6 +22,10 @@ class IssueItemDto {
   @Min(1, { message: 'Quantity must be at least 1' })
   quantity: number;
 
+  @IsBoolean()
+  @IsOptional()
+  dispenseByTablet?: boolean; // true = qty in tablets; false = qty in strips (deduct qty × tabletsPerStrip)
+
   @IsNumber()
   @IsOptional()
   customPrice?: number;
@@ -28,7 +33,7 @@ class IssueItemDto {
 
 export class CreateIssuanceDto {
   @IsString()
-  @IsNotEmpty({ message: 'Patient NR Number is required' })
+  @IsNotEmpty({ message: 'Patient MRN is required' })
   nrNumber: string;
 
   @IsString()

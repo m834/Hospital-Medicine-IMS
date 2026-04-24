@@ -653,48 +653,107 @@ export class ReportsService {
   async getMedicineWiseOpeningStock(pharmacyId: string, date: Date) {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
-    
-    const previousDayEnd = new Date(startOfDay);
-    previousDayEnd.setMilliseconds(-1);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
 
-    // Get all batches that existed before start of day
+    // Opening = Closing + movements ON the day (add back issues/transfers OUT, subtract GRNs)
+    // First fetch all batches for this pharmacy
     const batches = await this.prisma.stockBatch.findMany({
-      where: {
-        pharmacyId,
-        receivedDate: {
-          lte: previousDayEnd,
-        },
-        expiryDate: {
-          gte: previousDayEnd,
-        },
-        qtyAvailable: {
-          gt: 0,
-        },
-      },
+      where: { pharmacyId },
       include: {
         medicine: {
-          select: {
-            id: true,
-            name: true,
-            genericName: true,
-            form: true,
-            strength: true,
-          },
+          select: { id: true, name: true, genericName: true, form: true, strength: true },
         },
       },
-      orderBy: {
-        medicine: {
-          name: 'asc',
-        },
-      },
+      orderBy: { medicine: { name: 'asc' } },
     });
 
-    // Group by medicine
+    // Issues issued ON the day (reduced qty)
+    const dayIssueItems = await this.prisma.issueItem.findMany({
+      where: {
+        batch: { pharmacyId },
+        issueTransaction: { issuedAt: { gte: startOfDay, lte: endOfDay } },
+      },
+      select: { batchId: true, qtyIssued: true },
+    });
+
+    // Issues issued AFTER end of day (reduced qty, need to add back for reconstruction)
+    const futureIssueItems = await this.prisma.issueItem.findMany({
+      where: {
+        batch: { pharmacyId },
+        issueTransaction: { issuedAt: { gt: endOfDay } },
+      },
+      select: { batchId: true, qtyIssued: true },
+    });
+
+    // Transfers OUT received ON the day (reduced source qty)
+    const dayTransfersOut = await this.prisma.transferBatchMapping.findMany({
+      where: {
+        sourceBatch: { pharmacyId },
+        transferItem: {
+          transferRequest: { status: 'RECEIVED', receivedAt: { gte: startOfDay, lte: endOfDay } },
+        },
+      },
+      select: { sourceBatchId: true, qty: true },
+    });
+
+    // Transfers OUT received AFTER end of day (reduced qty, add back)
+    const futureTransfersOut = await this.prisma.transferBatchMapping.findMany({
+      where: {
+        sourceBatch: { pharmacyId },
+        transferItem: {
+          transferRequest: { status: 'RECEIVED', receivedAt: { gt: endOfDay } },
+        },
+      },
+      select: { sourceBatchId: true, qty: true },
+    });
+
+    // GRNs received ON the day (increased qty)
+    const dayGRNItems = await this.prisma.gRNItem.findMany({
+      where: {
+        batch: { pharmacyId },
+        grn: { receivedDate: { gte: startOfDay, lte: endOfDay } },
+      },
+      select: { batchId: true, qtyReceived: true },
+    });
+
+    // GRNs received AFTER end of day (increased qty, subtract to reconstruct)
+    const futureGRNItems = await this.prisma.gRNItem.findMany({
+      where: {
+        batch: { pharmacyId },
+        grn: { receivedDate: { gt: endOfDay } },
+      },
+      select: { batchId: true, qtyReceived: true },
+    });
+
+    // Build per-batch delta maps
+    const addBack = new Map<string, number>(); // qty to add to current to reconstruct opening
+    [...dayIssueItems, ...futureIssueItems].forEach((i) =>
+      addBack.set(i.batchId, (addBack.get(i.batchId) || 0) + i.qtyIssued),
+    );
+    [...dayTransfersOut, ...futureTransfersOut].forEach((t) =>
+      addBack.set(t.sourceBatchId, (addBack.get(t.sourceBatchId) || 0) + t.qty),
+    );
+    const subtract = new Map<string, number>(); // qty to subtract (GRNs increase current)
+    [...dayGRNItems, ...futureGRNItems].forEach((g) =>
+      subtract.set(g.batchId, (subtract.get(g.batchId) || 0) + g.qtyReceived),
+    );
+
     const medicineMap = new Map<string, any>();
 
     batches.forEach((batch) => {
+      // Only include batches that existed before the report day
+      const batchReceivedBeforeDay = new Date(batch.receivedDate) < startOfDay;
+      if (!batchReceivedBeforeDay) return;
+
+      const openingQty =
+        batch.qtyAvailable
+        + (addBack.get(batch.id) || 0)
+        - (subtract.get(batch.id) || 0);
+
+      if (openingQty <= 0) return;
+
       const medId = batch.medicineId;
-      
       if (!medicineMap.has(medId)) {
         medicineMap.set(medId, {
           medicineId: medId,
@@ -710,16 +769,15 @@ export class ReportsService {
       }
 
       const medicine = medicineMap.get(medId);
-      const batchValue = batch.qtyAvailable * Number(batch.purchasePrice || 0);
-
-      medicine.totalQuantity += batch.qtyAvailable;
+      const batchValue = openingQty * Number(batch.purchasePrice || 0);
+      medicine.totalQuantity += openingQty;
       medicine.totalValue += batchValue;
       medicine.batchCount += 1;
       medicine.batches.push({
         batchId: batch.id,
         batchNo: batch.batchNo,
         expiryDate: batch.expiryDate,
-        qtyAvailable: batch.qtyAvailable,
+        qtyAvailable: openingQty,
         purchasePrice: Number(batch.purchasePrice || 0),
         governmentPrice: Number(batch.governmentPrice || 0),
         retailPrice: Number(batch.retailPrice || 0),
@@ -735,47 +793,77 @@ export class ReportsService {
 
   /**
    * Get medicine-wise closing stock balance
+   * Reconstructs historical qty by adding back movements that occurred after the report day.
    */
   async getMedicineWiseClosingStock(pharmacyId: string, date: Date) {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
     const batches = await this.prisma.stockBatch.findMany({
-      where: {
-        pharmacyId,
-        receivedDate: {
-          lte: endOfDay,
-        },
-        expiryDate: {
-          gte: endOfDay,
-        },
-        qtyAvailable: {
-          gt: 0,
-        },
-      },
+      where: { pharmacyId },
       include: {
         medicine: {
-          select: {
-            id: true,
-            name: true,
-            genericName: true,
-            form: true,
-            strength: true,
-          },
+          select: { id: true, name: true, genericName: true, form: true, strength: true },
         },
       },
-      orderBy: {
-        medicine: {
-          name: 'asc',
-        },
-      },
+      orderBy: { medicine: { name: 'asc' } },
     });
+
+    // Issues issued AFTER end of day (need to add back to get closing qty)
+    const futureIssueItems = await this.prisma.issueItem.findMany({
+      where: {
+        batch: { pharmacyId },
+        issueTransaction: { issuedAt: { gt: endOfDay } },
+      },
+      select: { batchId: true, qtyIssued: true },
+    });
+
+    // Transfers OUT received AFTER end of day
+    const futureTransfersOut = await this.prisma.transferBatchMapping.findMany({
+      where: {
+        sourceBatch: { pharmacyId },
+        transferItem: {
+          transferRequest: { status: 'RECEIVED', receivedAt: { gt: endOfDay } },
+        },
+      },
+      select: { sourceBatchId: true, qty: true },
+    });
+
+    // GRNs received AFTER end of day (added qty, subtract to reconstruct)
+    const futureGRNItems = await this.prisma.gRNItem.findMany({
+      where: {
+        batch: { pharmacyId },
+        grn: { receivedDate: { gt: endOfDay } },
+      },
+      select: { batchId: true, qtyReceived: true },
+    });
+
+    const addBack = new Map<string, number>();
+    futureIssueItems.forEach((i) =>
+      addBack.set(i.batchId, (addBack.get(i.batchId) || 0) + i.qtyIssued),
+    );
+    futureTransfersOut.forEach((t) =>
+      addBack.set(t.sourceBatchId, (addBack.get(t.sourceBatchId) || 0) + t.qty),
+    );
+    const subtract = new Map<string, number>();
+    futureGRNItems.forEach((g) =>
+      subtract.set(g.batchId, (subtract.get(g.batchId) || 0) + g.qtyReceived),
+    );
 
     const medicineMap = new Map<string, any>();
 
     batches.forEach((batch) => {
+      // Only include batches received on or before end of day
+      if (new Date(batch.receivedDate) > endOfDay) return;
+
+      const closingQty =
+        batch.qtyAvailable
+        + (addBack.get(batch.id) || 0)
+        - (subtract.get(batch.id) || 0);
+
+      if (closingQty <= 0) return;
+
       const medId = batch.medicineId;
-      
       if (!medicineMap.has(medId)) {
         medicineMap.set(medId, {
           medicineId: medId,
@@ -791,16 +879,15 @@ export class ReportsService {
       }
 
       const medicine = medicineMap.get(medId);
-      const batchValue = batch.qtyAvailable * Number(batch.purchasePrice || 0);
-
-      medicine.totalQuantity += batch.qtyAvailable;
+      const batchValue = closingQty * Number(batch.purchasePrice || 0);
+      medicine.totalQuantity += closingQty;
       medicine.totalValue += batchValue;
       medicine.batchCount += 1;
       medicine.batches.push({
         batchId: batch.id,
         batchNo: batch.batchNo,
         expiryDate: batch.expiryDate,
-        qtyAvailable: batch.qtyAvailable,
+        qtyAvailable: closingQty,
         purchasePrice: Number(batch.purchasePrice || 0),
         governmentPrice: Number(batch.governmentPrice || 0),
         retailPrice: Number(batch.retailPrice || 0),
@@ -956,17 +1043,17 @@ export class ReportsService {
     const whereClause =
       direction === 'IN'
         ? {
-            fromPharmacyId: pharmacyId, // Receiving pharmacy
-            status: 'RECEIVED' as any, // Need to cast to TransferStatus enum
+            toPharmacyId: pharmacyId, // This pharmacy is the receiver
+            status: 'RECEIVED' as any,
             receivedAt: {
               gte: startDate,
               lte: endDate,
             },
           }
         : {
-            toPharmacyId: pharmacyId, // Sending pharmacy
+            fromPharmacyId: pharmacyId, // This pharmacy is the sender
             status: 'RECEIVED' as any,
-            dispatchedAt: {
+            receivedAt: {
               gte: startDate,
               lte: endDate,
             },
@@ -1153,7 +1240,14 @@ export class ReportsService {
     const stockIssued = detailedIssues.reduce((sum, issue) => sum + issue.totalAmount, 0);
     const stockIssuedQuantity = detailedIssues.reduce((sum, issue) => sum + issue.totalQuantity, 0);
 
-    const stockTransferred = 0; // Would need pricing from batch mappings
+    const stockTransferred = detailedTransfersOut.reduce((sum, transfer) => {
+      // Sum value from batch mappings using source batch purchase price
+      return sum + transfer.items.reduce((s: number, item: any) => {
+        const qty = item.batchMappings?.reduce((bqty: number, bm: any) => bqty + (bm.qtyTransferred || 0), 0)
+          ?? item.qtyApproved ?? item.qtyRequested ?? 0;
+        return s + qty * (item.purchasePrice || 0);
+      }, 0);
+    }, 0);
     const stockTransferredQuantity = detailedTransfersOut.reduce(
       (sum, transfer) => sum + transfer.totalQuantity,
       0,

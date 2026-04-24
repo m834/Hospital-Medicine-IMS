@@ -61,6 +61,7 @@ const USER_ROLES = [
   { value: 'DOCTOR', label: 'Doctor', requiresPharmacy: false, requiresDepartment: true, pharmacyType: undefined },
   { value: 'DOCTOR_ASSISTANT', label: 'Doctor Assistant', requiresPharmacy: false, requiresDepartment: true, pharmacyType: undefined },
   { value: 'REGISTRATION_STAFF', label: 'Registration Staff', requiresPharmacy: false, requiresDepartment: true, pharmacyType: undefined },
+  { value: 'REGISTRATION_STAFF_MANAGER', label: 'Registration Staff Manager', requiresPharmacy: false, requiresDepartment: true, pharmacyType: undefined },
   { value: 'AUDITOR', label: 'Auditor', requiresPharmacy: false, requiresDepartment: true, pharmacyType: undefined },
 ] as const;
 

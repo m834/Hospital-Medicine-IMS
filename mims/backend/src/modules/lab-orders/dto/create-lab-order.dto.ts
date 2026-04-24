@@ -16,7 +16,7 @@ export class CreateLabOrderDto {
 
   @IsString()
   @IsNotEmpty()
-  patientId: string; // Can be UUID or NR number (e.g., "NR-20260120-0001")
+  patientId: string; // Can be UUID or MRN (e.g., "MRN-20260120-0001")
 
   @IsUUID()
   @IsOptional()

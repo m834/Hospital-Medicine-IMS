@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { CacheService } from '../../common/services/cache.service';
 import { CreatePrescriptionDto } from './dto/create-prescription.dto';
 import { SearchPrescriptionsDto } from './dto/search-prescriptions.dto';
 import { UpdatePrescriptionStatusDto } from './dto/update-prescription-status.dto';
@@ -7,7 +8,10 @@ import { PrescriptionStatus, PaymentMethod, PaymentStatus, Prisma, ReceiptType }
 
 @Injectable()
 export class PrescriptionsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cacheService: CacheService,
+  ) {}
 
   async create(createPrescriptionDto: CreatePrescriptionDto) {
     const { nrNumber, doctorId, items, ...prescriptionData } = createPrescriptionDto;
@@ -18,7 +22,7 @@ export class PrescriptionsService {
     });
 
     if (!patient) {
-      throw new NotFoundException(`Patient with NR Number ${nrNumber} not found`);
+      throw new NotFoundException(`Patient with MRN ${nrNumber} not found`);
     }
 
     // Verify doctor exists (if provided)
@@ -288,9 +292,10 @@ export class PrescriptionsService {
         throw new NotFoundException('Patient not found');
       }
 
-      const updated = await this.prisma.$transaction(async (tx) => {
-        let totalAmount = new Prisma.Decimal(0);
+      // Step 1: Deduct stock and update prescription status in a single transaction
+      let totalAmount = new Prisma.Decimal(0);
 
+      const updated = await this.prisma.$transaction(async (tx) => {
         for (const item of prescription.items) {
           const batch = await tx.stockBatch.findFirst({
             where: {
@@ -337,69 +342,6 @@ export class PrescriptionsService {
           totalAmount = totalAmount.add(itemCost);
         }
 
-        // Generate receipt number
-        const today = new Date();
-        const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
-        const lastReceipt = await tx.receipt.findFirst({
-          where: { receiptNumber: { startsWith: `REC-${dateStr}` } },
-          orderBy: { receiptNumber: 'desc' },
-        });
-        const sequence = lastReceipt
-          ? parseInt(lastReceipt.receiptNumber.split('-')[2]) + 1
-          : 1;
-        const receiptNumber = `REC-${dateStr}-${sequence.toString().padStart(4, '0')}`;
-
-        // Find department for receipt
-        const latestVisit = await (tx as any).visit.findFirst({
-          where: { patientId: patient.id, hospitalId },
-          orderBy: { visitDate: 'desc' },
-          select: { id: true, departmentId: true },
-        });
-
-        const doctorDepartmentId = prescription.doctorId
-          ? (
-              await tx.user.findUnique({
-                where: { id: prescription.doctorId },
-                select: { departmentId: true },
-              })
-            )?.departmentId
-          : null;
-
-        const fallbackDepartment = await tx.department.findFirst({
-          where: { hospitalId },
-          select: { id: true },
-        });
-
-        const departmentId =
-          latestVisit?.departmentId || doctorDepartmentId || fallbackDepartment?.id;
-
-        if (!departmentId) {
-          throw new BadRequestException(
-            'Department is required to generate pharmacy receipt',
-          );
-        }
-
-        // Create pharmacy receipt
-        const txAny = tx as any;
-        await txAny.receipt.create({
-          data: {
-            hospitalId,
-            patientId: patient.id,
-            visitId: latestVisit?.id || undefined,
-            departmentId,
-            generatedById: user?.id || prescription.doctorId || patient.attendingDoctorId,
-            receiptNumber,
-            receiptType: ReceiptType.PHARMACY,
-            description: `Prescription Issued - ${id.slice(0, 8)}`,
-            amount: totalAmount,
-            totalAmount: totalAmount,
-            paidAmount: new Prisma.Decimal(0),
-            paymentMethod: PaymentMethod.CASH,
-            paymentStatus: PaymentStatus.UNPAID,
-            notes: JSON.stringify({ prescriptionId: id }),
-          },
-        });
-
         return tx.prescription.update({
           where: { id },
           data: { status: statusEnum },
@@ -434,6 +376,76 @@ export class PrescriptionsService {
           },
         });
       });
+
+      // Step 2: Invalidate inventory cache so the UI reflects the deducted stock immediately
+      try {
+        await this.cacheService.deletePattern(`inventory:${hospitalId}:.*`);
+        await this.cacheService.deletePattern(`inventory:all:.*`);
+      } catch (cacheError) {
+        // Non-fatal — cache will expire on its own
+      }
+
+      // Step 3: Attempt to create a pharmacy receipt (non-blocking — stock is already deducted)
+      try {
+        const today = new Date();
+        const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+        const lastReceipt = await this.prisma.receipt.findFirst({
+          where: { receiptNumber: { startsWith: `REC-${dateStr}` } },
+          orderBy: { receiptNumber: 'desc' },
+        });
+        const sequence = lastReceipt
+          ? parseInt(lastReceipt.receiptNumber.split('-')[2]) + 1
+          : 1;
+        const receiptNumber = `REC-${dateStr}-${sequence.toString().padStart(4, '0')}`;
+
+        const latestVisit = await (this.prisma as any).visit.findFirst({
+          where: { patientId: patient.id, hospitalId },
+          orderBy: { visitDate: 'desc' },
+          select: { id: true, departmentId: true },
+        });
+
+        const doctorDepartmentId = prescription.doctorId
+          ? (
+              await this.prisma.user.findUnique({
+                where: { id: prescription.doctorId },
+                select: { departmentId: true },
+              })
+            )?.departmentId
+          : null;
+
+        const fallbackDepartment = await this.prisma.department.findFirst({
+          where: { hospitalId },
+          select: { id: true },
+        });
+
+        const departmentId =
+          latestVisit?.departmentId || doctorDepartmentId || fallbackDepartment?.id;
+
+        if (departmentId) {
+          const prismaAny = this.prisma as any;
+          await prismaAny.receipt.create({
+            data: {
+              hospitalId,
+              patientId: patient.id,
+              visitId: latestVisit?.id || undefined,
+              departmentId,
+              generatedById: user?.id || prescription.doctorId || patient.attendingDoctorId,
+              receiptNumber,
+              receiptType: ReceiptType.PHARMACY,
+              description: `Prescription Issued - ${id.slice(0, 8)}`,
+              amount: totalAmount,
+              totalAmount: totalAmount,
+              paidAmount: new Prisma.Decimal(0),
+              paymentMethod: PaymentMethod.CASH,
+              paymentStatus: PaymentStatus.UNPAID,
+              notes: JSON.stringify({ prescriptionId: id }),
+            },
+          });
+        }
+      } catch (receiptError) {
+        // Receipt creation failure must not block the successful stock deduction
+        console.error('Failed to create pharmacy receipt (non-fatal):', receiptError);
+      }
 
       return updated;
     }
@@ -483,7 +495,7 @@ export class PrescriptionsService {
     });
 
     if (!patient) {
-      throw new NotFoundException(`Patient with NR Number ${nrNumber} not found`);
+      throw new NotFoundException(`Patient with MRN ${nrNumber} not found`);
     }
 
     const prescriptions = await this.prisma.prescription.findMany({
@@ -523,7 +535,7 @@ export class PrescriptionsService {
     });
 
     if (!patient) {
-      throw new NotFoundException(`Patient with NR Number ${nrNumber} not found`);
+      throw new NotFoundException(`Patient with MRN ${nrNumber} not found`);
     }
 
     const prescriptions = await this.prisma.prescription.findMany({

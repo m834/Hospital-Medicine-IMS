@@ -354,7 +354,7 @@ export default function RegisterPatientPage() {
       const response = await api.post('/patients', patientPayload, { params });
       const patient = response.data;
 
-      alert(`Patient registered successfully!\nNR Number: ${patient.nrNumber}`);
+      alert(`Patient registered successfully!\nMRN: ${patient.nrNumber}`);
       router.push('/dashboard/patients');
     } catch (error: any) {
       console.error('Error registering patient:', error);
@@ -375,7 +375,7 @@ export default function RegisterPatientPage() {
 
         <h1 className="text-3xl font-bold text-foreground">Register New Patient</h1>
         <p className="text-muted-foreground mt-1">
-          Fill in patient details to generate NR Number
+          Fill in patient details to generate MRN
         </p>
       </div>
 
@@ -384,7 +384,7 @@ export default function RegisterPatientPage() {
         <CardHeader>
           <CardTitle>Patient Information</CardTitle>
           <CardDescription>
-            All fields marked with * are required. NR Number will be auto-generated.
+            All fields marked with * are required. MRN will be auto-generated.
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -582,7 +582,7 @@ export class InventoryService {
     const cacheKey = `inventory:low-stock:${hospitalId}:${pharmacyId || 'all'}:${threshold}`;
     
     // Try to get from cache
-    const cached = this.cacheService.get<any[]>(cacheKey);
+    const cached = await this.cacheService.get<any[]>(cacheKey);
     if (cached) {
       return cached;
     }
@@ -641,7 +641,7 @@ export class InventoryService {
       .filter((med) => med.totalDispensingStock <= med.reorderLevel && med.totalDispensingStock >= 0);
 
     // Cache the result for 3 minutes
-    this.cacheService.set(cacheKey, lowStockMedicines, 3 * 60 * 1000);
+    await this.cacheService.set(cacheKey, lowStockMedicines, 3 * 60 * 1000);
 
     return lowStockMedicines;
   }
@@ -708,7 +708,7 @@ export class InventoryService {
     const cacheKey = `inventory:stats:${hospitalId}:${pharmacyId || 'all'}`;
     
     // Try to get from cache
-    const cached = this.cacheService.get(cacheKey);
+    const cached = await this.cacheService.get(cacheKey);
     if (cached) {
       return cached;
     }
@@ -772,7 +772,7 @@ export class InventoryService {
     };
 
     // Cache the result for 2 minutes (stats change frequently)
-    this.cacheService.set(cacheKey, result, 2 * 60 * 1000);
+    await this.cacheService.set(cacheKey, result, 2 * 60 * 1000);
 
     return result;
   }

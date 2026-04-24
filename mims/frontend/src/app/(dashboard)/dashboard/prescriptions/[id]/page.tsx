@@ -126,7 +126,7 @@ export default function PrescriptionDetailPage() {
           Back
         </Button>
         <h1 className="text-3xl font-bold">Prescription Details</h1>
-        <p className="text-muted-foreground mt-1">NR: {prescription.nrNumber}</p>
+        <p className="text-muted-foreground mt-1">MRN: {prescription.nrNumber}</p>
       </div>
 
       <Card>

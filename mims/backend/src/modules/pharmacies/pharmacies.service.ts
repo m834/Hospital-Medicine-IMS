@@ -74,11 +74,15 @@ export class PharmaciesService {
     return pharmacy;
   }
 
-  async findAll(hospitalId?: string) {
+  async findAll(hospitalId?: string, type?: string) {
     const where: any = {};
 
     if (hospitalId) {
       where.hospitalId = hospitalId;
+    }
+
+    if (type) {
+      where.type = type;
     }
 
     return this.prisma.pharmacy.findMany({

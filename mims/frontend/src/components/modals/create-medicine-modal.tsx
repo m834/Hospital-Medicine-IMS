@@ -80,6 +80,8 @@ const createMedicineSchema = z.object({
   ], { required_error: 'Medicine form is required' }),
   strength: z.string().optional(),
   manufacturer: z.string().optional(),
+  quantityPerPack: z.coerce.number().int().positive('Quantity must be a positive number').optional().or(z.literal('')),
+  stripsPerBox: z.coerce.number().int().positive('Strips per box must be a positive number').optional().or(z.literal('')),
 });
 
 type CreateMedicineFormData = z.infer<typeof createMedicineSchema>;
@@ -99,14 +101,26 @@ export function CreateMedicineModal({
       genericName: '',
       strength: '',
       manufacturer: '',
+      quantityPerPack: '' as any,
+      stripsPerBox: '' as any,
     },
   });
+
+  const selectedForm = form.watch('form');
+  const showQuantity = selectedForm === 'TABLET' || selectedForm === 'CAPSULE';
 
   useEffect(() => {
     if (isOpen) {
       form.reset();
     }
   }, [isOpen, form]);
+
+  useEffect(() => {
+    if (!showQuantity) {
+      form.setValue('quantityPerPack', '' as any);
+      form.setValue('stripsPerBox', '' as any);
+    }
+  }, [showQuantity, form]);
 
   const onSubmit = async (data: CreateMedicineFormData) => {
     if (!hospital) {
@@ -126,6 +140,8 @@ export function CreateMedicineModal({
         form: data.form,
         strength: data.strength || undefined,
         manufacturer: data.manufacturer || undefined,
+        quantityPerPack: data.quantityPerPack || undefined,
+        stripsPerBox: data.stripsPerBox || undefined,
       });
 
       onMedicineCreated();
@@ -151,7 +167,7 @@ export function CreateMedicineModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Create Medicine</DialogTitle>
           <DialogDescription>
@@ -161,97 +177,183 @@ export function CreateMedicineModal({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {/* Medicine Name */}
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Medicine Name *</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Paracetamol" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Generic Name */}
-            <FormField
-              control={form.control}
-              name="genericName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Generic Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Acetaminophen" {...field} />
-                  </FormControl>
-                  <FormDescription>
-                    Chemical or generic name of the medicine
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Form */}
-            <FormField
-              control={form.control}
-              name="form"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Medicine Form *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
+            <div className="grid grid-cols-2 gap-4">
+              {/* Medicine Name */}
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Medicine Name *</FormLabel>
                     <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select medicine form" />
-                      </SelectTrigger>
+                      <Input placeholder="Paracetamol" {...field} />
                     </FormControl>
-                    <SelectContent>
-                      {MEDICINE_FORMS.map((form) => (
-                        <SelectItem key={form.value} value={form.value}>
-                          {form.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-            {/* Strength */}
-            <FormField
-              control={form.control}
-              name="strength"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Strength</FormLabel>
-                  <FormControl>
-                    <Input placeholder="500mg, 10ml, etc." {...field} />
-                  </FormControl>
-                  <FormDescription>
-                    Dosage strength (e.g., 500mg, 5ml)
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+              {/* Generic Name */}
+              <FormField
+                control={form.control}
+                name="genericName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Generic Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Acetaminophen" {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      Chemical or generic name
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-            {/* Manufacturer */}
-            <FormField
-              control={form.control}
-              name="manufacturer"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Manufacturer</FormLabel>
-                  <FormControl>
-                    <Input placeholder="GSK, Pfizer, etc." {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+              {/* Form */}
+              <FormField
+                control={form.control}
+                name="form"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Medicine Form *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select medicine form" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {MEDICINE_FORMS.map((form) => (
+                          <SelectItem key={form.value} value={form.value}>
+                            {form.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Quantity (only for Tablet / Capsule) */}
+              {showQuantity ? (
+                <FormField
+                  control={form.control}
+                  name="quantityPerPack"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Tablets per Strip *
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min={1}
+                          placeholder="e.g. 10"
+                          name={field.name}
+                          ref={field.ref}
+                          onBlur={field.onBlur}
+                          value={field.value ?? ''}
+                          onChange={(e) =>
+                            field.onChange(e.target.value === '' ? undefined : Number(e.target.value))
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        How many {selectedForm === 'TABLET' ? 'tablets' : 'capsules'} in one strip
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : (
+                /* Strength fills the second column when no quantity */
+                <FormField
+                  control={form.control}
+                  name="strength"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Strength</FormLabel>
+                      <FormControl>
+                        <Input placeholder="500mg, 10ml, etc." {...field} />
+                      </FormControl>
+                      <FormDescription>
+                        Dosage strength (e.g., 500mg, 5ml)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               )}
-            />
+
+              {/* Strips per Box (only for Tablet / Capsule) */}
+              {showQuantity && (
+                <FormField
+                  control={form.control}
+                  name="stripsPerBox"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Strips per Box</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min={1}
+                          placeholder="e.g. 10"
+                          name={field.name}
+                          ref={field.ref}
+                          onBlur={field.onBlur}
+                          value={field.value ?? ''}
+                          onChange={(e) =>
+                            field.onChange(e.target.value === '' ? undefined : Number(e.target.value))
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        How many strips are in one box
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {/* Strength (only shown separately when quantity is visible) */}
+              {showQuantity && (
+                <FormField
+                  control={form.control}
+                  name="strength"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Strength</FormLabel>
+                      <FormControl>
+                        <Input placeholder="500mg, 10ml, etc." {...field} />
+                      </FormControl>
+                      <FormDescription>
+                        Dosage strength (e.g., 500mg, 5ml)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {/* Manufacturer */}
+              <FormField
+                control={form.control}
+                name="manufacturer"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Manufacturer</FormLabel>
+                    <FormControl>
+                      <Input placeholder="GSK, Pfizer, etc." {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             {/* Form-level error */}
             {form.formState.errors.root && (

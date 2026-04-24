@@ -155,7 +155,7 @@ export default function AdmissionFormPage() {
     if (!searchNR.trim()) {
       toast({
         title: 'Error',
-        description: 'Please enter NR Number',
+        description: 'Please enter MRN',
         variant: 'destructive',
       });
       return;

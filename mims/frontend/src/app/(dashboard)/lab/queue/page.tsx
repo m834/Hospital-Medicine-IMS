@@ -228,7 +228,7 @@ export default function LabQueuePage() {
                   <span className="text-sm">{selectedOrder.patient?.fullName}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm font-medium">NR Number:</span>
+                  <span className="text-sm font-medium">MRN:</span>
                   <span className="text-sm font-mono">{selectedOrder.patient?.nrNumber}</span>
                 </div>
               </div>

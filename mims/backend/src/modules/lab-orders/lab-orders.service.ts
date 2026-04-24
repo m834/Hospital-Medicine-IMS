@@ -12,17 +12,17 @@ export class LabOrdersService {
   constructor(private prisma: PrismaService) {}
 
   async create(createLabOrderDto: CreateLabOrderDto) {
-    // Resolve patient ID - can be UUID or NR number
+    // Resolve patient ID - can be UUID or MRN
     let patientId = createLabOrderDto.patientId;
     
-    // If patientId looks like an NR number (starts with "NR-"), resolve it to UUID
-    if (patientId.startsWith('NR-')) {
+    // If patientId looks like an MRN (starts with "MRN-"), resolve it to UUID
+    if (patientId.startsWith('MRN-') || patientId.startsWith('NR-')) {
       const patient = await this.prisma.patient.findUnique({
         where: { nrNumber: patientId },
       });
       
       if (!patient) {
-        throw new NotFoundException(`Patient with NR number ${patientId} not found`);
+        throw new NotFoundException(`Patient with MRN ${patientId} not found`);
       }
       
       patientId = patient.id;

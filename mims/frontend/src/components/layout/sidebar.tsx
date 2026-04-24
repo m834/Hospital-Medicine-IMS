@@ -25,7 +25,7 @@ const menuItems: MenuItem[] = [
     label: 'Dashboard', 
     href: '/dashboard', 
     icon: LayoutDashboard, 
-    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.DEPARTMENT_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.DOCTOR, UserRole.DOCTOR_ASSISTANT, UserRole.REGISTRATION_STAFF, UserRole.PHARMACY_STAFF, UserRole.AUDITOR, UserRole.LAB_TECHNICIAN, UserRole.RADIOLOGIST, UserRole.NURSE, UserRole.BILLING_STAFF, UserRole.RECEPTIONIST] 
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.DEPARTMENT_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.DOCTOR, UserRole.DOCTOR_ASSISTANT, UserRole.REGISTRATION_STAFF, UserRole.REGISTRATION_STAFF_MANAGER, UserRole.PHARMACY_STAFF, UserRole.AUDITOR, UserRole.LAB_TECHNICIAN, UserRole.RADIOLOGIST, UserRole.NURSE, UserRole.BILLING_STAFF, UserRole.RECEPTIONIST] 
   },
   
   // Super Admin Exclusive
@@ -119,13 +119,13 @@ const menuItems: MenuItem[] = [
     label: 'Lab Tests Catalog',
     href: '/admin/lab-tests',
     icon: TestTube,
-    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN]
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN, UserRole.REGISTRATION_STAFF_MANAGER]
   },
   {
     label: 'Lab Services',
     href: '/lab',
     icon: Microscope,
-    roles: [UserRole.DOCTOR, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.LAB_TECHNICIAN, UserRole.RECEPTIONIST]
+    roles: [UserRole.DOCTOR, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.LAB_TECHNICIAN, UserRole.RECEPTIONIST, UserRole.REGISTRATION_STAFF_MANAGER]
   },
   
   { 
@@ -160,7 +160,7 @@ const menuItems: MenuItem[] = [
     label: 'Patients', 
     href: '/dashboard/patients', 
     icon: Users, 
-    roles: [UserRole.SUPER_ADMIN,UserRole.HOSPITAL_ADMIN, UserRole.REGISTRATION_STAFF, UserRole.RECEPTIONIST, UserRole.DOCTOR_ASSISTANT, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER]
+    roles: [UserRole.SUPER_ADMIN,UserRole.HOSPITAL_ADMIN, UserRole.REGISTRATION_STAFF, UserRole.REGISTRATION_STAFF_MANAGER, UserRole.RECEPTIONIST, UserRole.DOCTOR_ASSISTANT, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER]
   },
   { 
     label: 'Prescriptions', 
@@ -199,12 +199,12 @@ const menuItems: MenuItem[] = [
     roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.AUDITOR] 
   },
   
-  // Analytics - SUPER_ADMIN has full access
+  // Analytics - Admin only
   { 
     label: 'Analytics', 
     href: '/dashboard/analytics', 
     icon: Activity, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.AUDITOR] 
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN] 
   },
 
   // Attendance Dashboard - Admin and HR

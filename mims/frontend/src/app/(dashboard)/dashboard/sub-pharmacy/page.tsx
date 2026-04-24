@@ -1,311 +1,817 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth.store';
+import { useHospitalStore } from '@/stores/hospital.store';
 import { UserRole } from '@/lib/constants';
-import { getQuickActionsForRole } from '@/lib/rbac-config';
-import StatsCard from '@/components/dashboard/StatsCard';
-import QuickActionsWidget from '@/components/dashboard/QuickActionsWidget';
-import AlertsWidget, { Alert } from '@/components/dashboard/AlertsWidget';
-import RecentActivityWidget, { ActivityItem } from '@/components/dashboard/RecentActivityWidget';
+import api from '@/lib/api';
 import {
-  Package,
-  AlertTriangle,
-  ArrowLeftRight,
-  Syringe,
-  Clock,
-  Send,
-  CheckCircle,
+  Package, AlertTriangle, ArrowLeftRight, Syringe, Clock,
+  TrendingUp, RefreshCw, Loader2, DollarSign, Archive,
+  CheckCircle2, XCircle, ExternalLink, Eye, SendHorizonal,
 } from 'lucide-react';
+import {
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell,
+} from 'recharts';
+import Link from 'next/link';
 
-interface SubPharmacyStats {
-  currentStock: number;
-  lowStockItems: number;
-  pendingRequests: number;
-  todaysIssuance: number;
-  expiringBatches: number;
-  receivedToday: number;
+const PIE_COLORS = ['#3b82f6', '#ef4444', '#6b7280'];
+const BAR_COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#84cc16'];
+
+const TRANSFER_STATUS_COLORS: Record<string, string> = {
+  PENDING: 'bg-amber-100 text-amber-700',
+  APPROVED: 'bg-green-100 text-green-700',
+  REJECTED: 'bg-red-100 text-red-700',
+  COMPLETED: 'bg-blue-100 text-blue-700',
+  CANCELLED: 'bg-gray-100 text-gray-600',
+};
+
+interface InventoryStats {
+  totalBatches: number;
+  availableBatches: number;
+  expiredBatches: number;
+  depletedBatches: number;
+  totalQuantity: number;
+  totalValue: number;
+  lowStock: number;
+  expiringSoon: number;
+}
+
+interface IssuanceStats {
+  totalIssues: number;
+  todayIssues: number;
+  totalAmount: number;
+  todayAmount: number;
 }
 
 export default function SubPharmacyDashboard() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const [stats, setStats] = useState<SubPharmacyStats | null>(null);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const { selectedHospital } = useHospitalStore();
+
+  const [invStats, setInvStats] = useState<InventoryStats | null>(null);
+  const [issStats, setIssStats] = useState<IssuanceStats | null>(null);
+  const [pendingTransfers, setPendingTransfers] = useState<any[]>([]);
+  const [myTransferRequests, setMyTransferRequests] = useState<any[]>([]);
+  const [stockAlerts, setStockAlerts] = useState<any[]>([]);
+  const [expiringBatches, setExpiringBatches] = useState<any[]>([]);
+  const [recentIssuances, setRecentIssuances] = useState<any[]>([]);
+  const [frequentMedicines, setFrequentMedicines] = useState<any[]>([]);
+  const [issuanceTrend, setIssuanceTrend] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [txTab, setTxTab] = useState<'transactions' | 'frequent'>('transactions');
+  const [transferTab, setTransferTab] = useState<'pending' | 'my'>('pending');
+
+  const pharmacyId = user?.pharmacyId;
+  const hospitalId = user?.hospitalId || selectedHospital?.id;
 
   useEffect(() => {
-    // Verify Sub Pharmacy Manager role
-    if (!user || user.role !== UserRole.SUB_PHARMACY_MANAGER) {
+    if (!user) return;
+    if (user.role !== UserRole.SUB_PHARMACY_MANAGER) {
       router.push('/dashboard');
       return;
     }
+    fetchAll();
+  }, [user]);
 
-    fetchDashboardData();
-  }, [user, router]);
-
-  const fetchDashboardData = async () => {
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-
-      // TODO: Replace with actual API calls
-      setStats({
-        currentStock: 567,
-        lowStockItems: 5,
-        pendingRequests: 2,
-        todaysIssuance: 28,
-        expiringBatches: 1,
-        receivedToday: 3,
-      });
-
-      // Generate alerts
-      setAlerts([
-        {
-          id: '1',
-          type: 'error',
-          title: 'Critical Stock Alert',
-          message: 'Aspirin 100mg has only 20 tablets remaining',
-          href: '/dashboard/inventory/alerts',
-          timestamp: new Date(Date.now() - 30 * 60 * 1000),
-        },
-        {
-          id: '2',
-          type: 'warning',
-          title: 'Transfer Request Pending',
-          message: 'Waiting for main pharmacy approval (2 days)',
-          href: '/dashboard/transfers?status=PENDING',
-          timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-        },
-        {
-          id: '3',
-          type: 'info',
-          title: 'Stock Dispatched',
-          message: 'Your transfer request has been dispatched from main pharmacy',
-          href: '/dashboard/transfers?status=DISPATCHED',
-          timestamp: new Date(Date.now() - 1 * 60 * 60 * 1000),
-        },
+      await Promise.allSettled([
+        fetchInvStats(),
+        fetchIssStats(),
+        fetchPendingTransfers(),
+        fetchMyTransferRequests(),
+        fetchStockAlerts(),
+        fetchExpiringBatches(),
+        fetchRecentIssuances(),
+        fetchFrequentMedicines(),
+        fetchTrend(),
       ]);
-
-      // Generate recent activities
-      setActivities([
-        {
-          id: '1',
-          title: 'Transfer Received',
-          description: 'From Main Pharmacy - 15 items received',
-          timestamp: new Date(Date.now() - 15 * 60 * 1000),
-          user: 'You',
-          type: 'success',
-          href: '/dashboard/transfers',
-        },
-        {
-          id: '2',
-          title: 'Medicine Issued',
-          description: 'Patient NR-2024-045 - 3 medicines dispensed',
-          timestamp: new Date(Date.now() - 45 * 60 * 1000),
-          user: 'Pharmacy Staff',
-          type: 'info',
-          href: '/dashboard/issuance',
-        },
-        {
-          id: '3',
-          title: 'Transfer Requested',
-          description: 'Requested Paracetamol 500mg (200 tablets)',
-          timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-          user: 'You',
-          type: 'info',
-          href: '/dashboard/transfers',
-        },
-        {
-          id: '4',
-          title: 'Low Stock Alert',
-          description: 'Amoxicillin 250mg below minimum threshold',
-          timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000),
-          user: 'System',
-          type: 'warning',
-          href: '/dashboard/inventory/alerts',
-        },
-      ]);
-    } catch (error) {
-      console.error('Failed to fetch dashboard data:', error);
+      setLastUpdated(new Date());
     } finally {
       setLoading(false);
     }
+  }, [pharmacyId, hospitalId]);
+
+  const p = (extra: Record<string, any> = {}) => {
+    const base: Record<string, any> = {};
+    if (pharmacyId) base.pharmacyId = pharmacyId;
+    if (hospitalId) base.hospitalId = hospitalId;
+    return { ...base, ...extra };
   };
 
-  const quickActions = getQuickActionsForRole(UserRole.SUB_PHARMACY_MANAGER);
+  const fetchInvStats = async () => {
+    try {
+      const r = await api.get('/inventory/stats', { params: p() });
+      setInvStats(r.data);
+    } catch (e) { console.error('inv stats', e); }
+  };
+
+  const fetchIssStats = async () => {
+    try {
+      const r = await api.get('/issuance/stats', { params: p() });
+      setIssStats(r.data);
+    } catch (e) { console.error('iss stats', e); }
+  };
+
+  const fetchPendingTransfers = async () => {
+    try {
+      const r = await api.get('/transfers', { params: p({ status: 'PENDING', limit: 5 }) });
+      setPendingTransfers(r.data?.data || r.data || []);
+    } catch (e) { console.error('transfers', e); }
+  };
+
+  const fetchMyTransferRequests = async () => {
+    try {
+      const r = await api.get('/transfers', { params: p({ limit: 7, page: 1 }) });
+      setMyTransferRequests(r.data?.data || []);
+    } catch (e) { console.error('my transfers', e); }
+  };
+
+  const fetchStockAlerts = async () => {
+    try {
+      const r = await api.get('/inventory/alerts/low-stock', { params: p() });
+      setStockAlerts((Array.isArray(r.data) ? r.data : r.data?.data || []).slice(0, 6));
+    } catch (e) { console.error('alerts', e); }
+  };
+
+  const fetchExpiringBatches = async () => {
+    try {
+      const r = await api.get('/inventory/alerts/expiring', { params: p({ days: 30 }) });
+      setExpiringBatches((Array.isArray(r.data) ? r.data : r.data?.data || []).slice(0, 5));
+    } catch (e) { console.error('expiring', e); }
+  };
+
+  const fetchRecentIssuances = async () => {
+    try {
+      const r = await api.get('/issuance', { params: p({ limit: 7, page: 1 }) });
+      setRecentIssuances(r.data?.data || []);
+    } catch (e) { console.error('issuances', e); }
+  };
+
+  const fetchFrequentMedicines = async () => {
+    try {
+      const r = await api.get('/analytics/top-medicines', { params: p({ period: 'month' }) });
+      setFrequentMedicines((Array.isArray(r.data) ? r.data : []).slice(0, 10));
+    } catch (e) { console.error('top medicines', e); }
+  };
+
+  const fetchTrend = async () => {
+    try {
+      const r = await api.get('/issuance', { params: p({ limit: 200, page: 1 }) });
+      const txns: any[] = r.data?.data || [];
+      const days = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const label = d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
+        const dayStr = d.toDateString();
+        const dayTxns = txns.filter(t => new Date(t.issuedAt).toDateString() === dayStr);
+        days.push({
+          day: label,
+          issued: dayTxns.length,
+          amount: Math.round(dayTxns.reduce((s, t) => s + Number(t.totalAmount || 0), 0)),
+        });
+      }
+      setIssuanceTrend(days);
+    } catch (e) { console.error('trend', e); }
+  };
+
+  const batchPieData = invStats
+    ? [
+        { name: 'Available', value: invStats.availableBatches },
+        { name: 'Expired', value: invStats.expiredBatches },
+        { name: 'Depleted', value: invStats.depletedBatches },
+      ].filter(d => d.value > 0)
+    : [];
+
+  const StatCard = ({ title, value, sub, icon: Icon, color, href, loading: l }: any) => (
+    <Link href={href || '#'} className="block rounded-xl border bg-white p-5 shadow-sm hover:shadow-md transition-all duration-200">
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-gray-500 font-medium truncate">{title}</p>
+          {l
+            ? <div className="mt-2 h-8 w-24 animate-pulse rounded bg-gray-200" />
+            : <p className="mt-1 text-2xl font-bold text-gray-900">{value ?? '—'}</p>
+          }
+          {sub && !l && <p className="mt-1 text-xs text-gray-500 truncate">{sub}</p>}
+        </div>
+        <div className={`rounded-lg p-2.5 ml-3 flex-shrink-0 ${color}`}>
+          <Icon className="h-5 w-5 text-white" />
+        </div>
+      </div>
+    </Link>
+  );
+
+  const Tab = ({ id, label, active, onClick }: any) => (
+    <button
+      onClick={() => onClick(id)}
+      className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+        active ? 'bg-purple-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+      }`}
+    >
+      {label}
+    </button>
+  );
+
+  const fmtPKR = (v: number) => `PKR ${v.toLocaleString()}`;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Sub Pharmacy Dashboard</h1>
-        <p className="mt-2 text-sm text-gray-600">
-          Manage your pharmacy's stock and request transfers
-        </p>
+    <div className="space-y-6 p-1">
+
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Sub Pharmacy Dashboard</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {lastUpdated ? `Last updated: ${lastUpdated.toLocaleTimeString()}` : 'Loading data...'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/dashboard/transfers/request"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            <SendHorizonal className="h-4 w-4" />
+            New Transfer Request
+          </Link>
+          <button
+            onClick={fetchAll}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Refresh
+          </button>
+        </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        <StatsCard
-          title="Current Stock Items"
-          value={stats?.currentStock ?? 0}
-          icon={Package}
-          color="blue"
-          href="/dashboard/inventory"
-          loading={loading}
+      {/* ── Stats Row 1 — Inventory ── */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          title="Total Stock Value"
+          value={fmtPKR(invStats?.totalValue || 0)}
+          sub={`${(invStats?.totalBatches || 0).toLocaleString()} batches total`}
+          icon={DollarSign} color="bg-blue-500" href="/dashboard/inventory" loading={loading}
         />
-        <StatsCard
+        <StatCard
+          title="Available Batches"
+          value={(invStats?.availableBatches ?? 0).toLocaleString()}
+          sub={`${(invStats?.totalQuantity || 0).toLocaleString()} units in stock`}
+          icon={Package} color="bg-green-500" href="/dashboard/inventory" loading={loading}
+        />
+        <StatCard
           title="Low Stock Items"
-          value={stats?.lowStockItems ?? 0}
-          icon={AlertTriangle}
-          color="red"
-          href="/dashboard/inventory/alerts"
-          loading={loading}
+          value={(invStats?.lowStock ?? 0).toLocaleString()}
+          sub="Need replenishment"
+          icon={AlertTriangle} color="bg-red-500" href="/dashboard/inventory" loading={loading}
         />
-        <StatsCard
-          title="Pending Requests"
-          value={stats?.pendingRequests ?? 0}
-          icon={Clock}
-          color="yellow"
-          href="/dashboard/transfers?status=PENDING"
-          loading={loading}
+        <StatCard
+          title="Expiring in 30 Days"
+          value={(invStats?.expiringSoon ?? 0).toLocaleString()}
+          sub="Batches expiring soon"
+          icon={Clock} color="bg-amber-500" href="/dashboard/inventory" loading={loading}
         />
       </div>
 
-      {/* Secondary Stats */}
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        <StatsCard
-          title="Today's Issuance"
-          value={stats?.todaysIssuance ?? 0}
-          icon={Syringe}
-          color="green"
-          href="/dashboard/issuance"
-          loading={loading}
-          trend={{
-            value: 10,
-            isPositive: true,
-            label: 'vs yesterday',
-          }}
+      {/* ── Stats Row 2 — Issuance & Transfers ── */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          title="Today's Issues"
+          value={(issStats?.todayIssues ?? 0).toLocaleString()}
+          sub={fmtPKR(issStats?.todayAmount || 0)}
+          icon={Syringe} color="bg-purple-500" href="/dashboard/issuance" loading={loading}
         />
-        <StatsCard
-          title="Expiring Soon"
-          value={stats?.expiringBatches ?? 0}
-          icon={Clock}
-          color="purple"
-          href="/dashboard/inventory?filter=expiring"
-          loading={loading}
+        <StatCard
+          title="Total Issues (All Time)"
+          value={(issStats?.totalIssues ?? 0).toLocaleString()}
+          sub={fmtPKR(issStats?.totalAmount || 0)}
+          icon={TrendingUp} color="bg-indigo-500" href="/dashboard/issuance" loading={loading}
         />
-        <StatsCard
-          title="Received Today"
-          value={stats?.receivedToday ?? 0}
-          icon={CheckCircle}
-          color="indigo"
-          href="/dashboard/transfers?status=RECEIVED"
-          loading={loading}
+        <StatCard
+          title="Pending Transfers"
+          value={pendingTransfers.length.toLocaleString()}
+          sub="Awaiting approval"
+          icon={ArrowLeftRight} color="bg-orange-500" href="/dashboard/transfers" loading={loading}
+        />
+        <StatCard
+          title="Expired Batches"
+          value={(invStats?.expiredBatches ?? 0).toLocaleString()}
+          sub="Needs disposal"
+          icon={Archive} color="bg-gray-500" href="/dashboard/inventory" loading={loading}
         />
       </div>
 
-      {/* Alerts Section */}
-      <AlertsWidget alerts={alerts} title="Pharmacy Alerts" maxItems={5} />
+      {/* ── Charts Row ── */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
 
-      {/* Quick Actions */}
-      <QuickActionsWidget actions={quickActions} title="Quick Actions" />
-
-      {/* Recent Activity & Transfer Status */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <RecentActivityWidget
-          activities={activities}
-          title="Recent Activity"
-          maxItems={6}
-        />
-
-        {/* Transfer Requests Widget */}
-        <div className="rounded-xl bg-white p-6 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-gray-900">My Transfer Requests</h3>
-            <a
-              href="/dashboard/transfers"
-              className="text-xs font-medium text-blue-600 hover:underline"
-            >
-              View All
-            </a>
+        {/* Issuance Trend */}
+        <div className="lg:col-span-2 rounded-xl border bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold text-gray-800">7-Day Issuance Trend</h2>
+            <Link href="/dashboard/issuance" className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
+              <Eye className="h-3.5 w-3.5" /> View all
+            </Link>
           </div>
-          <div className="space-y-3">
-            {[
-              {
-                id: '1',
-                items: 15,
-                status: 'DISPATCHED',
-                requestedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-              },
-              {
-                id: '2',
-                items: 8,
-                status: 'PENDING',
-                requestedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-              },
-            ].map((transfer) => (
-              <div
-                key={transfer.id}
-                className="flex items-center justify-between rounded-lg border border-gray-200 p-4"
-              >
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900">
-                    Transfer Request #{transfer.id}
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    {transfer.items} items requested
-                  </p>
-                  <p className="mt-1 text-xs text-gray-400">
-                    {new Date(transfer.requestedAt).toLocaleDateString()}
-                  </p>
-                </div>
-                <div className="ml-4">
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-medium ${
-                      transfer.status === 'DISPATCHED'
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'bg-yellow-100 text-yellow-700'
-                    }`}
-                  >
-                    {transfer.status}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Stock Overview */}
-      <div className="rounded-xl bg-white p-6 shadow-sm">
-        <h3 className="mb-4 text-lg font-semibold text-gray-900">Stock Overview</h3>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {[
-            { category: 'Emergency Meds', count: 85, status: 'Good' },
-            { category: 'Common Drugs', count: 234, status: 'Good' },
-            { category: 'Antibiotics', count: 128, status: 'Low' },
-            { category: 'Others', count: 120, status: 'Good' },
-          ].map((item) => (
-            <div
-              key={item.category}
-              className="rounded-lg border border-gray-200 bg-gray-50 p-4"
-            >
-              <p className="text-xs font-medium text-gray-600">{item.category}</p>
-              <p className="mt-1 text-xl font-bold text-gray-900">{item.count}</p>
-              <span
-                className={`mt-1 inline-block text-xs font-medium ${
-                  item.status === 'Good' ? 'text-green-600' : 'text-red-600'
-                }`}
-              >
-                {item.status}
-              </span>
+          {loading ? (
+            <div className="h-52 flex items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-gray-300" />
             </div>
-          ))}
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <AreaChart data={issuanceTrend} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="sGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <Tooltip
+                  formatter={(value: any, name: string) =>
+                    name === 'amount' ? [`PKR ${Number(value).toLocaleString()}`, 'Amount'] : [value, 'Transactions']
+                  }
+                />
+                <Legend />
+                <Area
+                  type="monotone"
+                  dataKey="issued"
+                  name="Transactions"
+                  stroke="#8b5cf6"
+                  fill="url(#sGrad)"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  activeDot={{ r: 5 }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Batch Status Pie */}
+        <div className="rounded-xl border bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold text-gray-800">Batch Status</h2>
+            <Link href="/dashboard/inventory" className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
+              <Eye className="h-3.5 w-3.5" /> View
+            </Link>
+          </div>
+          {loading ? (
+            <div className="h-52 flex items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-gray-300" />
+            </div>
+          ) : batchPieData.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie
+                    data={batchPieData}
+                    cx="50%" cy="50%"
+                    innerRadius={45} outerRadius={72}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {batchPieData.map((_, i) => (
+                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(v: any) => [v.toLocaleString(), 'Batches']} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex flex-col gap-1.5 mt-2">
+                {batchPieData.map((item, i) => (
+                  <div key={item.name} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                      <span className="text-gray-600">{item.name}</span>
+                    </div>
+                    <span className="font-semibold text-gray-900">{item.value.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="h-52 flex flex-col items-center justify-center text-gray-400">
+              <Package className="h-8 w-8 mb-2" />
+              <p className="text-sm">No batch data available</p>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* ── Frequent Medicines Bar Chart ── */}
+      <div className="rounded-xl border bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-gray-800">Top 10 Most Dispensed Medicines (This Month)</h2>
+          <Link href="/dashboard/issuance" className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
+            <Eye className="h-3.5 w-3.5" /> Full Report
+          </Link>
+        </div>
+        {loading ? (
+          <div className="h-56 flex items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-gray-300" />
+          </div>
+        ) : frequentMedicines.length === 0 ? (
+          <div className="h-56 flex flex-col items-center justify-center text-gray-400">
+            <Syringe className="h-8 w-8 mb-2" />
+            <p className="text-sm">No dispensing data for this month</p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart
+              data={frequentMedicines.map(m => ({
+                name: m.name?.length > 14 ? m.name.slice(0, 14) + '…' : m.name,
+                fullName: m.name,
+                qty: m.totalQuantity,
+                txns: m.transactionCount,
+              }))}
+              margin={{ top: 5, right: 10, left: 0, bottom: 40 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" interval={0} />
+              <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+              <Tooltip
+                content={({ active, payload }: any) => {
+                  if (!active || !payload?.length) return null;
+                  const d = payload[0]?.payload;
+                  return (
+                    <div className="bg-white border border-gray-200 rounded-lg p-3 shadow-lg text-xs">
+                      <p className="font-semibold text-gray-800 mb-1">{d.fullName}</p>
+                      <p className="text-purple-600">Qty Issued: <b>{d.qty?.toLocaleString()}</b></p>
+                      <p className="text-blue-600">Transactions: <b>{d.txns?.toLocaleString()}</b></p>
+                    </div>
+                  );
+                }}
+              />
+              <Bar dataKey="qty" name="Qty Issued" radius={[4, 4, 0, 0]}>
+                {frequentMedicines.map((_, i) => (
+                  <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* ── Transactions / Frequent Tab Section ── */}
+      <div className="rounded-xl border bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
+            <Tab id="transactions" label="Recent Transactions" active={txTab === 'transactions'} onClick={setTxTab} />
+            <Tab id="frequent" label="Frequent Transactions" active={txTab === 'frequent'} onClick={setTxTab} />
+          </div>
+          <Link
+            href="/dashboard/issuance"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-purple-600 border border-purple-200 rounded-lg hover:bg-purple-50 transition-colors"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            View All Transactions
+          </Link>
+        </div>
+
+        {txTab === 'transactions' && (
+          <>
+            {loading ? (
+              <div className="space-y-2">
+                {[...Array(5)].map((_, i) => <div key={i} className="h-12 animate-pulse rounded bg-gray-100" />)}
+              </div>
+            ) : recentIssuances.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+                <XCircle className="h-9 w-9 mb-2" />
+                <p className="text-sm font-medium">No transactions found</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-gray-500">
+                      <th className="pb-2.5 font-medium">Receipt / NR</th>
+                      <th className="pb-2.5 font-medium">Patient</th>
+                      <th className="pb-2.5 font-medium">Pharmacy</th>
+                      <th className="pb-2.5 font-medium">Items</th>
+                      <th className="pb-2.5 font-medium">Amount</th>
+                      <th className="pb-2.5 font-medium">Date & Time</th>
+                      <th className="pb-2.5 font-medium">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {recentIssuances.map((tx: any) => (
+                      <tr key={tx.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="py-2.5">
+                          <span className="font-mono text-xs text-purple-600">{tx.nrNumber || tx.id?.slice(0, 8)}</span>
+                        </td>
+                        <td className="py-2.5 font-medium text-gray-800">{tx.patient?.fullName || '—'}</td>
+                        <td className="py-2.5 text-gray-500 text-xs">{tx.pharmacy?.name || '—'}</td>
+                        <td className="py-2.5 text-gray-600">{tx.items?.length ?? 0} item{tx.items?.length !== 1 ? 's' : ''}</td>
+                        <td className="py-2.5 font-semibold text-green-700">PKR {Number(tx.totalAmount || 0).toLocaleString()}</td>
+                        <td className="py-2.5 text-gray-500 text-xs">
+                          <div>{new Date(tx.issuedAt).toLocaleDateString()}</div>
+                          <div>{new Date(tx.issuedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                        </td>
+                        <td className="py-2.5">
+                          <Link
+                            href={`/dashboard/issuance/${tx.id}`}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-purple-600 border border-purple-200 rounded-md hover:bg-purple-50 transition-colors"
+                          >
+                            <Eye className="h-3 w-3" /> View
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+
+        {txTab === 'frequent' && (
+          <>
+            {loading ? (
+              <div className="space-y-2">
+                {[...Array(5)].map((_, i) => <div key={i} className="h-12 animate-pulse rounded bg-gray-100" />)}
+              </div>
+            ) : frequentMedicines.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+                <Syringe className="h-9 w-9 mb-2" />
+                <p className="text-sm font-medium">No dispensing data this month</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-gray-500">
+                      <th className="pb-2.5 font-medium">#</th>
+                      <th className="pb-2.5 font-medium">Medicine</th>
+                      <th className="pb-2.5 font-medium">Generic Name</th>
+                      <th className="pb-2.5 font-medium">Form</th>
+                      <th className="pb-2.5 font-medium">Total Qty Issued</th>
+                      <th className="pb-2.5 font-medium">Transactions</th>
+                      <th className="pb-2.5 font-medium">Total Value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {frequentMedicines.map((m: any, idx: number) => (
+                      <tr key={m.medicineId || idx} className="hover:bg-gray-50 transition-colors">
+                        <td className="py-2.5">
+                          <span className="w-6 h-6 rounded-full text-xs font-bold text-white flex items-center justify-center" style={{ background: BAR_COLORS[idx % BAR_COLORS.length] }}>
+                            {idx + 1}
+                          </span>
+                        </td>
+                        <td className="py-2.5 font-medium text-gray-800">{m.name}</td>
+                        <td className="py-2.5 text-gray-500 text-xs">{m.genericName || '—'}</td>
+                        <td className="py-2.5">
+                          <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full text-xs font-medium">{m.form || '—'}</span>
+                        </td>
+                        <td className="py-2.5 font-semibold text-gray-900">{(m.totalQuantity || 0).toLocaleString()}</td>
+                        <td className="py-2.5 text-gray-600">{(m.transactionCount || 0).toLocaleString()}</td>
+                        <td className="py-2.5 font-semibold text-green-700">PKR {Number(m.totalValue || 0).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="mt-3 flex justify-end">
+              <Link
+                href="/dashboard/issuance"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-purple-600 border border-purple-200 rounded-lg hover:bg-purple-50 transition-colors"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                View Full Consumption Report
+              </Link>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Transfer Requests Section (Sub Pharmacy Specific) ── */}
+      <div className="rounded-xl border bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
+            <button
+              onClick={() => setTransferTab('pending')}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${transferTab === 'pending' ? 'bg-orange-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+              Pending Approvals {pendingTransfers.length > 0 && <span className="ml-1.5 bg-white text-orange-600 text-xs font-bold px-1.5 py-0.5 rounded-full">{pendingTransfers.length}</span>}
+            </button>
+            <button
+              onClick={() => setTransferTab('my')}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${transferTab === 'my' ? 'bg-orange-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+              My Transfer Requests
+            </button>
+          </div>
+          <Link
+            href="/dashboard/transfers"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-orange-600 border border-orange-200 rounded-lg hover:bg-orange-50 transition-colors"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            View All Transfers
+          </Link>
+        </div>
+
+        {/* Pending Approvals */}
+        {transferTab === 'pending' && (
+          loading ? (
+            <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-12 animate-pulse rounded bg-gray-100" />)}</div>
+          ) : pendingTransfers.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+              <CheckCircle2 className="h-9 w-9 mb-2 text-green-400" />
+              <p className="text-sm font-medium">No pending transfers</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs text-gray-500">
+                    <th className="pb-2.5 font-medium">Transfer #</th>
+                    <th className="pb-2.5 font-medium">From</th>
+                    <th className="pb-2.5 font-medium">To</th>
+                    <th className="pb-2.5 font-medium">Status</th>
+                    <th className="pb-2.5 font-medium">Date</th>
+                    <th className="pb-2.5 font-medium">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {pendingTransfers.map((t: any) => (
+                    <tr key={t.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="py-2.5 font-medium text-orange-600">{t.requestNumber}</td>
+                      <td className="py-2.5">{t.fromPharmacy?.name || '—'}</td>
+                      <td className="py-2.5">{t.toPharmacy?.name || '—'}</td>
+                      <td className="py-2.5">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${TRANSFER_STATUS_COLORS[t.status] || 'bg-gray-100 text-gray-600'}`}>
+                          {t.status}
+                        </span>
+                      </td>
+                      <td className="py-2.5 text-gray-500 text-xs">{new Date(t.createdAt).toLocaleDateString()}</td>
+                      <td className="py-2.5">
+                        <Link
+                          href={`/dashboard/transfers/${t.id}`}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-orange-600 border border-orange-200 rounded-md hover:bg-orange-50 transition-colors"
+                        >
+                          <Eye className="h-3 w-3" /> View
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+
+        {/* My Transfer Requests */}
+        {transferTab === 'my' && (
+          loading ? (
+            <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-12 animate-pulse rounded bg-gray-100" />)}</div>
+          ) : myTransferRequests.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+              <ArrowLeftRight className="h-9 w-9 mb-2" />
+              <p className="text-sm font-medium">No transfer requests yet</p>
+              <Link href="/dashboard/transfers/request" className="mt-2 flex items-center gap-1 text-xs text-purple-600 hover:underline">
+                <SendHorizonal className="h-3 w-3" /> Create one
+              </Link>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs text-gray-500">
+                    <th className="pb-2.5 font-medium">Transfer #</th>
+                    <th className="pb-2.5 font-medium">From</th>
+                    <th className="pb-2.5 font-medium">To</th>
+                    <th className="pb-2.5 font-medium">Status</th>
+                    <th className="pb-2.5 font-medium">Date</th>
+                    <th className="pb-2.5 font-medium">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {myTransferRequests.map((t: any) => (
+                    <tr key={t.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="py-2.5 font-medium text-orange-600">{t.requestNumber}</td>
+                      <td className="py-2.5">{t.fromPharmacy?.name || '—'}</td>
+                      <td className="py-2.5">{t.toPharmacy?.name || '—'}</td>
+                      <td className="py-2.5">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${TRANSFER_STATUS_COLORS[t.status] || 'bg-gray-100 text-gray-600'}`}>
+                          {t.status}
+                        </span>
+                      </td>
+                      <td className="py-2.5 text-gray-500 text-xs">{new Date(t.createdAt).toLocaleDateString()}</td>
+                      <td className="py-2.5">
+                        <Link
+                          href={`/dashboard/transfers/${t.id}`}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-orange-600 border border-orange-200 rounded-md hover:bg-orange-50 transition-colors"
+                        >
+                          <Eye className="h-3 w-3" /> View
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+      </div>
+
+      {/* ── Bottom 3-Col Section ── */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+
+        {/* Low Stock Alerts */}
+        <div className="rounded-xl border bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-semibold text-gray-800">Low Stock Alerts</h2>
+            <Link href="/dashboard/inventory" className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
+              <Eye className="h-3.5 w-3.5" /> View all
+            </Link>
+          </div>
+          {loading ? (
+            <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-10 animate-pulse rounded bg-gray-100" />)}</div>
+          ) : stockAlerts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+              <CheckCircle2 className="h-8 w-8 mb-2 text-green-400" />
+              <p className="text-sm">All stock levels OK</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {stockAlerts.map((a: any, i: number) => (
+                <div key={a.medicineId || i} className="flex items-center justify-between rounded-lg bg-red-50 px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{a.medicineName || a.medicine?.name}</p>
+                    <p className="text-xs text-gray-500">{a.form || ''} {a.strength || ''}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-red-600">{(a.totalDispensingStock ?? a.totalStock ?? a.qtyAvailable ?? 0)} left</p>
+                    <p className="text-xs text-gray-400">min: {a.reorderLevel ?? 10}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Expiring Soon */}
+        <div className="rounded-xl border bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-semibold text-gray-800">Expiring Soon</h2>
+            <Link href="/dashboard/inventory" className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
+              <Eye className="h-3.5 w-3.5" /> View all
+            </Link>
+          </div>
+          {loading ? (
+            <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-10 animate-pulse rounded bg-gray-100" />)}</div>
+          ) : expiringBatches.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+              <CheckCircle2 className="h-8 w-8 mb-2 text-green-400" />
+              <p className="text-sm">No batches expiring soon</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {expiringBatches.map((b: any) => {
+                const daysLeft = Math.ceil((new Date(b.expiryDate).getTime() - Date.now()) / 86400000);
+                return (
+                  <div key={b.id} className="flex items-center justify-between rounded-lg bg-amber-50 px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">{b.medicine?.name}</p>
+                      <p className="text-xs text-gray-500">Batch: {b.batchNo} · {b.qtyAvailable} units</p>
+                    </div>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${daysLeft <= 7 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {daysLeft}d
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Quick Actions */}
+        <div className="rounded-xl border bg-white p-5 shadow-sm">
+          <h2 className="text-base font-semibold text-gray-800 mb-3">Quick Actions</h2>
+          <div className="space-y-2">
+            <Link href="/dashboard/issuance/new" className="flex items-center gap-3 rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 hover:bg-purple-100 transition-colors">
+              <Syringe className="h-5 w-5 text-purple-600" />
+              <div><p className="text-sm font-medium text-purple-800">Issue Medicine</p><p className="text-xs text-purple-600">Create new issuance</p></div>
+            </Link>
+            <Link href="/dashboard/transfers/request" className="flex items-center gap-3 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 hover:bg-orange-100 transition-colors">
+              <ArrowLeftRight className="h-5 w-5 text-orange-600" />
+              <div><p className="text-sm font-medium text-orange-800">Request Transfer</p><p className="text-xs text-orange-600">Request stock from main</p></div>
+            </Link>
+            <Link href="/dashboard/inventory" className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 hover:bg-blue-100 transition-colors">
+              <Package className="h-5 w-5 text-blue-600" />
+              <div><p className="text-sm font-medium text-blue-800">View Inventory</p><p className="text-xs text-blue-600">Browse stock levels</p></div>
+            </Link>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }

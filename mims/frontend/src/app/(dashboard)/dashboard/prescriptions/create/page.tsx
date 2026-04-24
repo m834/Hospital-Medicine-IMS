@@ -57,7 +57,7 @@ export default function CreatePrescriptionPage() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { selectedHospital } = useHospitalStore();
-  const [searchType, setSearchType] = useState<'NR' | 'CNIC'>('NR');
+  const [searchType, setSearchType] = useState<'MRN' | 'CNIC'>('MRN');
   const [searchNR, setSearchNR] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [searchingPatient, setSearchingPatient] = useState(false);
@@ -145,14 +145,14 @@ export default function CreatePrescriptionPage() {
 
   const searchPatient = async () => {
     if (!searchNR.trim()) {
-      alert(`Please enter ${searchType === 'NR' ? 'NR Number' : 'CNIC'}`);
+      alert(`Please enter ${searchType === 'MRN' ? 'MRN' : 'CNIC'}`);
       return;
     }
 
     try {
       setSearchingPatient(true);
       const params =
-        searchType === 'NR'
+        searchType === 'MRN'
           ? { nrNumber: searchNR.trim() }
           : { cnic: searchNR.trim() };
 
@@ -230,22 +230,22 @@ export default function CreatePrescriptionPage() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Search Patient by {searchType === 'NR' ? 'NR Number' : 'CNIC'}
+                Search Patient by {searchType === 'MRN' ? 'MRN' : 'CNIC'}
               </label>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <select
                   value={searchType}
-                  onChange={(e) => setSearchType(e.target.value as 'NR' | 'CNIC')}
+                  onChange={(e) => setSearchType(e.target.value as 'MRN' | 'CNIC')}
                   className="w-full sm:w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  <option value="NR">NR Number</option>
+                  <option value="MRN">MRN</option>
                   <option value="CNIC">CNIC</option>
                 </select>
                 <input
                   type="text"
                   placeholder={
-                    searchType === 'NR'
-                      ? 'Enter NR Number (e.g., NR-20251128-0001)'
+                    searchType === 'MRN'
+                      ? 'Enter MRN (e.g., MRN-20251128-0001)'
                       : 'Enter CNIC (e.g., 12345-1234567-1)'
                   }
                   value={searchNR}
@@ -276,7 +276,7 @@ export default function CreatePrescriptionPage() {
                     <p className="font-semibold">{selectedPatient.fullName}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">NR Number</p>
+                    <p className="text-sm text-gray-600">MRN</p>
                     <p className="font-semibold">{selectedPatient.nrNumber}</p>
                   </div>
                   <div>
