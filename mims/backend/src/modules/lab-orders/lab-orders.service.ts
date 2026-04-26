@@ -74,9 +74,6 @@ export class LabOrdersService {
     const departmentId =
       labTest.departmentId || (visit as any)?.departmentId || orderedBy?.departmentId || null;
 
-    if (!departmentId) {
-      throw new BadRequestException('Department is required to generate lab receipt');
-    }
 
     const labOrder = await this.prisma.$transaction(async (tx) => {
       const order = await tx.labOrder.create({

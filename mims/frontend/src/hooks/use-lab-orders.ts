@@ -208,10 +208,11 @@ export function useLabOrderStats(hospitalId: string) {
 export function useCreateLabOrder() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { token } = useAuthStore();
 
   return useMutation({
     mutationFn: async (data: CreateLabOrderInput) => {
+      // Read token fresh from store at call time to avoid stale closure
+      const { token } = useAuthStore.getState();
       const response = await fetch(`${API_URL}/lab-orders`, {
         method: "POST",
         headers: {
@@ -244,10 +245,10 @@ export function useCreateLabOrder() {
 export function useCollectSample() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { token } = useAuthStore();
 
   return useMutation({
     mutationFn: async ({ orderId, data }: { orderId: string; data: CollectSampleInput }) => {
+      const { token } = useAuthStore.getState();
       const response = await fetch(`${API_URL}/lab-orders/${orderId}/collect-sample`, {
         method: "POST",
         headers: {
@@ -280,10 +281,10 @@ export function useCollectSample() {
 export function useEnterResult() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { token } = useAuthStore();
 
   return useMutation({
     mutationFn: async ({ orderId, data }: { orderId: string; data: EnterResultInput }) => {
+      const { token } = useAuthStore.getState();
       const response = await fetch(`${API_URL}/lab-orders/${orderId}/enter-result`, {
         method: "POST",
         headers: {
@@ -315,10 +316,10 @@ export function useEnterResult() {
 export function useApproveResult() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { token } = useAuthStore();
 
   return useMutation({
     mutationFn: async ({ orderId, data }: { orderId: string; data: ApproveResultInput }) => {
+      const { token } = useAuthStore.getState();
       const response = await fetch(`${API_URL}/lab-orders/${orderId}/approve-result`, {
         method: "POST",
         headers: {

@@ -125,7 +125,7 @@ const menuItems: MenuItem[] = [
     label: 'Lab Services',
     href: '/lab',
     icon: Microscope,
-    roles: [UserRole.DOCTOR, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.LAB_TECHNICIAN, UserRole.RECEPTIONIST, UserRole.REGISTRATION_STAFF_MANAGER]
+    roles: [UserRole.DOCTOR, UserRole.HOSPITAL_ADMIN, UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.LAB_TECHNICIAN, UserRole.RECEPTIONIST, UserRole.REGISTRATION_STAFF_MANAGER, UserRole.REGISTRATION_STAFF]
   },
   
   { 

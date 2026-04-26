@@ -984,7 +984,7 @@ model Receipt {
   hospitalId    String        @map("hospital_id")
   patientId     String        @map("patient_id")
   visitId       String?       @map("visit_id")
-  departmentId  String        @map("department_id")
+  departmentId  String?       @map("department_id")
   generatedById String        @map("generated_by_id")
   receiptNumber String        @unique @map("receipt_number")
   receiptType   ReceiptType   @map("receipt_type")
@@ -1005,7 +1005,7 @@ model Receipt {
   hospital    Hospital   @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   patient     Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
   visit       Visit?     @relation(fields: [visitId], references: [id], onDelete: SetNull)
-  department  Department @relation(fields: [departmentId], references: [id])
+  department  Department? @relation(fields: [departmentId], references: [id])
   generatedBy User       @relation("ReceiptsGenerated", fields: [generatedById], references: [id])
 
   @@index([hospitalId])
