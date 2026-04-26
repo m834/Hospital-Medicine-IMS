@@ -1,0 +1,4 @@
+# Large deploy artifacts
+mims/deploy/output/
+mims/deploy/*.zip
+mims/deploy/windows-package/
