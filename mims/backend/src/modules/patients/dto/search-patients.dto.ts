@@ -53,7 +53,7 @@ export class SearchPatientsDto {
 
   @IsInt()
   @Min(1)
-  @Max(200)
+  @Max(2000)
   @Type(() => Number)
   @IsOptional()
   limit?: number;

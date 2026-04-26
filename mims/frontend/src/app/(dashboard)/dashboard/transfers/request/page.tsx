@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -458,17 +459,18 @@ export default function RequestTransferPage() {
                           value={field.value || ''}
                         >
                           <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select hospital first" />
-                            </SelectTrigger>
+                            <SearchableSelect
+                              options={hospitals.map((h) => ({
+                                value: h.id,
+                                label: h.name,
+                                sub: h.code,
+                              }))}
+                              value={field.value || ''}
+                              onValueChange={(val) => { field.onChange(val); }}
+                              placeholder="Select hospital..."
+                              searchPlaceholder="Search hospital..."
+                            />
                           </FormControl>
-                          <SelectContent>
-                            {hospitals.map((hospital) => (
-                              <SelectItem key={hospital.id} value={hospital.id}>
-                                {hospital.name} ({hospital.code})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
                         </Select>
                         <FormMessage />
                       </FormItem>
@@ -567,19 +569,17 @@ export default function RequestTransferPage() {
             <div className="flex gap-4 items-end">
               <div className="flex-1">
                 <label className="text-sm font-medium mb-2 block">Medicine</label>
-                <Select value={selectedMedicine} onValueChange={setSelectedMedicine}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select medicine" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {medicines.map((medicine) => (
-                      <SelectItem key={medicine.id} value={medicine.id}>
-                        {medicine.name} {medicine.strength && `- ${medicine.strength}`} (
-                        {medicine.form})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  options={medicines.map((m) => ({
+                    value: m.id,
+                    label: m.name,
+                    sub: [m.strength, m.form].filter(Boolean).join(' · '),
+                  }))}
+                  value={selectedMedicine}
+                  onValueChange={setSelectedMedicine}
+                  placeholder="Select medicine..."
+                  searchPlaceholder="Search medicine by name or strength..."
+                />
               </div>
 
               <div className="w-32">

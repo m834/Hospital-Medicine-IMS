@@ -39,7 +39,6 @@ import api from '@/lib/api';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { useAuthStore } from '@/stores/auth.store';
 import { UserRole } from '@/lib/constants';
-import { canModifyResources } from '@/lib/permissions';
 import { CreateMedicineModal } from '@/components/modals/create-medicine-modal';
 import { EditMedicineModal } from '@/components/modals/edit-medicine-modal';
 
@@ -69,12 +68,15 @@ interface Stats {
   byForm: { [key: string]: number };
 }
 
+const PAGE_SIZE = 50;
+
 export default function MedicinesPage() {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedForm, setSelectedForm] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
   const [stats, setStats] = useState<Stats>({
     total: 0,
     active: 0,
@@ -100,8 +102,14 @@ export default function MedicinesPage() {
     UserRole.SUB_PHARMACY_MANAGER,
   ].includes(user?.role as UserRole);
   
-  // Check if user can update/delete (only MASTER_ADMIN)
-  const canModify = user?.role ? canModifyResources(user.role as UserRole) : false;
+  // Who can edit/delete medicines — must match backend @Roles on PATCH/DELETE
+  const canModify = [
+    UserRole.MASTER_ADMIN,
+    UserRole.SUPER_ADMIN,
+    UserRole.HOSPITAL_ADMIN,
+    UserRole.MAIN_PHARMACY_MANAGER,
+    UserRole.SUB_PHARMACY_MANAGER,
+  ].includes(user?.role as UserRole);
 
   // Determine current hospital for operations
   // Master Admin & Super Admin must select hospital, others use their hospitalId
@@ -121,7 +129,7 @@ export default function MedicinesPage() {
   const fetchMedicines = async () => {
     setLoading(true);
     try {
-      const params: any = { limit: 200, status: 'ACTIVE' };
+      const params: any = { limit: 2000, status: 'ACTIVE' };
       
       // Include hospitalId
       if (currentHospitalId) {
@@ -176,6 +184,9 @@ export default function MedicinesPage() {
     }
   };
 
+  // Reset to page 1 when filters change
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, selectedForm, selectedStatus]);
+
   // Filter medicines
   const filteredMedicines = medicines.filter((medicine) => {
     const matchesSearch =
@@ -189,6 +200,12 @@ export default function MedicinesPage() {
 
     return matchesSearch && matchesForm && matchesStatus;
   });
+
+  const totalPages = Math.ceil(filteredMedicines.length / PAGE_SIZE);
+  const pagedMedicines = filteredMedicines.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
 
   const getFormBadgeColor = (form: string) => {
     const colors: { [key: string]: string } = {
@@ -335,6 +352,7 @@ export default function MedicinesPage() {
           <CardTitle>Medicines List</CardTitle>
           <CardDescription>
             {filteredMedicines.length} {filteredMedicines.length === 1 ? 'medicine' : 'medicines'} found
+            {totalPages > 1 && ` — page ${currentPage} of ${totalPages}`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -354,14 +372,14 @@ export default function MedicinesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredMedicines.length === 0 ? (
+              {pagedMedicines.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                     No medicines found
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredMedicines.map((medicine) => (
+                pagedMedicines.map((medicine) => (
                   <TableRow key={medicine.id}>
                     <TableCell className="font-medium">{medicine.name}</TableCell>
                     <TableCell className="text-muted-foreground">
@@ -442,10 +460,35 @@ export default function MedicinesPage() {
         </CardContent>
       </Card>
 
-      {/* Footer */}
-      <div className="text-sm text-muted-foreground text-center">
-        Showing {filteredMedicines.length} of {medicines.length} medicines
-      </div>
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">
+            Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filteredMedicines.length)} of {filteredMedicines.length} medicines
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
+              Previous
+            </Button>
+            <span className="text-muted-foreground px-2">
+              Page {currentPage} / {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Create Medicine Modal */}
       <CreateMedicineModal

@@ -8,6 +8,7 @@ import * as z from 'zod';
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 const prescriptionItemSchema = z.object({
   medicineId: z.string().min(1, 'Medicine is required'),
@@ -110,7 +111,7 @@ export default function CreatePrescriptionPage() {
         expiringAfter: today.toISOString(),
         sortBy: 'expiryDate',
         sortOrder: 'asc',
-        limit: 200,
+        limit: 2000,
       };
 
       if (user?.pharmacyId) {
@@ -398,20 +399,17 @@ export default function CreatePrescriptionPage() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Medicine <span className="text-red-500">*</span>
                       </label>
-                      <select
-                        {...register(`items.${index}.medicineId`)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      >
-                        <option value="">Select medicine...</option>
-                        {medicines.map((medicine) => (
-                          <option key={medicine.id} value={medicine.id}>
-                            {medicine.name}
-                            {medicine.genericName && ` (${medicine.genericName})`}
-                            {medicine.strength && ` - ${medicine.strength}`}
-                            {` - ${medicine.form}`}
-                          </option>
-                        ))}
-                      </select>
+                      <SearchableSelect
+                        options={medicines.map((m) => ({
+                          value: m.id,
+                          label: m.name,
+                          sub: [m.genericName, m.strength, m.form].filter(Boolean).join(' · '),
+                        }))}
+                        value={watch(`items.${index}.medicineId`) || ''}
+                        onValueChange={(val) => setValue(`items.${index}.medicineId`, val, { shouldValidate: true })}
+                        placeholder="Select medicine..."
+                        searchPlaceholder="Search medicine by name, generic or strength..."
+                      />
                       {errors.items?.[index]?.medicineId && (
                         <p className="text-red-500 text-sm mt-1">
                           {errors.items[index]?.medicineId?.message}

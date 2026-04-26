@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { format } from 'date-fns';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 interface Patient {
   id: string;
@@ -88,7 +89,7 @@ export default function DispensingPage() {
       const response = await api.get('/medicines', {
         params: { 
           hospitalId: selectedHospital.id,
-          limit: 500, 
+          limit: 2000, 
           status: 'ACTIVE' 
         },
       });
@@ -443,20 +444,17 @@ export default function DispensingPage() {
               <h3 className="font-medium text-gray-700 mb-3">Add Medicine</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="md:col-span-2">
-                  <select
+                  <SearchableSelect
+                    options={medicines.map((m) => ({
+                      value: m.id,
+                      label: m.name,
+                      sub: [m.genericName, m.strength].filter(Boolean).join(' · '),
+                    }))}
                     value={manualMedicineId}
-                    onChange={(e) => setManualMedicineId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select medicine...</option>
-                    {medicines.map((medicine) => (
-                      <option key={medicine.id} value={medicine.id}>
-                        {medicine.name}
-                        {medicine.genericName && ` (${medicine.genericName})`}
-                        {medicine.strength && ` - ${medicine.strength}`}
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={setManualMedicineId}
+                    placeholder="Select medicine..."
+                    searchPlaceholder="Search medicine by name or strength..."
+                  />
                 </div>
                 <div className="flex gap-2">
                   <input

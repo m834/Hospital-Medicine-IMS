@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import {
   Table,
   TableBody,
@@ -209,7 +210,7 @@ export default function ReceiveStockPage() {
 
   const fetchMedicines = async () => {
     try {
-      const params: any = { limit: 200, status: 'ACTIVE' };
+      const params: any = { limit: 2000, status: 'ACTIVE' };
       
       // Add hospitalId if available
       if (currentHospitalId) {
@@ -590,20 +591,19 @@ export default function ReceiveStockPage() {
                       render={({ field }) => (
                         <FormItem className="col-span-3">
                           <FormLabel>Medicine *</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value || ''}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {medicines.map((medicine) => (
-                                <SelectItem key={medicine.id} value={medicine.id}>
-                                  {medicine.name} {medicine.strength && `(${medicine.strength})`}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <FormControl>
+                            <SearchableSelect
+                              options={medicines.map((m) => ({
+                                value: m.id,
+                                label: m.name,
+                                sub: [m.strength, m.form].filter(Boolean).join(' · '),
+                              }))}
+                              value={field.value || ''}
+                              onValueChange={field.onChange}
+                              placeholder="Select medicine..."
+                              searchPlaceholder="Search medicine by name or strength..."
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -657,20 +657,19 @@ export default function ReceiveStockPage() {
                     render={({ field }) => (
                       <FormItem className="col-span-2">
                         <FormLabel>Pharmacy *</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ''}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {pharmacies.map((pharmacy) => (
-                              <SelectItem key={pharmacy.id} value={pharmacy.id}>
-                                {pharmacy.code}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormControl>
+                          <SearchableSelect
+                            options={pharmacies.map((p) => ({
+                              value: p.id,
+                              label: p.name ?? p.code,
+                              sub: p.code,
+                            }))}
+                            value={field.value || ''}
+                            onValueChange={field.onChange}
+                            placeholder="Select pharmacy..."
+                            searchPlaceholder="Search pharmacy..."
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
