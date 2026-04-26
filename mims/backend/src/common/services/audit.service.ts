@@ -6,9 +6,11 @@ import { Request } from 'express';
 export interface AuditLogPayload {
   userId: string;
   hospitalId: string;
-  action: string; // 'CREATE', 'UPDATE', 'DELETE', 'READ'
-  entityType: string; // 'User', 'Shift', 'LeaveRequest', etc.
+  action: string; // 'CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', etc.
+  module?: string; // 'Medicines', 'Inventory', 'Prescriptions', etc.
+  entityType: string; // 'User', 'Medicine', 'Prescription', etc.
   entityId: string;
+  description?: string; // Human-readable summary
   beforeState?: any;
   afterState?: any;
 }
@@ -48,8 +50,10 @@ export class AuditService {
         userId: payload.userId,
         hospitalId: payload.hospitalId,
         action: payload.action,
+        module: payload.module,
         entityType: payload.entityType,
         entityId: payload.entityId,
+        description: payload.description,
         beforeState: payload.beforeState || null,
         afterState: payload.afterState || null,
         ipAddress,

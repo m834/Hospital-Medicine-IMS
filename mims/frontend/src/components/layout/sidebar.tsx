@@ -247,6 +247,14 @@ const menuItems: MenuItem[] = [
     roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN] 
   },
   
+  // Activity Logs - Admin only
+  { 
+    label: 'Activity Logs', 
+    href: '/dashboard/activity-logs', 
+    icon: Activity, 
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN] 
+  },
+  
   // Permissions - Admin only
   { 
     label: 'Permissions', 

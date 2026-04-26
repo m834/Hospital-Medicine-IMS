@@ -3,99 +3,77 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
-  Inject,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
 import { Request } from 'express';
 import { AuditService } from '../services/audit.service';
-import { REQUEST } from '@nestjs/core';
 
 export interface UserRequest extends Request {
   user?: {
     sub: string;
     email: string;
+    fullName?: string;
     role: string;
     hospitalId?: string;
   };
 }
 
-/**
- * SECURITY: Audit Interceptor
- * 
- * Automatically logs all CREATE, UPDATE, DELETE operations.
- * Records:
- * - User performing the action
- * - Type of action (HTTP method)
- * - Entity affected
- * - Data before and after changes
- * - Request metadata (IP, user agent)
- * - Timestamps for complete audit trail
- * 
- * Applied globally to track all data modifications for:
- * - Compliance (HIPAA, GDPR)
- * - Security forensics (who changed what and when)
- * - Regulatory audits
- * - Dispute resolution
- */
+const ROUTE_META: Record<string, { module: string; entity: string }> = {
+  medicines:          { module: 'Medicines',     entity: 'Medicine'        },
+  inventory:          { module: 'Inventory',     entity: 'StockBatch'      },
+  batches:            { module: 'Inventory',     entity: 'StockBatch'      },
+  prescriptions:      { module: 'Prescriptions', entity: 'Prescription'    },
+  issuance:           { module: 'Issuance',      entity: 'IssueTransaction' },
+  transfers:          { module: 'Transfers',     entity: 'TransferRequest'  },
+  patients:           { module: 'Patients',      entity: 'Patient'         },
+  visits:             { module: 'Visits',        entity: 'Visit'           },
+  users:              { module: 'Users',         entity: 'User'            },
+  pharmacies:         { module: 'Pharmacies',    entity: 'Pharmacy'        },
+  hospitals:          { module: 'Hospitals',     entity: 'Hospital'        },
+  departments:        { module: 'Departments',   entity: 'Department'      },
+  admissions:         { module: 'Admissions',    entity: 'Admission'       },
+  'lab-orders':       { module: 'Lab Orders',    entity: 'LabOrder'        },
+  'lab-tests':        { module: 'Lab Tests',     entity: 'LabTest'         },
+  payments:           { module: 'Payments',      entity: 'Payment'         },
+  receipts:           { module: 'Receipts',      entity: 'Receipt'         },
+  grn:                { module: 'Inventory',     entity: 'GRN'             },
+  'purchase-orders':  { module: 'Inventory',     entity: 'PurchaseOrder'   },
+};
+
+const METHOD_ACTION: Record<string, string> = {
+  POST:   'CREATE',
+  PUT:    'UPDATE',
+  PATCH:  'UPDATE',
+  DELETE: 'DELETE',
+};
+
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
-  constructor(
-    private auditService: AuditService,
-    @Inject(REQUEST) private request: UserRequest,
-  ) {}
+  constructor(private auditService: AuditService) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const request = context.switchToHttp().getRequest<UserRequest>();
     const { method, url, params, body } = request;
     const { user } = request;
 
-    // Only audit data-modifying operations
-    const isAuditableOperation = ['POST', 'PUT', 'DELETE'].includes(method);
-
-    if (!isAuditableOperation || !user?.sub) {
+    if (!Object.keys(METHOD_ACTION).includes(method) || !user?.sub) {
       return next.handle();
     }
 
-    // Capture request body for before-state
     const requestBody = { ...body };
 
     return next.handle().pipe(
       tap((data) => {
-        // Log successful operation
-        this.logOperation(
-          request,
-          user,
-          method,
-          url,
-          params,
-          requestBody,
-          data,
-          'SUCCESS',
-        );
+        this.logOperation(request, user, method, url, params, requestBody, data, 'SUCCESS');
       }),
       catchError((error) => {
-        // Log failed operation for security monitoring
-        this.logOperation(
-          request,
-          user,
-          method,
-          url,
-          params,
-          requestBody,
-          null,
-          'FAILED',
-          error.message,
-        );
+        this.logOperation(request, user, method, url, params, requestBody, null, 'FAILED', error.message);
         throw error;
       }),
     );
   }
 
-  /**
-   * Log operation to audit trail
-   * Extracts entity type and ID from URL and params
-   */
   private async logOperation(
     request: UserRequest,
     user: any,
@@ -108,77 +86,70 @@ export class AuditInterceptor implements NestInterceptor {
     errorMessage?: string,
   ) {
     try {
-      // Extract entity type from URL (e.g., /api/v1/shifts -> Shift)
-      const pathParts = url.split('/');
-      const resourcePath = pathParts[pathParts.length - 1] || '';
-      const entityType = this.getEntityType(resourcePath, pathParts);
-      const entityId = params.id || responseData?.id || 'unknown';
+      const cleanUrl = url.split('?')[0];
+      const pathParts = cleanUrl.split('/').filter(Boolean);
+      const apiIdx = pathParts.findIndex((p) => p === 'v1');
+      const resourceParts = apiIdx >= 0 ? pathParts.slice(apiIdx + 1) : pathParts;
+      const resource = resourceParts[0] || '';
 
-      // Map HTTP methods to audit actions
-      const actionMap: Record<string, string> = {
-        POST: 'CREATE',
-        PUT: 'UPDATE',
-        DELETE: 'DELETE',
+      const meta = ROUTE_META[resource] ?? {
+        module: this.toTitleCase(resource),
+        entity: this.toPascalCase(resource),
       };
 
-      const action = status === 'FAILED' 
-        ? `${actionMap[method]}_FAILED`
-        : actionMap[method];
+      const action = status === 'FAILED'
+        ? `${METHOD_ACTION[method]}_FAILED`
+        : METHOD_ACTION[method];
+
+      const entityId = params?.id || responseData?.id || requestBody?.id || 'unknown';
+
+      const description = this.buildDescription(
+        action, meta.module, meta.entity, entityId, requestBody, responseData, errorMessage,
+      );
 
       await this.auditService.log({
         userId: user.sub,
         hospitalId: user.hospitalId || 'unknown',
         action,
-        entityType,
+        module: meta.module,
+        entityType: meta.entity,
         entityId,
-        beforeState: method === 'DELETE' ? null : requestBody,
-        afterState: status === 'SUCCESS' ? responseData : null,
+        description,
+        beforeState: method === 'DELETE' ? requestBody : undefined,
+        afterState: status === 'SUCCESS' ? responseData : undefined,
       });
-    } catch (error) {
-      // Silently fail - don't disrupt the main operation
-      console.error('[AUDIT_INTERCEPTOR_ERROR]', error);
+    } catch (err) {
+      console.error('[AUDIT_INTERCEPTOR_ERROR]', err);
     }
   }
 
-  /**
-   * Extract entity type from URL path
-   * Examples:
-   * - /shifts -> Shift
-   * - /shift-templates -> ShiftTemplate
-   * - /leave-requests -> LeaveRequest
-   */
-  private getEntityType(resourcePath: string, pathParts: string[]): string {
-    // Remove trailing IDs and convert to PascalCase
-    const resource = resourcePath.split('?')[0]; // Remove query params
-    
-    // Common resource to entity mappings
-    const entityMap: Record<string, string> = {
-      'shifts': 'Shift',
-      'shift-templates': 'ShiftTemplate',
-      'leaves': 'Leave',
-      'leave-requests': 'LeaveRequest',
-      'leave-types': 'LeaveType',
-      'attendance-records': 'AttendanceRecord',
-      'biometric-devices': 'BiometricDevice',
-      'biometric-enrollments': 'BiometricEnrollment',
-      'device-sync': 'DeviceSync',
-      'employees': 'Employee',
-      'users': 'User',
-      'roles': 'Role',
-      'permissions': 'Permission',
-    };
+  private buildDescription(
+    action: string, module: string, entity: string, entityId: string,
+    body: any, response: any, errorMessage?: string,
+  ): string {
+    const name =
+      response?.name || body?.name ||
+      response?.nrNumber || body?.nrNumber ||
+      response?.email || body?.email ||
+      response?.code || body?.code ||
+      entityId;
 
-    return entityMap[resource] || this.convertToEntity(resource);
+    if (action.endsWith('_FAILED')) {
+      return `Failed to ${action.replace('_FAILED', '').toLowerCase()} ${entity.toLowerCase()} — ${errorMessage || 'unknown error'}`;
+    }
+    switch (action) {
+      case 'CREATE': return `Created new ${entity}: ${name}`;
+      case 'UPDATE': return `Updated ${entity}: ${name}`;
+      case 'DELETE': return `Deleted ${entity}: ${name}`;
+      default:       return `${action} on ${entity}: ${name}`;
+    }
   }
 
-  /**
-   * Convert kebab-case to PascalCase
-   * Example: leave-request -> LeaveRequest
-   */
-  private convertToEntity(kebab: string): string {
-    return kebab
-      .split('-')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join('');
+  private toPascalCase(str: string): string {
+    return str.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('');
+  }
+
+  private toTitleCase(str: string): string {
+    return str.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   }
 }

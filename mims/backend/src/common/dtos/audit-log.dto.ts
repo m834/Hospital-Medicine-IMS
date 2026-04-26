@@ -5,6 +5,10 @@ export enum AuditAction {
   CREATE = 'CREATE',
   UPDATE = 'UPDATE',
   DELETE = 'DELETE',
+  LOGIN = 'LOGIN',
+  LOGOUT = 'LOGOUT',
+  FAILED_LOGIN = 'FAILED_LOGIN',
+  STATUS_CHANGE = 'STATUS_CHANGE',
 }
 
 export class AuditLogFilterDto {
@@ -35,9 +39,58 @@ export class AuditLogFilterDto {
   @IsOptional()
   @IsString()
   searchText?: string;
+
+  @IsOptional()
+  @IsString()
+  module?: string;
 }
 
 export class PaginationDto {
+  @IsOptional()
+  @IsString()
+  cursor?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  @Min(1)
+  @Max(500)
+  limit?: number;
+}
+
+export class AuditLogQueryDto {
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @IsOptional()
+  @IsString()
+  hospitalId?: string;
+
+  @IsOptional()
+  @IsString()
+  entityType?: string;
+
+  @IsOptional()
+  @IsString()
+  action?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  startDate?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  endDate?: string;
+
+  @IsOptional()
+  @IsString()
+  searchText?: string;
+
+  @IsOptional()
+  @IsString()
+  module?: string;
+
   @IsOptional()
   @IsString()
   cursor?: string;

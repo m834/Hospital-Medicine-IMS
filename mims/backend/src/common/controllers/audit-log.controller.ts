@@ -13,10 +13,12 @@ import {
 import { JwtAuthGuard } from '../../modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../modules/auth/guards/roles.guard';
 import { Roles } from '../../modules/auth/decorators/roles.decorator';
+import { UserRole } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuditLogViewerService } from '../../common/services/audit-log-viewer.service';
 import {
   AuditLogFilterDto,
+  AuditLogQueryDto,
   PaginationDto,
   PaginatedAuditLogsDto,
   AuditStatisticsDto,
@@ -25,7 +27,7 @@ import {
   SensitiveOperationsDto,
 } from '../../common/dtos/audit-log.dto';
 
-@Controller('api/v1/audit-logs')
+@Controller('audit-logs')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AuditLogController {
   private readonly logger = new Logger(AuditLogController.name);
@@ -37,24 +39,29 @@ export class AuditLogController {
    * List paginated audit logs with optional filtering
    */
   @Get()
-  @Roles('SUPER_ADMIN', 'ADMIN', 'AUDIT_MANAGER')
+  @Roles(UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN)
   async getAuditLogs(
-    @Query() filters: AuditLogFilterDto,
-    @Query() pagination: PaginationDto,
+    @Query() query: AuditLogQueryDto,
     @CurrentUser() user: any,
   ): Promise<PaginatedAuditLogsDto> {
     try {
       // Restrict non-super-admin users to their own hospital
-      const hospitalId = user.role === 'SUPER_ADMIN'
-        ? filters.hospitalId || user.hospitalId
+      const hospitalId = user.role === 'SUPER_ADMIN' || user.role === 'MASTER_ADMIN'
+        ? query.hospitalId || user.hospitalId
         : user.hospitalId;
 
       const auditFilters = {
-        ...filters,
+        userId: query.userId,
+        entityType: query.entityType,
+        action: query.action,
+        searchText: query.searchText,
+        module: query.module,
         hospitalId,
-        startDate: filters.startDate ? new Date(filters.startDate) : undefined,
-        endDate: filters.endDate ? new Date(filters.endDate) : undefined,
+        startDate: query.startDate ? new Date(query.startDate) : undefined,
+        endDate: query.endDate ? new Date(query.endDate) : undefined,
       };
+
+      const pagination = { cursor: query.cursor, limit: query.limit };
 
       return await this.auditLogViewerService.getAuditLogs(
         auditFilters,
@@ -74,7 +81,7 @@ export class AuditLogController {
    * Get a specific audit log entry
    */
   @Get(':id')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'AUDIT_MANAGER')
+  @Roles(UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN)
   async getAuditLog(
     @Param('id') id: string,
     @CurrentUser() user: any,
@@ -112,7 +119,7 @@ export class AuditLogController {
    * Advanced search with complex filtering
    */
   @Post('search')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'AUDIT_MANAGER')
+  @Roles(UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN)
   async searchAuditLogs(
     @Body() body: {
       filters: AuditLogFilterDto;
@@ -154,7 +161,7 @@ export class AuditLogController {
    * Get change history for a specific entity
    */
   @Get('entity/:type/:id/history')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'AUDIT_MANAGER')
+  @Roles(UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN)
   async getEntityHistory(
     @CurrentUser() user: any,
     @Param('type') entityType: string,
@@ -206,7 +213,7 @@ export class AuditLogController {
    * Get activity log for a specific user
    */
   @Get('user/:userId/activity')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'AUDIT_MANAGER')
+  @Roles(UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN)
   async getUserActivity(
     @CurrentUser() user: any,
     @Param('userId') userId: string,
@@ -252,7 +259,7 @@ export class AuditLogController {
    * Get sensitive operations in the hospital
    */
   @Get('sensitive')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'AUDIT_MANAGER')
+  @Roles(UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN)
   async getSensitiveOperations(
     @CurrentUser() user: any,
     @Query('days') days?: string,
@@ -304,7 +311,7 @@ export class AuditLogController {
    * Get suspicious activities in the hospital
    */
   @Get('suspicious')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'AUDIT_MANAGER')
+  @Roles(UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN)
   async getSuspiciousActivity(
     @CurrentUser() user: any,
     @Query('days') days?: string,
@@ -341,7 +348,7 @@ export class AuditLogController {
    * Get audit statistics for the hospital
    */
   @Get('statistics')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'AUDIT_MANAGER')
+  @Roles(UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN)
   async getAuditStatistics(
     @CurrentUser() user: any,
     @Query('days') days?: string,

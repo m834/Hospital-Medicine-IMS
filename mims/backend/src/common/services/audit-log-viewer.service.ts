@@ -6,10 +6,11 @@ export interface AuditLogFilter {
   userId?: string;
   hospitalId?: string;
   entityType?: string;
-  action?: 'CREATE' | 'UPDATE' | 'DELETE';
+  action?: string;
   startDate?: Date;
   endDate?: Date;
   searchText?: string;
+  module?: string;
 }
 
 export interface PaginationParams {
@@ -60,6 +61,11 @@ export class AuditLogViewerService {
       cursor: cursorCondition,
       take: limit + 1,
       orderBy: { timestamp: 'desc' },
+      include: {
+        user: {
+          select: { id: true, email: true, fullName: true, role: true },
+        },
+      },
     });
 
     const hasMore = logs.length > limit;
@@ -260,11 +266,16 @@ export class AuditLogViewerService {
       }
     }
 
+    if (filters.module) {
+      where.module = filters.module;
+    }
+
     if (filters.searchText) {
       where.OR = [
         { userId: { contains: filters.searchText, mode: 'insensitive' } },
         { entityType: { contains: filters.searchText, mode: 'insensitive' } },
         { entityId: { contains: filters.searchText, mode: 'insensitive' } },
+        { description: { contains: filters.searchText, mode: 'insensitive' } },
         { ipAddress: { contains: filters.searchText, mode: 'insensitive' } },
       ];
     }

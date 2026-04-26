@@ -761,8 +761,10 @@ model AuditLog {
   hospitalId  String   @map("hospital_id")
   userId      String   @map("user_id")
   action      String
+  module      String?  // e.g. "Medicines", "Inventory", "Prescriptions"
   entityType  String   @map("entity_type")
   entityId    String   @map("entity_id")
+  description String?  // Human-readable summary of the action
   beforeState Json?    @map("before_state")
   afterState  Json?    @map("after_state")
   ipAddress   String?  @map("ip_address")
@@ -777,6 +779,7 @@ model AuditLog {
   @@index([userId])
   @@index([entityType, entityId])
   @@index([timestamp])
+  @@index([module])
   @@map("audit_logs")
 }
 

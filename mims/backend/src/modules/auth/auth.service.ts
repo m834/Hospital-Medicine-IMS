@@ -159,6 +159,20 @@ export class AuthService {
       console.error('Failed to update lastLogin:', err);
     });
 
+    // Log successful login
+    this.prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        hospitalId: user.hospitalId || 'system',
+        action: 'LOGIN',
+        module: 'Auth',
+        entityType: 'User',
+        entityId: user.id,
+        description: `User ${user.fullName || user.email} logged in`,
+        timestamp: new Date(),
+      },
+    }).catch(() => {});
+
     // Generate JWT token
     const token = await this.generateToken(user);
     const refreshToken = await this.generateRefreshToken(user);
