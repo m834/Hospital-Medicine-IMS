@@ -46,6 +46,8 @@ interface Medicine {
   form: string;
   manufacturer?: string;
   status: string;
+  quantityPerPack?: number;
+  stripsPerBox?: number;
 }
 
 interface EditMedicineModalProps {
@@ -64,6 +66,8 @@ const MEDICINE_FORMS = [
   { value: 'OINTMENT', label: 'Ointment' },
   { value: 'POWDER', label: 'Powder' },
   { value: 'SUSPENSION', label: 'Suspension' },
+  { value: 'LIQUID', label: 'Liquid' },
+  { value: 'SUPPOSITORY', label: 'Suppository' },
 ];
 
 const MEDICINE_STATUS = [
@@ -85,10 +89,14 @@ const editMedicineSchema = z.object({
     'OINTMENT',
     'POWDER',
     'SUSPENSION',
+    'LIQUID',
+    'SUPPOSITORY',
   ], { required_error: 'Medicine form is required' }),
   strength: z.string().optional(),
   manufacturer: z.string().optional(),
   status: z.enum(['ACTIVE', 'DISCONTINUED'], { required_error: 'Status is required' }),
+  quantityPerPack: z.coerce.number().int().positive('Quantity must be a positive number').optional().or(z.literal('')),
+  stripsPerBox: z.coerce.number().int().positive('Strips per box must be a positive number').optional().or(z.literal('')),
 });
 
 type EditMedicineFormData = z.infer<typeof editMedicineSchema>;
@@ -108,8 +116,20 @@ export function EditMedicineModal({
       strength: '',
       manufacturer: '',
       status: 'ACTIVE',
+      quantityPerPack: '' as any,
+      stripsPerBox: '' as any,
     },
   });
+
+  const selectedForm = form.watch('form');
+  const showQuantity = selectedForm === 'TABLET' || selectedForm === 'CAPSULE';
+
+  useEffect(() => {
+    if (!showQuantity) {
+      form.setValue('quantityPerPack', '' as any);
+      form.setValue('stripsPerBox', '' as any);
+    }
+  }, [showQuantity, form]);
 
   // Update form when medicine changes
   useEffect(() => {
@@ -121,6 +141,8 @@ export function EditMedicineModal({
         strength: medicine.strength || '',
         manufacturer: medicine.manufacturer || '',
         status: medicine.status as any,
+        quantityPerPack: medicine.quantityPerPack ?? ('' as any),
+        stripsPerBox: medicine.stripsPerBox ?? ('' as any),
       });
     }
   }, [medicine, form]);
@@ -137,6 +159,8 @@ export function EditMedicineModal({
         strength: data.strength || undefined,
         manufacturer: data.manufacturer || undefined,
         status: data.status,
+        quantityPerPack: data.quantityPerPack || undefined,
+        stripsPerBox: data.stripsPerBox || undefined,
       });
 
       onMedicineUpdated();
@@ -229,6 +253,68 @@ export function EditMedicineModal({
                 </FormItem>
               )}
             />
+
+            {/* Tablets per Strip (only for Tablet / Capsule) */}
+            {showQuantity && (
+              <FormField
+                control={form.control}
+                name="quantityPerPack"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tablets per Strip *</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        placeholder="e.g. 10"
+                        name={field.name}
+                        ref={field.ref}
+                        onBlur={field.onBlur}
+                        value={field.value ?? ''}
+                        onChange={(e) =>
+                          field.onChange(e.target.value === '' ? undefined : Number(e.target.value))
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      How many {selectedForm === 'TABLET' ? 'tablets' : 'capsules'} in one strip
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {/* Strips per Box (only for Tablet / Capsule) */}
+            {showQuantity && (
+              <FormField
+                control={form.control}
+                name="stripsPerBox"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Strips per Box</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        placeholder="e.g. 10"
+                        name={field.name}
+                        ref={field.ref}
+                        onBlur={field.onBlur}
+                        value={field.value ?? ''}
+                        onChange={(e) =>
+                          field.onChange(e.target.value === '' ? undefined : Number(e.target.value))
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      How many strips are in one box
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             {/* Strength */}
             <FormField

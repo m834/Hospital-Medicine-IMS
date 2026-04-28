@@ -1311,6 +1311,8 @@ enum MedicineForm {
   OINTMENT
   POWDER
   SUSPENSION
+  LIQUID
+  SUPPOSITORY
 }
 
 enum MedicineStatus {
