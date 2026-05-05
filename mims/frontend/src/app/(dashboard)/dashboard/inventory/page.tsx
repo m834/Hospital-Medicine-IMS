@@ -444,7 +444,7 @@ export default function InventoryDashboardPage() {
             <Select 
               value={selectedPharmacy} 
               onValueChange={setSelectedPharmacy}
-              disabled={!isSuperAdmin && !isHospitalAdmin && !!userPharmacyId}
+              disabled={!isSuperAdmin && !isHospitalAdmin && !isMainManager && !!userPharmacyId}
             >
               <SelectTrigger>
                 <SelectValue placeholder="All Pharmacies" />
@@ -534,6 +534,7 @@ export default function InventoryDashboardPage() {
                   <TableHead>Qty</TableHead>
                   <TableHead>Expiry Date</TableHead>
                   <TableHead>Prices (PKR)</TableHead>
+                  <TableHead>Total Amount (PKR)</TableHead>
                   <TableHead>Received</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
@@ -622,6 +623,11 @@ export default function InventoryDashboardPage() {
                           <p>P: {Number(batch.purchasePrice).toFixed(2)}</p>
                           <p>G: {Number(batch.governmentPrice).toFixed(2)}</p>
                           <p>R: {Number(batch.retailPrice).toFixed(2)}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-semibold text-sm">
+                          PKR {(batch.qtyAvailable * batch.purchasePrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                       </TableCell>
                       <TableCell className="text-sm">{formatDate(batch.receivedDate)}</TableCell>

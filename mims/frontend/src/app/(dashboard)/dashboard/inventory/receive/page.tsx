@@ -121,9 +121,7 @@ const receiveStockSchema = z.object({
   storageType: z.enum(['ROOM_TEMPERATURE', 'COLD_STORAGE', 'REFRIGERATED'], {
     required_error: 'Storage type is required',
   }),
-  purchasePrice: z.number().min(0, 'Purchase price must be non-negative'),
-  governmentPrice: z.number().min(0, 'Government price must be non-negative'),
-  retailPrice: z.number().min(0, 'Retail price must be non-negative'),
+  purchasePrice: z.number().min(0, 'Price must be non-negative'),
   // Box-based receiving for tablets/capsules
   receiveByBox: z.boolean().optional(),
   boxCount: z.number().int().min(1).optional(),
@@ -181,8 +179,6 @@ export default function ReceiveStockPage() {
       manufacturer: '',
       storageType: 'ROOM_TEMPERATURE',
       purchasePrice: 0,
-      governmentPrice: 0,
-      retailPrice: 0,
       receiveByBox: false,
       boxCount: 1,
       stripsPerBoxInput: undefined,
@@ -340,8 +336,6 @@ export default function ReceiveStockPage() {
       manufacturer: '',
       storageType: 'ROOM_TEMPERATURE',
       purchasePrice: 0,
-      governmentPrice: 0,
-      retailPrice: 0,
       receiveByBox: false,
       boxCount: 1,
       stripsPerBoxInput: undefined,
@@ -379,8 +373,6 @@ export default function ReceiveStockPage() {
             expiryDate: item.expiryDate,
             storageType: item.storageType,
             purchasePrice: Number(item.purchasePrice),
-            governmentPrice: Number(item.governmentPrice),
-            retailPrice: Number(item.retailPrice),
           };
 
           // Add medicineId OR manual medicine details
@@ -851,50 +843,6 @@ export default function ReceiveStockPage() {
                             ))}
                           </SelectContent>
                         </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="governmentPrice"
-                    render={({ field }) => (
-                      <FormItem className="col-span-3">
-                        <FormLabel>Govt Price *</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="0.00"
-                            {...field}
-                            value={field.value ?? 0}
-                            onChange={(e) => field.onChange(Number(e.target.value))}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="retailPrice"
-                    render={({ field }) => (
-                      <FormItem className="col-span-3">
-                        <FormLabel>Retail Price *</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="0.00"
-                            {...field}
-                            value={field.value ?? 0}
-                            onChange={(e) => field.onChange(Number(e.target.value))}
-                          />
-                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
