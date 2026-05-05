@@ -33,8 +33,8 @@ export class PrescriptionsController {
     UserRole.PHARMACY_STAFF,
     UserRole.SUB_PHARMACY_MANAGER,
   )
-  create(@Body() createPrescriptionDto: CreatePrescriptionDto) {
-    return this.prescriptionsService.create(createPrescriptionDto);
+  create(@Body() createPrescriptionDto: CreatePrescriptionDto, @Request() req) {
+    return this.prescriptionsService.create(createPrescriptionDto, req.user);
   }
 
   @Get()

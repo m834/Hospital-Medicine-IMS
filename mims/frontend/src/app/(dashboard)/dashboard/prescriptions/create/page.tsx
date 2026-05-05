@@ -10,12 +10,11 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 
+const PHARMACIST_ROLES = ['MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER', 'PHARMACY_STAFF'];
+
 const prescriptionItemSchema = z.object({
   medicineId: z.string().min(1, 'Medicine is required'),
   qtyPrescribed: z.number().min(1, 'Quantity must be at least 1'),
-  dosage: z.string().optional(),
-  frequency: z.string().optional(),
-  duration: z.string().optional(),
 });
 
 const prescriptionSchema = z.object({
@@ -38,20 +37,13 @@ interface Patient {
   department?: string;
 }
 
-interface Medicine {
+interface MedicineOption {
   id: string;
   name: string;
   genericName?: string;
   strength?: string;
   form: string;
-}
-
-interface StockBatch {
-  id: string;
   qtyAvailable: number;
-  expiryDate: string;
-  status: string;
-  medicine: Medicine;
 }
 
 export default function CreatePrescriptionPage() {
@@ -62,9 +54,12 @@ export default function CreatePrescriptionPage() {
   const [searchNR, setSearchNR] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [searchingPatient, setSearchingPatient] = useState(false);
-  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [medicines, setMedicines] = useState<MedicineOption[]>([]);
   const [loadingMedicines, setLoadingMedicines] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const isPharmacist = PHARMACIST_ROLES.includes(user?.role || '');
 
   const {
     register,
@@ -77,15 +72,11 @@ export default function CreatePrescriptionPage() {
     resolver: zodResolver(prescriptionSchema),
     defaultValues: {
       prescriptionType: 'E_PRESCRIPTION',
-      items: [{ medicineId: '', qtyPrescribed: 1, dosage: '', frequency: '', duration: '' }],
+      items: [{ medicineId: '', qtyPrescribed: 1 }],
     },
   });
 
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: 'items',
-  });
-
+  const { fields, append, remove } = useFieldArray({ control, name: 'items' });
   const prescriptionType = watch('prescriptionType');
 
   useEffect(() => {
@@ -113,65 +104,56 @@ export default function CreatePrescriptionPage() {
         sortOrder: 'asc',
         limit: 2000,
       };
-
-      if (user?.pharmacyId) {
-        params.pharmacyId = user.pharmacyId;
-      }
+      if (user?.pharmacyId) params.pharmacyId = user.pharmacyId;
 
       const response = await api.get('/inventory/batches', { params });
-      const batches: StockBatch[] = response.data.data || [];
+      const batches = (response.data.data || []) as Array<{
+        id: string;
+        qtyAvailable: number;
+        expiryDate: string;
+        status: string;
+        medicine: { id: string; name: string; genericName?: string; strength?: string; form: string };
+      }>;
 
-      const availableMedicines = new Map<string, { medicine: Medicine; expiryDate: string }>();
-
+      const medicineMap = new Map<string, MedicineOption>();
       batches
-        .filter((batch) => batch.qtyAvailable > 0 && new Date(batch.expiryDate) >= today)
-        .forEach((batch) => {
-          const existing = availableMedicines.get(batch.medicine.id);
-          if (!existing || new Date(batch.expiryDate) < new Date(existing.expiryDate)) {
-            availableMedicines.set(batch.medicine.id, {
-              medicine: batch.medicine,
-              expiryDate: batch.expiryDate,
-            });
+        .filter((b) => b.qtyAvailable > 0 && new Date(b.expiryDate) >= today)
+        .forEach((b) => {
+          const existing = medicineMap.get(b.medicine.id);
+          if (existing) {
+            existing.qtyAvailable += b.qtyAvailable;
+          } else {
+            medicineMap.set(b.medicine.id, { ...b.medicine, qtyAvailable: b.qtyAvailable });
           }
         });
 
-      setMedicines(Array.from(availableMedicines.values()).map((entry) => entry.medicine));
-    } catch (error: any) {
-      console.error('Failed to fetch medicines:', error);
-      alert('Failed to load medicines');
+      setMedicines(Array.from(medicineMap.values()));
+    } catch {
+      setError('Failed to load medicines. Please refresh.');
     } finally {
       setLoadingMedicines(false);
     }
   };
 
   const searchPatient = async () => {
-    if (!searchNR.trim()) {
-      alert(`Please enter ${searchType === 'MRN' ? 'MRN' : 'CNIC'}`);
-      return;
-    }
-
+    const value = searchNR.trim();
+    if (!value) return;
+    setError(null);
     try {
       setSearchingPatient(true);
-      const params =
-        searchType === 'MRN'
-          ? { nrNumber: searchNR.trim() }
-          : { cnic: searchNR.trim() };
-
-      const response = await api.get(`/patients`, { params });
-
+      const params = searchType === 'MRN' ? { nrNumber: value } : { cnic: value };
+      const response = await api.get('/patients', { params });
       const patients = response.data.data || [];
       if (patients.length === 0) {
-        alert('Patient not found');
+        setError('Patient not found');
         setSelectedPatient(null);
         return;
       }
-
       const patient = patients[0];
       setSelectedPatient(patient);
       setValue('nrNumber', patient.nrNumber);
-    } catch (error: any) {
-      console.error('Failed to search patient:', error);
-      alert(error.response?.data?.message || 'Failed to search patient');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to search patient');
       setSelectedPatient(null);
     } finally {
       setSearchingPatient(false);
@@ -179,299 +161,202 @@ export default function CreatePrescriptionPage() {
   };
 
   const onSubmit = async (data: PrescriptionFormData) => {
-    if (!user?.id) {
-      alert('User not authenticated');
-      return;
-    }
+    if (!user?.id) { setError('User not authenticated'); return; }
+    if (!selectedPatient) { setError('Please select a patient first'); return; }
+    setError(null);
 
     try {
       setSubmitting(true);
 
-      // Prepare prescription data
       const prescriptionData: any = {
         ...data,
         items: data.items.map((item) => ({
           medicineId: item.medicineId,
           qtyPrescribed: Number(item.qtyPrescribed),
-          dosage: item.dosage || undefined,
-          frequency: item.frequency || undefined,
-          duration: item.duration || undefined,
         })),
       };
 
-      // Only include doctorId if the user is a doctor
       if (user.role === 'DOCTOR' || user.role === 'DOCTOR_ASSISTANT') {
         prescriptionData.doctorId = user.id;
       }
 
-      const response = await api.post('/prescriptions', prescriptionData);
+      // autoIssue=true tells the backend to create + deduct inventory atomically in one transaction.
+      // The backend uses req.user.pharmacyId so each pharmacist only touches their own inventory.
+      if (isPharmacist) prescriptionData.autoIssue = true;
 
-      alert('Prescription created successfully!');
+      await api.post('/prescriptions', prescriptionData);
+
       router.push('/dashboard/prescriptions');
-    } catch (error: any) {
-      console.error('Failed to create prescription:', error);
-      alert(error.response?.data?.message || 'Failed to create prescription');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to process prescription');
     } finally {
       setSubmitting(false);
     }
   };
 
+  const getMedicineStock = (medicineId: string) => {
+    const med = medicines.find((m) => m.id === medicineId);
+    return med?.qtyAvailable ?? null;
+  };
+
   return (
-    <div className="container mx-auto py-6 px-4 max-w-5xl">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Create Prescription</h1>
-        <p className="text-gray-600 mt-1">Create a new prescription for a patient</p>
+    <div className="container mx-auto py-6 px-4 max-w-4xl">
+      <div className="mb-4">
+        <h1 className="text-2xl font-bold text-gray-800">
+          {isPharmacist ? 'Issue & Dispense Medicine' : 'Create Prescription'}
+        </h1>
+        {isPharmacist && (
+          <p className="text-sm text-gray-500 mt-0.5">
+            Medicine will be deducted from your pharmacy's inventory upon submission.
+          </p>
+        )}
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        {/* Patient Search Section */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Patient Information</h2>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Search Patient by {searchType === 'MRN' ? 'MRN' : 'CNIC'}
-              </label>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <select
-                  value={searchType}
-                  onChange={(e) => setSearchType(e.target.value as 'MRN' | 'CNIC')}
-                  className="w-full sm:w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="MRN">MRN</option>
-                  <option value="CNIC">CNIC</option>
-                </select>
-                <input
-                  type="text"
-                  placeholder={
-                    searchType === 'MRN'
-                      ? 'Enter MRN (e.g., MRN-20251128-0001)'
-                      : 'Enter CNIC (e.g., 12345-1234567-1)'
-                  }
-                  value={searchNR}
-                  onChange={(e) =>
-                    setSearchNR(
-                      searchType === 'CNIC' ? formatCnic(e.target.value) : e.target.value,
-                    )
-                  }
-                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), searchPatient())}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                <button
-                  type="button"
-                  onClick={searchPatient}
-                  disabled={searchingPatient}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
-                >
-                  {searchingPatient ? 'Searching...' : 'Search'}
-                </button>
-              </div>
-            </div>
-
-            {selectedPatient && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-600">Patient Name</p>
-                    <p className="font-semibold">{selectedPatient.fullName}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">MRN</p>
-                    <p className="font-semibold">{selectedPatient.nrNumber}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Gender</p>
-                    <p className="font-semibold">{selectedPatient.gender}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Mobile</p>
-                    <p className="font-semibold">{selectedPatient.mobile}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Visit Type</p>
-                    <p className="font-semibold">{selectedPatient.visitType}</p>
-                  </div>
-                  {selectedPatient.department && (
-                    <div>
-                      <p className="text-sm text-gray-600">Department</p>
-                      <p className="font-semibold">{selectedPatient.department}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
+            {error}
           </div>
-        </div>
+        )}
 
-        {/* Prescription Details Section */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Prescription Details</h2>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Prescription Type <span className="text-red-500">*</span>
-              </label>
+        {/* Patient Search */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="flex gap-2 flex-1">
               <select
-                {...register('prescriptionType')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                value={searchType}
+                onChange={(e) => { setSearchType(e.target.value as 'MRN' | 'CNIC'); setSearchNR(''); }}
+                className="w-28 px-2 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="E_PRESCRIPTION">E-Prescription</option>
-                <option value="WRITTEN">Written Prescription</option>
-                <option value="SCANNED">Scanned Prescription</option>
+                <option value="MRN">MRN</option>
+                <option value="CNIC">CNIC</option>
               </select>
-              {errors.prescriptionType && (
-                <p className="text-red-500 text-sm mt-1">{errors.prescriptionType.message}</p>
-              )}
-            </div>
-
-            {prescriptionType === 'SCANNED' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Scanned Image URL
-                </label>
-                <input
-                  type="text"
-                  {...register('scannedImageUrl')}
-                  placeholder="Enter image URL or upload path"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                {errors.scannedImageUrl && (
-                  <p className="text-red-500 text-sm mt-1">{errors.scannedImageUrl.message}</p>
-                )}
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Notes (Optional)
-              </label>
-              <textarea
-                {...register('notes')}
-                rows={3}
-                placeholder="Any additional notes or instructions..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              <input
+                type="text"
+                placeholder={searchType === 'MRN' ? 'MRN-YYYYMMDD-XXXX' : '12345-1234567-1'}
+                value={searchNR}
+                onChange={(e) =>
+                  setSearchNR(searchType === 'CNIC' ? formatCnic(e.target.value) : e.target.value)
+                }
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), searchPatient())}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
-              {errors.notes && (
-                <p className="text-red-500 text-sm mt-1">{errors.notes.message}</p>
-              )}
             </div>
-          </div>
-        </div>
-
-        {/* Medicines Section */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-800">Prescribed Medicines</h2>
             <button
               type="button"
-              onClick={() =>
-                append({ medicineId: '', qtyPrescribed: 1, dosage: '', frequency: '', duration: '' })
-              }
-              className="px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
+              onClick={searchPatient}
+              disabled={searchingPatient || !searchNR.trim()}
+              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
             >
-              + Add Medicine
+              {searchingPatient ? 'Searching...' : 'Search'}
+            </button>
+          </div>
+
+          {selectedPatient && (
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
+              <span className="font-semibold text-blue-900">{selectedPatient.fullName}</span>
+              <span className="text-blue-700">{selectedPatient.nrNumber}</span>
+              <span className="text-blue-600">{selectedPatient.gender}</span>
+              <span className="text-blue-600">{selectedPatient.mobile}</span>
+              {selectedPatient.department && (
+                <span className="text-blue-600">{selectedPatient.department}</span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Medicines */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-base font-semibold text-gray-800">Medicines</h2>
+            <button
+              type="button"
+              onClick={() => append({ medicineId: '', qtyPrescribed: 1 })}
+              className="px-3 py-1 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"
+            >
+              + Add
             </button>
           </div>
 
           {loadingMedicines ? (
-            <p className="text-gray-500 text-center py-4">Loading medicines...</p>
+            <p className="text-sm text-gray-400 py-4 text-center">Loading medicines...</p>
           ) : (
-            <div className="space-y-4">
-              {fields.map((field, index) => (
-                <div key={field.id} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex justify-between items-start mb-3">
-                    <h3 className="font-medium text-gray-700">Medicine #{index + 1}</h3>
-                    {fields.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => remove(index)}
-                        className="text-red-600 hover:text-red-800 text-sm"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
+            <div className="space-y-2">
+              {/* Table header */}
+              <div className="grid grid-cols-[1fr_80px_80px_32px] gap-2 text-xs font-medium text-gray-500 px-1">
+                <span>Medicine</span>
+                <span className="text-center">Qty</span>
+                <span className="text-center">In Stock</span>
+                <span />
+              </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Medicine <span className="text-red-500">*</span>
-                      </label>
+              {fields.map((field, index) => {
+                const selectedMed = watch(`items.${index}.medicineId`);
+                const stock = getMedicineStock(selectedMed);
+                const qty = watch(`items.${index}.qtyPrescribed`) || 0;
+                const stockWarning = stock !== null && qty > stock;
+
+                return (
+                  <div key={field.id} className="grid grid-cols-[1fr_80px_80px_32px] gap-2 items-center">
+                    <div>
                       <SearchableSelect
                         options={medicines.map((m) => ({
                           value: m.id,
                           label: m.name,
                           sub: [m.genericName, m.strength, m.form].filter(Boolean).join(' · '),
                         }))}
-                        value={watch(`items.${index}.medicineId`) || ''}
-                        onValueChange={(val) => setValue(`items.${index}.medicineId`, val, { shouldValidate: true })}
+                        value={selectedMed || ''}
+                        onValueChange={(val) =>
+                          setValue(`items.${index}.medicineId`, val, { shouldValidate: true })
+                        }
                         placeholder="Select medicine..."
-                        searchPlaceholder="Search medicine by name, generic or strength..."
+                        searchPlaceholder="Search by name, generic or strength..."
                       />
                       {errors.items?.[index]?.medicineId && (
-                        <p className="text-red-500 text-sm mt-1">
+                        <p className="text-red-500 text-xs mt-0.5">
                           {errors.items[index]?.medicineId?.message}
                         </p>
                       )}
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Quantity <span className="text-red-500">*</span>
-                      </label>
                       <input
                         type="number"
                         {...register(`items.${index}.qtyPrescribed`, { valueAsNumber: true })}
                         min="1"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className={`w-full px-2 py-2 border rounded-lg text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                          stockWarning ? 'border-red-400 bg-red-50' : 'border-gray-300'
+                        }`}
                       />
                       {errors.items?.[index]?.qtyPrescribed && (
-                        <p className="text-red-500 text-sm mt-1">
+                        <p className="text-red-500 text-xs mt-0.5">
                           {errors.items[index]?.qtyPrescribed?.message}
                         </p>
                       )}
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Dosage
-                      </label>
-                      <input
-                        type="text"
-                        {...register(`items.${index}.dosage`)}
-                        placeholder="e.g., 500mg"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
+                    <div className="text-center text-xs">
+                      {stock === null ? (
+                        <span className="text-gray-400">—</span>
+                      ) : stockWarning ? (
+                        <span className="text-red-600 font-medium">{stock} left</span>
+                      ) : (
+                        <span className="text-green-700">{stock} left</span>
+                      )}
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Frequency
-                      </label>
-                      <input
-                        type="text"
-                        {...register(`items.${index}.frequency`)}
-                        placeholder="e.g., Twice daily"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Duration
-                      </label>
-                      <input
-                        type="text"
-                        {...register(`items.${index}.duration`)}
-                        placeholder="e.g., 7 days"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => fields.length > 1 && remove(index)}
+                      disabled={fields.length === 1}
+                      className="text-gray-400 hover:text-red-600 disabled:opacity-30 text-lg leading-none"
+                      title="Remove"
+                    >
+                      ×
+                    </button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {errors.items && typeof errors.items.message === 'string' && (
                 <p className="text-red-500 text-sm">{errors.items.message}</p>
@@ -480,21 +365,74 @@ export default function CreatePrescriptionPage() {
           )}
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex gap-4 justify-end">
+        {/* Type + Notes (compact row) */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {!isPharmacist && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Prescription Type
+                </label>
+                <select
+                  {...register('prescriptionType')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="E_PRESCRIPTION">E-Prescription</option>
+                  <option value="WRITTEN">Written</option>
+                  <option value="SCANNED">Scanned</option>
+                </select>
+              </div>
+            )}
+
+            {prescriptionType === 'SCANNED' && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Scanned Image URL
+                </label>
+                <input
+                  type="text"
+                  {...register('scannedImageUrl')}
+                  placeholder="Image URL or upload path"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            )}
+
+            <div className={!isPharmacist ? '' : 'sm:col-span-2'}>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Notes <span className="text-gray-400">(optional)</span>
+              </label>
+              <input
+                type="text"
+                {...register('notes')}
+                placeholder="Additional notes or instructions..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-3 justify-end">
           <button
             type="button"
             onClick={() => router.push('/dashboard/prescriptions')}
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-5 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={submitting || !selectedPatient}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
+            className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
           >
-            {submitting ? 'Creating...' : 'Create Prescription'}
+            {submitting
+              ? isPharmacist
+                ? 'Dispensing...'
+                : 'Creating...'
+              : isPharmacist
+              ? 'Issue & Dispense'
+              : 'Create Prescription'}
           </button>
         </div>
       </form>

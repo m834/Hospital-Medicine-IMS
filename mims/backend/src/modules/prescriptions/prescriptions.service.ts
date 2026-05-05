@@ -13,8 +13,11 @@ export class PrescriptionsService {
     private cacheService: CacheService,
   ) {}
 
-  async create(createPrescriptionDto: CreatePrescriptionDto) {
-    const { nrNumber, doctorId, items, ...prescriptionData } = createPrescriptionDto;
+  async create(
+    createPrescriptionDto: CreatePrescriptionDto,
+    user?: { id?: string; hospitalId?: string; pharmacyId?: string },
+  ) {
+    const { nrNumber, doctorId, items, autoIssue, ...prescriptionData } = createPrescriptionDto;
 
     // Verify patient exists
     const patient = await this.prisma.patient.findFirst({
@@ -50,10 +53,153 @@ export class PrescriptionsService {
       throw new BadRequestException('One or more medicines not found');
     }
 
-    // Create prescription with items
+    const hospitalId = patient.hospitalId;
+    const now = new Date();
+
+    // Resolve pharmacyId for auto-issue: use the issuing pharmacist's own pharmacy
+    let pharmacyId = user?.pharmacyId;
+    if (autoIssue && !pharmacyId && hospitalId) {
+      const mainPharmacy = await this.prisma.pharmacy.findFirst({
+        where: { hospitalId, type: 'MAIN', status: 'ACTIVE' },
+        select: { id: true },
+      });
+      pharmacyId = mainPharmacy?.id;
+    }
+
+    if (autoIssue && !pharmacyId) {
+      throw new BadRequestException('Pharmacy context is required to issue a prescription');
+    }
+
+    if (autoIssue) {
+      // Create prescription + deduct inventory in a single atomic transaction
+      const prescription = await this.prisma.$transaction(async (tx) => {
+        // Create prescription and items directly as ISSUED
+        const created = await tx.prescription.create({
+          data: {
+            hospitalId,
+            nrNumber: patient.nrNumber,
+            doctorId: doctor?.id || null,
+            prescriptionType: prescriptionData.prescriptionType,
+            scannedImageUrl: prescriptionData.scannedImageUrl,
+            notes: prescriptionData.notes,
+            status: PrescriptionStatus.ISSUED,
+            items: {
+              create: items.map((item) => ({
+                medicineId: item.medicineId,
+                qtyPrescribed: item.qtyPrescribed,
+                dosage: item.dosage,
+                frequency: item.frequency,
+                duration: item.duration,
+                status: 'ISSUED',
+              })),
+            },
+          },
+          include: {
+            patient: { select: { id: true, nrNumber: true, fullName: true, gender: true, mobile: true } },
+            doctor: { select: { id: true, fullName: true, email: true } },
+            items: { include: { medicine: { select: { id: true, name: true, genericName: true, strength: true, form: true } } } },
+          },
+        });
+
+        // Deduct stock from the issuing pharmacist's inventory
+        let totalAmount = new Prisma.Decimal(0);
+        for (const item of created.items) {
+          const batch = await tx.stockBatch.findFirst({
+            where: {
+              hospitalId,
+              pharmacyId,
+              medicineId: item.medicine.id,
+              status: 'AVAILABLE',
+              qtyAvailable: { gt: 0 },
+              expiryDate: { gte: now },
+            },
+            orderBy: [{ expiryDate: 'asc' }, { receivedDate: 'asc' }],
+          });
+
+          if (!batch) {
+            throw new BadRequestException(`No available stock for medicine: ${item.medicine.name}`);
+          }
+
+          const qtyPrescribed = (item as any).qtyPrescribed as number;
+          if (batch.qtyAvailable < qtyPrescribed) {
+            throw new BadRequestException(
+              `Insufficient stock for ${item.medicine.name}. Requested: ${qtyPrescribed}, Available: ${batch.qtyAvailable}`,
+            );
+          }
+
+          const newQty = batch.qtyAvailable - qtyPrescribed;
+          await tx.stockBatch.update({
+            where: { id: batch.id },
+            data: { qtyAvailable: newQty, status: newQty === 0 ? 'DEPLETED' : batch.status },
+          });
+
+          totalAmount = totalAmount.add(batch.retailPrice.mul(qtyPrescribed));
+        }
+
+        return { prescription: created, totalAmount };
+      });
+
+      // Invalidate inventory cache (non-blocking)
+      try {
+        await this.cacheService.deletePattern(`inventory:${hospitalId}:.*`);
+        await this.cacheService.deletePattern(`inventory:all:.*`);
+      } catch {}
+
+      // Create pharmacy receipt (non-blocking)
+      try {
+        const today = new Date();
+        const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+        const lastReceipt = await this.prisma.receipt.findFirst({
+          where: { receiptNumber: { startsWith: `REC-${dateStr}` } },
+          orderBy: { receiptNumber: 'desc' },
+        });
+        const sequence = lastReceipt ? parseInt(lastReceipt.receiptNumber.split('-')[2]) + 1 : 1;
+        const receiptNumber = `REC-${dateStr}-${sequence.toString().padStart(4, '0')}`;
+
+        const latestVisit = await (this.prisma as any).visit.findFirst({
+          where: { patientId: patient.id, hospitalId },
+          orderBy: { visitDate: 'desc' },
+          select: { id: true, departmentId: true },
+        });
+
+        const doctorDepartmentId = doctor?.id
+          ? (await this.prisma.user.findUnique({ where: { id: doctor.id }, select: { departmentId: true } }))?.departmentId
+          : null;
+
+        const fallbackDept = await this.prisma.department.findFirst({ where: { hospitalId }, select: { id: true } });
+        const departmentId = latestVisit?.departmentId || doctorDepartmentId || fallbackDept?.id;
+
+        if (departmentId) {
+          await (this.prisma as any).receipt.create({
+            data: {
+              hospitalId,
+              patientId: patient.id,
+              visitId: latestVisit?.id || undefined,
+              departmentId,
+              generatedById: user?.id || doctor?.id || patient.attendingDoctorId,
+              receiptNumber,
+              receiptType: ReceiptType.PHARMACY,
+              description: `Prescription Issued - ${prescription.prescription.id.slice(0, 8)}`,
+              amount: prescription.totalAmount,
+              totalAmount: prescription.totalAmount,
+              paidAmount: new Prisma.Decimal(0),
+              paymentMethod: PaymentMethod.CASH,
+              paymentStatus: PaymentStatus.UNPAID,
+              notes: JSON.stringify({ prescriptionId: prescription.prescription.id }),
+            },
+          });
+        }
+      } catch (receiptError) {
+        console.error('Failed to create pharmacy receipt (non-fatal):', receiptError);
+      }
+
+      return prescription.prescription;
+    }
+
+    // Standard create — status stays PENDING
     const prescription = await this.prisma.prescription.create({
       data: {
-        hospitalId: patient.hospitalId,
+        hospitalId,
         nrNumber: patient.nrNumber,
         doctorId: doctor?.id || null,
         prescriptionType: prescriptionData.prescriptionType,
@@ -72,35 +218,9 @@ export class PrescriptionsService {
         },
       },
       include: {
-        patient: {
-          select: {
-            id: true,
-            nrNumber: true,
-            fullName: true,
-            gender: true,
-            mobile: true,
-          },
-        },
-        doctor: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
-        },
-        items: {
-          include: {
-            medicine: {
-              select: {
-                id: true,
-                name: true,
-                genericName: true,
-                strength: true,
-                form: true,
-              },
-            },
-          },
-        },
+        patient: { select: { id: true, nrNumber: true, fullName: true, gender: true, mobile: true } },
+        doctor: { select: { id: true, fullName: true, email: true } },
+        items: { include: { medicine: { select: { id: true, name: true, genericName: true, strength: true, form: true } } } },
       },
     });
 

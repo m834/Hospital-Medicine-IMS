@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsArray, ValidateNested, IsOptional, IsEnum, IsInt, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsArray, ValidateNested, IsOptional, IsEnum, IsInt, Min, IsBoolean } from 'class-validator';
 
 export enum PrescriptionType {
   E_PRESCRIPTION = 'E_PRESCRIPTION',
@@ -53,4 +53,8 @@ export class CreatePrescriptionDto {
   @ValidateNested({ each: true })
   @Type(() => PrescriptionItemDto)
   items: PrescriptionItemDto[];
+
+  @IsOptional()
+  @IsBoolean()
+  autoIssue?: boolean;
 }
