@@ -83,25 +83,25 @@ export class CacheService {
   }
 
   /**
-   * Clear all cache entries matching a pattern
+   * Clear all cache entries matching a pattern (both Redis and in-memory)
    */
   async deletePattern(pattern: string): Promise<number> {
-    let count = 0;
     const regex = new RegExp(pattern);
-    
-    // Delete from in-memory cache
+
+    // Delete matching keys from in-memory cache
     for (const key of this.cache.keys()) {
       if (regex.test(key)) {
-        await this.redis.del(key);
         this.cache.delete(key);
-        count++;
       }
     }
-    
-    if (count > 0) {
-      this.logger.debug(`Deleted ${count} cache entries matching pattern: ${pattern}`);
+
+    // Delete matching keys from Redis directly (catches keys no longer in in-memory map)
+    const redisCount = await this.redis.deletePattern(pattern);
+
+    if (redisCount > 0) {
+      this.logger.debug(`Deleted ${redisCount} Redis cache entries matching pattern: ${pattern}`);
     }
-    return count;
+    return redisCount;
   }
 
   /**

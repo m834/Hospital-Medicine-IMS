@@ -80,6 +80,26 @@ export class RedisService implements OnModuleInit {
     }
   }
 
+  async deletePattern(pattern: string): Promise<number> {
+    if (!this.isConnected || !this.client) {
+      return 0;
+    }
+
+    try {
+      // Convert glob-style pattern (e.g. "inventory:abc:.*") to Redis KEYS glob
+      // Redis uses * ? [] globs, not regex — replace .* with *
+      const redisGlob = pattern.replace(/\.\*/g, '*');
+      const keys: string[] = await this.client.keys(redisGlob);
+      if (keys.length === 0) return 0;
+
+      await Promise.all(keys.map((key) => this.client.del(key)));
+      return keys.length;
+    } catch (error) {
+      this.logger.error(`Redis KEYS/DEL error for pattern ${pattern}:`, error);
+      return 0;
+    }
+  }
+
   async flushAll(): Promise<void> {
     if (!this.isConnected || !this.client) {
       return;
