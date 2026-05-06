@@ -66,11 +66,15 @@ export class CreateStockBatchDto {
 
   @IsNumber()
   @Min(0, { message: 'Government price must be non-negative' })
-  governmentPrice: number;
+  @IsOptional()
+  @Type(() => Number)
+  governmentPrice?: number;
 
   @IsNumber()
   @Min(0, { message: 'Retail price must be non-negative' })
-  retailPrice: number;
+  @IsOptional()
+  @Type(() => Number)
+  retailPrice?: number;
 
   // ---- Unit-based tracking fields ----
 

@@ -120,8 +120,8 @@ export class InventoryService {
         manufacturer: createStockBatchDto.manufacturer,
         storageType: createStockBatchDto.storageType,
         purchasePrice: createStockBatchDto.purchasePrice,
-        governmentPrice: createStockBatchDto.governmentPrice,
-        retailPrice: createStockBatchDto.retailPrice,
+        governmentPrice: createStockBatchDto.governmentPrice ?? 0,
+        retailPrice: createStockBatchDto.retailPrice ?? 0,
         hospitalId,
         receivedDate: createStockBatchDto.receivedDate
           ? new Date(createStockBatchDto.receivedDate)
