@@ -805,7 +805,11 @@ export class InventoryService {
    * Invalidate inventory caches for a hospital
    */
   private async invalidateCache(hospitalId: string): Promise<void> {
-    await this.cacheService.deletePattern(`inventory:${hospitalId}:.*`);
-    await this.cacheService.deletePattern(`inventory:all:.*`);
+    await Promise.all([
+      this.cacheService.deletePattern(`inventory:${hospitalId}:.*`),
+      this.cacheService.deletePattern(`inventory:all:.*`),
+      this.cacheService.deletePattern(`inventory:low-stock:${hospitalId}:.*`),
+      this.cacheService.deletePattern(`inventory:stats:${hospitalId}:.*`),
+    ]);
   }
 }
