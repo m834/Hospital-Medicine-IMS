@@ -383,8 +383,8 @@ export class InventoryService {
       },
     };
 
-    // Cache for 3 minutes
-    await this.cacheService.set(cacheKey, result, 3 * 60 * 1000);
+    // Cache for 30 seconds
+    await this.cacheService.set(cacheKey, result, 30 * 1000);
 
     return result;
   }
@@ -648,8 +648,8 @@ export class InventoryService {
       })
       .filter((med) => med.totalDispensingStock <= med.reorderLevel && med.totalDispensingStock >= 0);
 
-    // Cache the result for 3 minutes
-    await this.cacheService.set(cacheKey, lowStockMedicines, 3 * 60 * 1000);
+    // Cache the result for 30 seconds
+    await this.cacheService.set(cacheKey, lowStockMedicines, 30 * 1000);
 
     return lowStockMedicines;
   }
@@ -779,8 +779,8 @@ export class InventoryService {
       expiringSoon: expiringCount,
     };
 
-    // Cache the result for 2 minutes (stats change frequently)
-    await this.cacheService.set(cacheKey, result, 2 * 60 * 1000);
+    // Cache the result for 30 seconds
+    await this.cacheService.set(cacheKey, result, 30 * 1000);
 
     return result;
   }
