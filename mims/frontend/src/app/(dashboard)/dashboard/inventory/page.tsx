@@ -89,7 +89,6 @@ interface Stats {
 const STATUS_OPTIONS = [
   { value: 'all', label: 'All Status' },
   { value: 'AVAILABLE', label: 'Available' },
-  { value: 'EXPIRED', label: 'Expired' },
   { value: 'DEPLETED', label: 'Depleted' },
   { value: 'QUARANTINE', label: 'Quarantine' },
 ];
@@ -112,6 +111,7 @@ export default function InventoryDashboardPage() {
     expiringSoon: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'active' | 'expired'>('active');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMedicine, setSelectedMedicine] = useState('all');
   const [selectedPharmacy, setSelectedPharmacy] = useState('all');
@@ -136,31 +136,29 @@ export default function InventoryDashboardPage() {
     }
   }, [isSuperAdmin, isHospitalAdmin, isMainManager, userPharmacyId]);
 
-  // Calculate stats whenever stockBatches changes
+  // Calculate stats from active (non-expired) batches only
   useEffect(() => {
-    const totalBatches = stockBatches.length;
-    
-    const totalValue = stockBatches.reduce((sum, batch) => {
+    const now = new Date();
+    const activeBatches = stockBatches.filter(
+      batch => new Date(batch.expiryDate) >= now && batch.status !== 'EXPIRED'
+    );
+
+    const totalBatches = activeBatches.length;
+
+    const totalValue = activeBatches.reduce((sum, batch) => {
       return sum + (batch.qtyAvailable * batch.purchasePrice);
     }, 0);
-    
-    // Count batches with low stock (qty < 15)
-    const lowStock = stockBatches.filter(batch => batch.qtyAvailable < 15).length;
-    
-    // Count batches expiring within 7 days
-    const expiringSoon = stockBatches.filter(batch => {
+
+    const lowStock = activeBatches.filter(batch => batch.qtyAvailable < 15).length;
+
+    const expiringSoon = activeBatches.filter(batch => {
       const daysUntilExpiry = Math.ceil(
-        (new Date(batch.expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+        (new Date(batch.expiryDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
       );
       return daysUntilExpiry <= 7 && daysUntilExpiry > 0;
     }).length;
-    
-    setStats({
-      totalBatches,
-      totalValue,
-      lowStock,
-      expiringSoon,
-    });
+
+    setStats({ totalBatches, totalValue, lowStock, expiringSoon });
   }, [stockBatches]);
 
   useEffect(() => {
@@ -490,31 +488,65 @@ export default function InventoryDashboardPage() {
         </CardContent>
       </Card>
 
+      {/* Inventory Tabs */}
+      <div className="flex gap-1 border-b">
+        <button
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'active'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+          onClick={() => setActiveTab('active')}
+        >
+          Active Medicines
+        </button>
+        <button
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+            activeTab === 'expired'
+              ? 'border-red-500 text-red-600'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+          onClick={() => setActiveTab('expired')}
+        >
+          Expired Medicines
+          {stockBatches.filter(b => isExpired(b.expiryDate) || b.status === 'EXPIRED').length > 0 && (
+            <span className="bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+              {stockBatches.filter(b => isExpired(b.expiryDate) || b.status === 'EXPIRED').length}
+            </span>
+          )}
+        </button>
+      </div>
+
       {/* Stock Batches Table */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Stock Batches</CardTitle>
+              <CardTitle>
+                {activeTab === 'active' ? 'Active Stock Batches' : 'Expired Batches'}
+              </CardTitle>
               <CardDescription>
-                All stock batches organized in FIFO order (First In, First Out)
+                {activeTab === 'active'
+                  ? 'Non-expired stock batches organized in FIFO order (First In, First Out)'
+                  : 'Batches that have passed their expiry date'}
               </CardDescription>
             </div>
-            {/* Stock Level Legend */}
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-green-500" />
-                <span className="text-muted-foreground">Good (&gt;30)</span>
+            {activeTab === 'active' && (
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-green-500" />
+                  <span className="text-muted-foreground">Good (&gt;30)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-yellow-500 blink-yellow" />
+                  <span className="text-muted-foreground">Medium (15-30)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-red-500 blink-red" />
+                  <span className="text-muted-foreground">Low (&lt;15)</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-yellow-500 blink-yellow" />
-                <span className="text-muted-foreground">Medium (15-30)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-500 blink-red" />
-                <span className="text-muted-foreground">Low (&lt;15)</span>
-              </div>
-            </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -526,7 +558,7 @@ export default function InventoryDashboardPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Stock Alert</TableHead>
+                  {activeTab === 'active' && <TableHead>Stock Alert</TableHead>}
                   <TableHead>Batch No</TableHead>
                   <TableHead>Medicine</TableHead>
                   <TableHead>Pharmacy</TableHead>
@@ -540,106 +572,114 @@ export default function InventoryDashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {stockBatches.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
-                      No stock batches found
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  stockBatches.map((batch) => {
+                {(() => {
+                  const displayBatches = activeTab === 'active'
+                    ? stockBatches.filter(b => !isExpired(b.expiryDate) && b.status !== 'EXPIRED')
+                    : stockBatches.filter(b => isExpired(b.expiryDate) || b.status === 'EXPIRED');
+
+                  if (displayBatches.length === 0) {
+                    return (
+                      <TableRow>
+                        <TableCell colSpan={activeTab === 'active' ? 11 : 10} className="text-center py-8 text-muted-foreground">
+                          {activeTab === 'active' ? 'No active stock batches found' : 'No expired batches found'}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  }
+
+                  return displayBatches.map((batch) => {
                     const stockLevel = getStockLevel(batch.qtyAvailable);
-                    
                     return (
                       <TableRow
                         key={batch.id}
                         className={
-                          isExpired(batch.expiryDate)
+                          activeTab === 'expired'
                             ? 'bg-red-50'
                             : isExpiringSoon(batch.expiryDate)
                             ? 'bg-yellow-50'
                             : ''
                         }
                       >
-                        {/* Stock Level Indicator */}
+                        {activeTab === 'active' && (
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <div
+                                className={`w-4 h-4 rounded-full ${stockLevel.color} ${
+                                  stockLevel.level === 'medium' ? 'blink-yellow' :
+                                  stockLevel.level === 'low' ? 'blink-red' : ''
+                                }`}
+                                title={stockLevel.label}
+                              />
+                              {stockLevel.level === 'good' && (
+                                <CheckCircle className="h-4 w-4 text-green-500" />
+                              )}
+                              {stockLevel.level === 'medium' && (
+                                <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                              )}
+                              {stockLevel.level === 'low' && (
+                                <AlertTriangle className="h-4 w-4 text-red-500" />
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
+                        <TableCell className="font-mono text-sm">{batch.batchNo}</TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <div
-                              className={`w-4 h-4 rounded-full ${stockLevel.color} ${
-                                stockLevel.level === 'medium' ? 'blink-yellow' :
-                                stockLevel.level === 'low' ? 'blink-red' : ''
-                              }`}
-                              title={stockLevel.label}
-                            />
-                            {stockLevel.level === 'good' && (
-                              <CheckCircle className="h-4 w-4 text-green-500" />
-                            )}
-                            {stockLevel.level === 'medium' && (
-                              <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                            )}
-                            {stockLevel.level === 'low' && (
-                              <AlertTriangle className="h-4 w-4 text-red-500" />
-                            )}
+                          <div>
+                            <p className="font-medium">{batch.medicine.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {batch.medicine.strength} • {batch.medicine.form}
+                            </p>
                           </div>
                         </TableCell>
-                        <TableCell className="font-mono text-sm">{batch.batchNo}</TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{batch.medicine.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {batch.medicine.strength} • {batch.medicine.form}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{batch.pharmacy.code}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={getStorageColor(batch.storageType)}>
-                          {batch.storageType.replace('_', ' ')}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <p className="font-medium">{batch.qtyAvailable.toLocaleString()}</p>
-                          <p className="text-xs text-muted-foreground">
-                            of {batch.qtyReceived.toLocaleString()}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          {isExpired(batch.expiryDate) && (
-                            <AlertTriangle className="h-3 w-3 text-red-600" />
-                          )}
-                          {isExpiringSoon(batch.expiryDate) && !isExpired(batch.expiryDate) && (
-                            <Calendar className="h-3 w-3 text-yellow-600" />
-                          )}
-                          <span className="text-sm">{formatDate(batch.expiryDate)}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-xs space-y-0.5">
-                          <p>P: {Number(batch.purchasePrice).toFixed(2)}</p>
-                          <p>G: {Number(batch.governmentPrice).toFixed(2)}</p>
-                          <p>R: {Number(batch.retailPrice).toFixed(2)}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-semibold text-sm">
-                          PKR {(batch.qtyAvailable * batch.purchasePrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm">{formatDate(batch.receivedDate)}</TableCell>
-                      <TableCell>
-                        <Badge className={`${getStatusColor(batch.status)} text-white`}>
-                          {batch.status}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  );
-                  })
-                )}
+                        <TableCell>
+                          <Badge variant="outline">{batch.pharmacy.code}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={getStorageColor(batch.storageType)}>
+                            {batch.storageType.replace('_', ' ')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            <p className="font-medium">{batch.qtyAvailable.toLocaleString()}</p>
+                            <p className="text-xs text-muted-foreground">
+                              of {batch.qtyReceived.toLocaleString()}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            {activeTab === 'expired' && (
+                              <AlertTriangle className="h-3 w-3 text-red-600" />
+                            )}
+                            {activeTab === 'active' && isExpiringSoon(batch.expiryDate) && (
+                              <Calendar className="h-3 w-3 text-yellow-600" />
+                            )}
+                            <span className="text-sm">{formatDate(batch.expiryDate)}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-xs space-y-0.5">
+                            <p>P: {Number(batch.purchasePrice).toFixed(2)}</p>
+                            <p>G: {Number(batch.governmentPrice).toFixed(2)}</p>
+                            <p>R: {Number(batch.retailPrice).toFixed(2)}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-semibold text-sm">
+                            PKR {(batch.qtyAvailable * batch.purchasePrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm">{formatDate(batch.receivedDate)}</TableCell>
+                        <TableCell>
+                          <Badge className={`${getStatusColor(batch.status)} text-white`}>
+                            {batch.status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  });
+                })()}
               </TableBody>
             </Table>
           )}

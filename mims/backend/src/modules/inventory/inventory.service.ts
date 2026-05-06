@@ -418,17 +418,25 @@ export class InventoryService {
       }
     }
 
+    const updateData: any = {
+      ...updateStockBatchDto,
+      expiryDate: updateStockBatchDto.expiryDate
+        ? new Date(updateStockBatchDto.expiryDate)
+        : undefined,
+      receivedDate: updateStockBatchDto.receivedDate
+        ? new Date(updateStockBatchDto.receivedDate)
+        : undefined,
+    };
+
+    // Auto-deplete when quantity drops to zero
+    if (updateStockBatchDto.qtyAvailable !== undefined && updateStockBatchDto.qtyAvailable <= 0) {
+      updateData.qtyAvailable = 0;
+      updateData.status = 'DEPLETED';
+    }
+
     const updated = await this.prisma.stockBatch.update({
       where: { id: batch.id },
-      data: {
-        ...updateStockBatchDto,
-        expiryDate: updateStockBatchDto.expiryDate
-          ? new Date(updateStockBatchDto.expiryDate)
-          : undefined,
-        receivedDate: updateStockBatchDto.receivedDate
-          ? new Date(updateStockBatchDto.receivedDate)
-          : undefined,
-      },
+      data: updateData,
       include: {
         medicine: true,
         pharmacy: true,
