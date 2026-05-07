@@ -1051,7 +1051,7 @@ export class ReportsService {
             },
           }
         : {
-            fromPharmacyId: pharmacyId, // This pharmacy is the sender
+            fromPharmacyId: pharmacyId, // This pharmacy is the requester
             status: 'RECEIVED' as any,
             receivedAt: {
               gte: startDate,
@@ -1240,15 +1240,14 @@ export class ReportsService {
     const stockIssued = detailedIssues.reduce((sum, issue) => sum + issue.totalAmount, 0);
     const stockIssuedQuantity = detailedIssues.reduce((sum, issue) => sum + issue.totalQuantity, 0);
 
-    const stockTransferred = detailedTransfersOut.reduce((sum, transfer) => {
-      // Sum value from batch mappings using source batch purchase price
+      const stockTransferred = detailedTransfersIn.reduce((sum, transfer) => {
       return sum + transfer.items.reduce((s: number, item: any) => {
         const qty = item.batchMappings?.reduce((bqty: number, bm: any) => bqty + (bm.qtyTransferred || 0), 0)
           ?? item.qtyApproved ?? item.qtyRequested ?? 0;
         return s + qty * (item.purchasePrice || 0);
       }, 0);
     }, 0);
-    const stockTransferredQuantity = detailedTransfersOut.reduce(
+    const stockTransferredQuantity = detailedTransfersIn.reduce(
       (sum, transfer) => sum + transfer.totalQuantity,
       0,
     );

@@ -292,12 +292,12 @@ export default function DailyTransactionsPage() {
       m.closingStockValue = med.totalValue || 0;
     });
 
-    // Transfers OUT from this pharmacy to sub-pharmacies
-    // detailedTransfersOut: fromPharmacyId === selectedPharmacy (main is the sender)
-    // toPharmacyId = the sub-pharmacy that received the stock
-    (reportData.detailedTransfersOut || []).forEach((transfer: any) => {
+    // Transfers from this pharmacy to sub-pharmacies
+    // In this system: sub pharmacies are the requesters (fromPharmacyId) and Main is the provider (toPharmacyId)
+    // Physical stock flows from Main to Sub; these appear in detailedTransfersIn
+    (reportData.detailedTransfersIn || []).forEach((transfer: any) => {
       const destination = subPharmacies.find(
-        (sp) => sp.id === transfer.toPharmacyId
+        (sp) => sp.id === transfer.fromPharmacyId
       );
       if (!destination) return;
 

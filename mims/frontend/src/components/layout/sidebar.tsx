@@ -190,7 +190,7 @@ const menuItems: MenuItem[] = [
     label: 'Reports', 
     href: '/dashboard/reports/daily-transactions', 
     icon: BarChart3, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.AUDITOR] 
+    roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.AUDITOR] 
   },
   { 
     label: 'Financial Reports', 
