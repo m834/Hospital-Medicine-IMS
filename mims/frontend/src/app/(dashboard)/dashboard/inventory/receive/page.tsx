@@ -39,6 +39,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { PackagePlus, Loader2, Calendar, DollarSign, Package, Building2, FileSpreadsheet, Plus, Trash2, Save } from 'lucide-react';
 import { BulkImportModal } from '@/components/inventory/bulk-import-modal';
 import api from '@/lib/api';
@@ -145,6 +146,7 @@ type ReceiveStockFormData = z.infer<typeof receiveStockSchema>;
 
 interface StockItem extends ReceiveStockFormData {
   tempId: string;
+  isLP: boolean;
 }
 
 export default function ReceiveStockPage() {
@@ -155,6 +157,7 @@ export default function ReceiveStockPage() {
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [manualEntry, setManualEntry] = useState(false);
+  const [isLP, setIsLP] = useState(false);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
 
   const { user } = useAuthStore();
@@ -318,6 +321,7 @@ export default function ReceiveStockPage() {
     const newItem: StockItem = {
       ...data,
       tempId: Date.now().toString() + Math.random().toString(36).substring(7),
+      isLP,
     };
     setItems([...items, newItem]);
     
@@ -373,6 +377,7 @@ export default function ReceiveStockPage() {
             expiryDate: item.expiryDate,
             storageType: item.storageType,
             purchasePrice: Number(item.purchasePrice),
+            category: item.isLP ? 'LP' : 'NORMAL',
           };
 
           // Add medicineId OR manual medicine details
@@ -544,33 +549,50 @@ export default function ReceiveStockPage() {
 
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                {/* Toggle for manual entry */}
-                <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                  <div>
-                    <p className="font-medium text-sm">Manual Medicine Entry</p>
-                    <p className="text-xs text-muted-foreground">
-                      For new medicines not in the system
-                    </p>
+                {/* Toggles row */}
+                <div className="flex items-center gap-3">
+                  {/* Manual entry toggle */}
+                  <div className="flex items-center justify-between p-3 bg-muted rounded-lg flex-1">
+                    <div>
+                      <p className="font-medium text-sm">Manual Medicine Entry</p>
+                      <p className="text-xs text-muted-foreground">
+                        For new medicines not in the system
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant={manualEntry ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        setManualEntry(!manualEntry);
+                        if (!manualEntry) {
+                          form.setValue('medicineId', '');
+                        } else {
+                          form.setValue('medicineName', '');
+                          form.setValue('genericName', '');
+                          form.setValue('form', '');
+                          form.setValue('strength', '');
+                          form.setValue('medicineManufacturer', '');
+                        }
+                      }}
+                    >
+                      {manualEntry ? 'Enabled' : 'Disabled'}
+                    </Button>
                   </div>
-                  <Button
-                    type="button"
-                    variant={manualEntry ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      setManualEntry(!manualEntry);
-                      if (!manualEntry) {
-                        form.setValue('medicineId', '');
-                      } else {
-                        form.setValue('medicineName', '');
-                        form.setValue('genericName', '');
-                        form.setValue('form', '');
-                        form.setValue('strength', '');
-                        form.setValue('medicineManufacturer', '');
-                      }
-                    }}
-                  >
-                    {manualEntry ? 'Enabled' : 'Disabled'}
-                  </Button>
+
+                  {/* LP toggle */}
+                  <div className={`flex items-center justify-between p-3 rounded-lg border flex-1 transition-colors ${isLP ? 'bg-orange-50 border-orange-300' : 'bg-muted border-transparent'}`}>
+                    <div>
+                      <p className="font-medium text-sm">Local Purchase (LP)</p>
+                      <p className="text-xs text-muted-foreground">
+                        Mark this batch as a local purchase
+                      </p>
+                    </div>
+                    <Switch
+                      checked={isLP}
+                      onCheckedChange={setIsLP}
+                    />
+                  </div>
                 </div>
 
                 {/* Inline Form Fields */}
@@ -891,6 +913,7 @@ export default function ReceiveStockPage() {
                         <TableHead>Qty</TableHead>
                         <TableHead>Expiry</TableHead>
                         <TableHead>Price</TableHead>
+                        <TableHead>Category</TableHead>
                         <TableHead className="text-right">Action</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -900,7 +923,7 @@ export default function ReceiveStockPage() {
                         const pharmacy = pharmacies.find(p => p.id === item.pharmacyId);
                         const medicineName = medicine?.name || item.medicineName;
                         const pharmacyCode = pharmacy?.code || item.pharmacyId;
-                        
+
                         return (
                           <TableRow key={item.tempId}>
                             <TableCell className="font-medium">
@@ -914,6 +937,13 @@ export default function ReceiveStockPage() {
                             <TableCell>{item.qtyReceived}</TableCell>
                             <TableCell className="text-sm">{formatDate(item.expiryDate)}</TableCell>
                             <TableCell className="font-mono text-sm">PKR {Number(item.purchasePrice).toFixed(2)}</TableCell>
+                            <TableCell>
+                              {item.isLP ? (
+                                <Badge className="bg-orange-500 text-white">LP</Badge>
+                              ) : (
+                                <Badge variant="outline">Normal</Badge>
+                              )}
+                            </TableCell>
                             <TableCell className="text-right">
                               <Button
                                 variant="ghost"

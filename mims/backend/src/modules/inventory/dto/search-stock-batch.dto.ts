@@ -1,6 +1,6 @@
 import { IsString, IsOptional, IsEnum, IsInt, IsBoolean, Min, Max } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
-import { BatchStatus, StorageType } from '@prisma/client';
+import { BatchStatus, StorageType, BatchCategory } from '@prisma/client';
 
 export enum SortOrder {
   ASC = 'asc',
@@ -35,6 +35,10 @@ export class SearchStockBatchDto {
   @IsEnum(StorageType)
   @IsOptional()
   storageType?: StorageType;
+
+  @IsEnum(BatchCategory)
+  @IsOptional()
+  category?: BatchCategory;
 
   @IsString()
   @IsOptional()

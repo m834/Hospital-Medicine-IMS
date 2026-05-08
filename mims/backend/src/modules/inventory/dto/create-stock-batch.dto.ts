@@ -9,7 +9,7 @@ import {
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { StorageType, MedicineForm } from '@prisma/client';
+import { StorageType, MedicineForm, BatchCategory } from '@prisma/client';
 
 export class CreateStockBatchDto {
   // Medicine identification - provide either medicineId OR medicineName+form
@@ -123,4 +123,8 @@ export class CreateStockBatchDto {
   @IsDateString()
   @IsOptional()
   receivedDate?: string;
+
+  @IsEnum(BatchCategory)
+  @IsOptional()
+  category?: BatchCategory;
 }

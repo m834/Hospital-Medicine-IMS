@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -25,6 +26,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import {
   Package,
@@ -38,6 +46,10 @@ import {
   Clock,
   CheckCircle,
   Bell,
+  Info,
+  ChevronDown,
+  ChevronRight,
+  FileDown,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
@@ -65,6 +77,20 @@ interface StockBatch {
   receivedDate: string;
   status: string;
   storageType: string;
+  category: string;
+  manufacturer?: string;
+}
+
+interface MedicineGroup {
+  key: string;
+  medicineName: string;
+  medicineStrength?: string;
+  medicineForm: string;
+  batches: StockBatch[];
+  totalQtyAvailable: number;
+  totalQtyReceived: number;
+  totalValue: number;
+  nearestExpiry: string;
 }
 
 interface Medicine {
@@ -100,6 +126,17 @@ const STORAGE_TYPES = [
   { value: 'REFRIGERATED', label: 'Refrigerated' },
 ];
 
+const EXPORT_COLUMNS = [
+  { key: 'medicineName',   label: 'Medicine Name' },
+  { key: 'batchNo',        label: 'Batch Number' },
+  { key: 'quantity',       label: 'Quantity' },
+  { key: 'pricePerUnit',   label: 'Price per Unit' },
+  { key: 'totalPrice',     label: 'Total Price' },
+  { key: 'expiryDate',     label: 'Expiry Date' },
+  { key: 'category',       label: 'Category (Normal / LP)' },
+  { key: 'manufacturer',   label: 'Supplier / Manufacturer' },
+];
+
 export default function InventoryDashboardPage() {
   const [stockBatches, setStockBatches] = useState<StockBatch[]>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
@@ -111,69 +148,63 @@ export default function InventoryDashboardPage() {
     expiringSoon: 0,
   });
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'active' | 'expired'>('active');
+  const [activeTab, setActiveTab] = useState<'normal' | 'lp' | 'expired'>('normal');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMedicine, setSelectedMedicine] = useState('all');
   const [selectedPharmacy, setSelectedPharmacy] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [selectedStorage, setSelectedStorage] = useState('all');
 
+  // Expanded groups (accordion)
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  // Export dialog
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [selectedColumns, setSelectedColumns] = useState<Record<string, boolean>>(
+    Object.fromEntries(EXPORT_COLUMNS.map(c => [c.key, true]))
+  );
+  const [exportScope, setExportScope] = useState<'current' | 'normal' | 'lp' | 'both'>('current');
+  const [exportLoading, setExportLoading] = useState(false);
+
   const { user } = useAuthStore();
   const { selectedHospital } = useHospitalStore();
   const router = useRouter();
 
-  // Master Admin & Super Admin must select hospital, others use their hospitalId
   const currentHospitalId = selectedHospital?.id || user?.hospitalId;
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const isHospitalAdmin = user?.role === 'HOSPITAL_ADMIN';
   const isMainManager = user?.role === 'MAIN_PHARMACY_MANAGER';
   const userPharmacyId = user?.pharmacyId;
 
-  // Auto-set pharmacy filter for non-admin users with a pharmacy
   useEffect(() => {
     if (!isSuperAdmin && !isHospitalAdmin && !isMainManager && userPharmacyId) {
       setSelectedPharmacy(userPharmacyId);
     }
   }, [isSuperAdmin, isHospitalAdmin, isMainManager, userPharmacyId]);
 
-  // Calculate stats from active (non-expired) batches only
   useEffect(() => {
     const now = new Date();
     const activeBatches = stockBatches.filter(
       batch => new Date(batch.expiryDate) >= now && batch.status !== 'EXPIRED'
     );
-
     const totalBatches = activeBatches.length;
-
-    const totalValue = activeBatches.reduce((sum, batch) => {
-      return sum + (batch.qtyAvailable * batch.purchasePrice);
-    }, 0);
-
-    const lowStock = activeBatches.filter(batch => batch.qtyAvailable < 15).length;
-
-    const expiringSoon = activeBatches.filter(batch => {
-      const daysUntilExpiry = Math.ceil(
-        (new Date(batch.expiryDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-      );
-      return daysUntilExpiry <= 7 && daysUntilExpiry > 0;
+    const totalValue = activeBatches.reduce((sum, b) => sum + b.qtyAvailable * b.purchasePrice, 0);
+    const lowStock = activeBatches.filter(b => b.qtyAvailable < 15).length;
+    const expiringSoon = activeBatches.filter(b => {
+      const days = Math.ceil((new Date(b.expiryDate).getTime() - now.getTime()) / 86400000);
+      return days <= 7 && days > 0;
     }).length;
-
     setStats({ totalBatches, totalValue, lowStock, expiringSoon });
   }, [stockBatches]);
 
   useEffect(() => {
-    // Always fetch data - Super Admin can view all hospitals' data
     fetchData();
-  }, [currentHospitalId, selectedMedicine, selectedPharmacy, selectedStatus, selectedStorage, searchQuery]);
+  }, [currentHospitalId, activeTab, selectedMedicine, selectedPharmacy, selectedStatus, selectedStorage, searchQuery]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      await Promise.all([
-        fetchStockBatches(),
-        fetchMedicines(),
-        fetchPharmacies(),
-      ]);
+      await Promise.all([fetchStockBatches(), fetchMedicines(), fetchPharmacies()]);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -183,34 +214,22 @@ export default function InventoryDashboardPage() {
 
   const fetchStockBatches = async () => {
     try {
-      const params: any = { limit: 100 };
-      
-      // Add hospitalId if available
-      if (currentHospitalId) {
-        params.hospitalId = currentHospitalId;
-      }
-      
-      // For non-admin users with a pharmacy, ALWAYS filter by their pharmacy
+      const params: any = { limit: 500 };
+      if (currentHospitalId) params.hospitalId = currentHospitalId;
       if (!isSuperAdmin && !isHospitalAdmin && !isMainManager && userPharmacyId) {
         params.pharmacyId = userPharmacyId;
       } else if (selectedPharmacy !== 'all') {
-        // For admins or main managers, use the selected pharmacy filter
         params.pharmacyId = selectedPharmacy;
       }
-      
+      if (activeTab === 'normal') params.category = 'NORMAL';
+      if (activeTab === 'lp') params.category = 'LP';
       if (selectedMedicine !== 'all') params.medicineId = selectedMedicine;
       if (selectedStatus !== 'all') params.status = selectedStatus;
       if (selectedStorage !== 'all') params.storageType = selectedStorage;
       if (searchQuery) params.search = searchQuery;
-
-      if (!params.hospitalId) {
-        console.warn('No hospital selected');
-        return;
-      }
-
+      if (!params.hospitalId) return;
       const response = await api.get('/inventory/batches', { params });
-      const batches = response.data?.data || response.data || [];
-      setStockBatches(batches);
+      setStockBatches(response.data?.data || response.data || []);
     } catch (error) {
       console.error('Error fetching stock batches:', error);
     }
@@ -219,16 +238,11 @@ export default function InventoryDashboardPage() {
   const fetchMedicines = async () => {
     try {
       const params: any = {};
-      if (currentHospitalId) {
-        params.hospitalId = currentHospitalId;
-      }
-      if (!params.hospitalId) {
-        console.warn('No hospital selected');
-        return;
-      }
+      if (currentHospitalId) params.hospitalId = currentHospitalId;
+      if (!params.hospitalId) return;
       const response = await api.get('/medicines', { params });
-      const medicineList = response.data?.data || response.data || [];
-      setMedicines(medicineList.filter((m: any) => m.status === 'ACTIVE'));
+      const list = response.data?.data || response.data || [];
+      setMedicines(list.filter((m: any) => m.status === 'ACTIVE'));
     } catch (error) {
       console.error('Error fetching medicines:', error);
     }
@@ -237,13 +251,8 @@ export default function InventoryDashboardPage() {
   const fetchPharmacies = async () => {
     try {
       const params: any = {};
-      if (currentHospitalId) {
-        params.hospitalId = currentHospitalId;
-      }
-      if (!params.hospitalId) {
-        console.warn('No hospital selected');
-        return;
-      }
+      if (currentHospitalId) params.hospitalId = currentHospitalId;
+      if (!params.hospitalId) return;
       const response = await api.get('/pharmacies', { params });
       setPharmacies(response.data || []);
     } catch (error) {
@@ -251,55 +260,151 @@ export default function InventoryDashboardPage() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
+  const formatDate = (dateString: string) =>
+    new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+
+  const getStatusColor = (status: string) =>
+    ({ AVAILABLE: 'bg-green-500', EXPIRED: 'bg-red-500', DEPLETED: 'bg-gray-500', QUARANTINE: 'bg-yellow-500' }[status] || 'bg-gray-500');
+
+  const getStorageColor = (storage: string) =>
+    ({ ROOM_TEMPERATURE: 'bg-blue-100 text-blue-800', COLD_STORAGE: 'bg-cyan-100 text-cyan-800', REFRIGERATED: 'bg-purple-100 text-purple-800' }[storage] || 'bg-gray-100 text-gray-800');
+
+  const isExpiringSoon = (d: string) => {
+    const days = Math.ceil((new Date(d).getTime() - Date.now()) / 86400000);
+    return days <= 7 && days > 0;
+  };
+
+  const isExpired = (d: string) => new Date(d) < new Date();
+
+  const getStockLevel = (qty: number) => {
+    if (qty > 30) return { level: 'good', color: 'bg-green-500', label: 'Good Stock' };
+    if (qty >= 15) return { level: 'medium', color: 'bg-yellow-500', label: 'Medium Stock' };
+    return { level: 'low', color: 'bg-red-500', label: 'Low Stock' };
+  };
+
+  // Group flat batch list by medicine
+  const groupBatches = (batches: StockBatch[]): MedicineGroup[] => {
+    const map: Record<string, MedicineGroup> = {};
+    for (const batch of batches) {
+      const key = `${batch.medicine.name}|${batch.medicine.strength ?? ''}|${batch.medicine.form}`;
+      if (!map[key]) {
+        map[key] = {
+          key,
+          medicineName: batch.medicine.name,
+          medicineStrength: batch.medicine.strength,
+          medicineForm: batch.medicine.form,
+          batches: [],
+          totalQtyAvailable: 0,
+          totalQtyReceived: 0,
+          totalValue: 0,
+          nearestExpiry: batch.expiryDate,
+        };
+      }
+      const g = map[key];
+      g.batches.push(batch);
+      g.totalQtyAvailable += batch.qtyAvailable;
+      g.totalQtyReceived += batch.qtyReceived;
+      g.totalValue += batch.qtyAvailable * Number(batch.purchasePrice);
+      if (new Date(batch.expiryDate) < new Date(g.nearestExpiry)) {
+        g.nearestExpiry = batch.expiryDate;
+      }
+    }
+    return Object.values(map).sort((a, b) => a.medicineName.localeCompare(b.medicineName));
+  };
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
     });
   };
 
-  const getStatusColor = (status: string) => {
-    const colors: { [key: string]: string } = {
-      AVAILABLE: 'bg-green-500',
-      EXPIRED: 'bg-red-500',
-      DEPLETED: 'bg-gray-500',
-      QUARANTINE: 'bg-yellow-500',
-    };
-    return colors[status] || 'bg-gray-500';
+  // Fetch batches for a specific category (used by export)
+  const fetchBatchesForScope = async (category?: 'NORMAL' | 'LP'): Promise<StockBatch[]> => {
+    try {
+      const params: any = { limit: 2000 };
+      if (currentHospitalId) params.hospitalId = currentHospitalId;
+      if (!isSuperAdmin && !isHospitalAdmin && !isMainManager && userPharmacyId) {
+        params.pharmacyId = userPharmacyId;
+      } else if (selectedPharmacy !== 'all') {
+        params.pharmacyId = selectedPharmacy;
+      }
+      if (category) params.category = category;
+      const res = await api.get('/inventory/batches', { params });
+      return res.data?.data || res.data || [];
+    } catch {
+      return [];
+    }
   };
 
-  const getStorageColor = (storage: string) => {
-    const colors: { [key: string]: string } = {
-      ROOM_TEMPERATURE: 'bg-blue-100 text-blue-800',
-      COLD_STORAGE: 'bg-cyan-100 text-cyan-800',
-      REFRIGERATED: 'bg-purple-100 text-purple-800',
-    };
-    return colors[storage] || 'bg-gray-100 text-gray-800';
+  // Build XLSX rows from a batch list and a sheet label
+  const buildSheetRows = (batches: StockBatch[], cols: typeof EXPORT_COLUMNS): any[][] => {
+    const activeBatches = batches.filter(b => !isExpired(b.expiryDate) && b.status !== 'EXPIRED');
+    const groups = groupBatches(activeBatches);
+    const rows: any[][] = [cols.map(c => c.label)];
+    for (const group of groups) {
+      rows.push(cols.map(c => {
+        if (c.key === 'medicineName') return `${group.medicineName}${group.medicineStrength ? ' ' + group.medicineStrength : ''} (${group.medicineForm})`;
+        if (c.key === 'quantity') return group.totalQtyAvailable;
+        if (c.key === 'totalPrice') return group.totalValue;
+        if (c.key === 'expiryDate') return formatDate(group.nearestExpiry) + ' (nearest)';
+        if (c.key === 'category') return group.batches[0]?.category === 'LP' ? 'LP' : 'Normal';
+        return '';
+      }));
+      for (const batch of group.batches) {
+        rows.push(cols.map(c => {
+          if (c.key === 'medicineName') return '';
+          if (c.key === 'batchNo') return batch.batchNo;
+          if (c.key === 'quantity') return batch.qtyAvailable;
+          if (c.key === 'pricePerUnit') return Number(batch.purchasePrice);
+          if (c.key === 'totalPrice') return batch.qtyAvailable * Number(batch.purchasePrice);
+          if (c.key === 'expiryDate') return formatDate(batch.expiryDate);
+          if (c.key === 'category') return batch.category === 'LP' ? 'LP' : 'Normal';
+          if (c.key === 'manufacturer') return batch.manufacturer || '';
+          return '';
+        }));
+      }
+    }
+    return rows;
   };
 
-  const isExpiringSoon = (expiryDate: string) => {
-    const daysUntilExpiry = Math.ceil(
-      (new Date(expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-    );
-    return daysUntilExpiry <= 7 && daysUntilExpiry > 0;
-  };
+  // Excel export
+  const handleExport = async () => {
+    setExportLoading(true);
+    try {
+      const cols = EXPORT_COLUMNS.filter(c => selectedColumns[c.key]);
+      const wb = XLSX.utils.book_new();
+      const date = new Date().toISOString().slice(0, 10);
 
-  const isExpired = (expiryDate: string) => {
-    return new Date(expiryDate) < new Date();
-  };
-
-  // Calculate stock level based on absolute quantity thresholds
-  // Low Stock: < 15
-  // Medium Stock: 15-30
-  // Good Stock: > 30
-  const getStockLevel = (qtyAvailable: number) => {
-    if (qtyAvailable > 30) {
-      return { level: 'good', color: 'bg-green-500', label: 'Good Stock', qty: qtyAvailable };
-    } else if (qtyAvailable >= 15) {
-      return { level: 'medium', color: 'bg-yellow-500', label: 'Medium Stock', qty: qtyAvailable };
-    } else {
-      return { level: 'low', color: 'bg-red-500', label: 'Low Stock', qty: qtyAvailable };
+      if (exportScope === 'current') {
+        const currentBatches = activeTab === 'expired'
+          ? stockBatches.filter(b => isExpired(b.expiryDate) || b.status === 'EXPIRED')
+          : stockBatches.filter(b => !isExpired(b.expiryDate) && b.status !== 'EXPIRED');
+        const label = activeTab === 'normal' ? 'Normal' : activeTab === 'lp' ? 'LP' : 'Expiry';
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildSheetRows(currentBatches, cols)), `Inventory - ${label}`);
+        XLSX.writeFile(wb, `inventory_${label.toLowerCase()}_${date}.xlsx`);
+      } else if (exportScope === 'normal') {
+        const batches = await fetchBatchesForScope('NORMAL');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildSheetRows(batches, cols)), 'Inventory - Normal');
+        XLSX.writeFile(wb, `inventory_normal_${date}.xlsx`);
+      } else if (exportScope === 'lp') {
+        const batches = await fetchBatchesForScope('LP');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildSheetRows(batches, cols)), 'Inventory - LP');
+        XLSX.writeFile(wb, `inventory_lp_${date}.xlsx`);
+      } else {
+        // both — two sheets in one file
+        const [normalBatches, lpBatches] = await Promise.all([
+          fetchBatchesForScope('NORMAL'),
+          fetchBatchesForScope('LP'),
+        ]);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildSheetRows(normalBatches, cols)), 'Normal Items');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildSheetRows(lpBatches, cols)), 'LP Items');
+        XLSX.writeFile(wb, `inventory_all_${date}.xlsx`);
+      }
+    } finally {
+      setExportLoading(false);
+      setExportDialogOpen(false);
     }
   };
 
@@ -309,40 +414,41 @@ export default function InventoryDashboardPage() {
         <Card className="max-w-md">
           <CardHeader>
             <CardTitle>Hospital Selection Required</CardTitle>
-            <CardDescription>
-              Please select a hospital from the dropdown to view inventory
-            </CardDescription>
+            <CardDescription>Please select a hospital to view inventory</CardDescription>
           </CardHeader>
         </Card>
       </div>
     );
   }
 
+  const displayBatches = activeTab === 'expired'
+    ? stockBatches.filter(b => isExpired(b.expiryDate) || b.status === 'EXPIRED')
+    : stockBatches.filter(b => !isExpired(b.expiryDate) && b.status !== 'EXPIRED');
+
+  const groups = groupBatches(displayBatches);
+  const isActiveTab = activeTab === 'normal' || activeTab === 'lp';
+  // total columns: Stock Alert + Medicine + Batches + Total Qty + Nearest Expiry + Total Value + Actions
+  const colSpan = isActiveTab ? 7 : 6;
+
   return (
     <div className="space-y-6">
-      {/* Add custom styles for blinking animation */}
       <style jsx>{`
-        @keyframes blink {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-        .blink-yellow {
-          animation: blink 2s ease-in-out infinite;
-        }
-        .blink-red {
-          animation: blink 1.5s ease-in-out infinite;
-        }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .blink-yellow { animation: blink 2s ease-in-out infinite; }
+        .blink-red { animation: blink 1.5s ease-in-out infinite; }
       `}</style>
 
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Inventory Dashboard</h1>
-          <p className="text-muted-foreground">
-            Monitor stock levels, expiry dates, and batch information
-          </p>
+          <p className="text-muted-foreground">Monitor stock levels, expiry dates, and batch information</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setExportDialogOpen(true)}>
+            <FileDown className="mr-2 h-4 w-4" />
+            Export to Excel
+          </Button>
           <Button variant="outline" onClick={() => router.push('/dashboard/inventory/alerts')}>
             <Bell className="mr-2 h-4 w-4" />
             View Alerts
@@ -366,7 +472,6 @@ export default function InventoryDashboardPage() {
             <p className="text-xs text-muted-foreground">Active stock batches</p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Value</CardTitle>
@@ -377,8 +482,7 @@ export default function InventoryDashboardPage() {
             <p className="text-xs text-muted-foreground">Based on purchase price</p>
           </CardContent>
         </Card>
-
-        <Card 
+        <Card
           className="cursor-pointer hover:bg-orange-50 transition-colors border-orange-200"
           onClick={() => router.push('/dashboard/inventory/alerts')}
         >
@@ -391,8 +495,7 @@ export default function InventoryDashboardPage() {
             <p className="text-xs text-muted-foreground">Medicines below threshold</p>
           </CardContent>
         </Card>
-
-        <Card 
+        <Card
           className="cursor-pointer hover:bg-red-50 transition-colors border-red-200"
           onClick={() => router.push('/dashboard/inventory/alerts')}
         >
@@ -421,66 +524,46 @@ export default function InventoryDashboardPage() {
                 placeholder="Search batch number..."
                 className="pl-8"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={e => setSearchQuery(e.target.value)}
               />
             </div>
-
             <Select value={selectedMedicine} onValueChange={setSelectedMedicine}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Medicines" />
-              </SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="All Medicines" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Medicines</SelectItem>
-                {medicines.map((medicine) => (
-                  <SelectItem key={medicine.id} value={medicine.id}>
-                    {medicine.name} - {medicine.form}
-                  </SelectItem>
+                {medicines.map(m => (
+                  <SelectItem key={m.id} value={m.id}>{m.name} - {m.form}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-
-            <Select 
-              value={selectedPharmacy} 
+            <Select
+              value={selectedPharmacy}
               onValueChange={setSelectedPharmacy}
               disabled={!isSuperAdmin && !isHospitalAdmin && !isMainManager && !!userPharmacyId}
             >
-              <SelectTrigger>
-                <SelectValue placeholder="All Pharmacies" />
-              </SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="All Pharmacies" /></SelectTrigger>
               <SelectContent>
                 {(isSuperAdmin || isHospitalAdmin || isMainManager) && (
                   <SelectItem value="all">All Pharmacies</SelectItem>
                 )}
-                {pharmacies.map((pharmacy) => (
-                  <SelectItem key={pharmacy.id} value={pharmacy.id}>
-                    {pharmacy.name} ({pharmacy.code})
-                  </SelectItem>
+                {pharmacies.map(p => (
+                  <SelectItem key={p.id} value={p.id}>{p.name} ({p.code})</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-
             <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Status" />
-              </SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="All Status" /></SelectTrigger>
               <SelectContent>
-                {STATUS_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
+                {STATUS_OPTIONS.map(o => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-
             <Select value={selectedStorage} onValueChange={setSelectedStorage}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Storage" />
-              </SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="All Storage" /></SelectTrigger>
               <SelectContent>
-                {STORAGE_TYPES.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
+                {STORAGE_TYPES.map(o => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -488,27 +571,25 @@ export default function InventoryDashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Inventory Tabs */}
+      {/* Tabs */}
       <div className="flex gap-1 border-b">
         <button
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'active'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-          onClick={() => setActiveTab('active')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'normal' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setActiveTab('normal')}
         >
-          Active Medicines
+          Normal Items
         </button>
         <button
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === 'expired'
-              ? 'border-red-500 text-red-600'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'lp' ? 'border-orange-500 text-orange-600' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setActiveTab('lp')}
+        >
+          LP Items
+        </button>
+        <button
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'expired' ? 'border-red-500 text-red-600' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           onClick={() => setActiveTab('expired')}
         >
-          Expired Medicines
+          Expiry
           {stockBatches.filter(b => isExpired(b.expiryDate) || b.status === 'EXPIRED').length > 0 && (
             <span className="bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
               {stockBatches.filter(b => isExpired(b.expiryDate) || b.status === 'EXPIRED').length}
@@ -517,21 +598,23 @@ export default function InventoryDashboardPage() {
         </button>
       </div>
 
-      {/* Stock Batches Table */}
+      {/* Inventory Table */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>
-                {activeTab === 'active' ? 'Active Stock Batches' : 'Expired Batches'}
+                {activeTab === 'normal' && 'Normal Stock Batches'}
+                {activeTab === 'lp' && 'LP (Local Purchase) Batches'}
+                {activeTab === 'expired' && 'Expired Batches'}
               </CardTitle>
               <CardDescription>
-                {activeTab === 'active'
-                  ? 'Non-expired stock batches organized in FIFO order (First In, First Out)'
-                  : 'Batches that have passed their expiry date'}
+                {activeTab === 'normal' && 'Grouped by medicine — click ℹ to expand batches'}
+                {activeTab === 'lp' && 'Local purchase batches grouped by medicine'}
+                {activeTab === 'expired' && 'Batches that have passed their expiry date'}
               </CardDescription>
             </div>
-            {activeTab === 'active' && (
+            {isActiveTab && (
               <div className="flex items-center gap-4 text-sm">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-green-500" />
@@ -558,133 +641,253 @@ export default function InventoryDashboardPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  {activeTab === 'active' && <TableHead>Stock Alert</TableHead>}
-                  <TableHead>Batch No</TableHead>
+                  {isActiveTab && <TableHead className="w-10">Alert</TableHead>}
                   <TableHead>Medicine</TableHead>
-                  <TableHead>Pharmacy</TableHead>
-                  <TableHead>Storage</TableHead>
-                  <TableHead>Qty</TableHead>
-                  <TableHead>Expiry Date</TableHead>
-                  <TableHead>Prices (PKR)</TableHead>
-                  <TableHead>Total Amount (PKR)</TableHead>
-                  <TableHead>Received</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="text-center">Batches</TableHead>
+                  <TableHead>Total Qty</TableHead>
+                  <TableHead>Nearest Expiry</TableHead>
+                  <TableHead>Total Value (PKR)</TableHead>
+                  <TableHead className="w-10"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(() => {
-                  const displayBatches = activeTab === 'active'
-                    ? stockBatches.filter(b => !isExpired(b.expiryDate) && b.status !== 'EXPIRED')
-                    : stockBatches.filter(b => isExpired(b.expiryDate) || b.status === 'EXPIRED');
+                {groups.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={colSpan} className="text-center py-8 text-muted-foreground">
+                      {activeTab === 'normal' && 'No normal stock batches found'}
+                      {activeTab === 'lp' && 'No LP stock batches found'}
+                      {activeTab === 'expired' && 'No expired batches found'}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  groups.map(group => {
+                    const isExpanded = expandedGroups.has(group.key);
+                    const stockLevel = getStockLevel(group.totalQtyAvailable);
+                    const anyExpiringSoon = group.batches.some(b => isExpiringSoon(b.expiryDate));
 
-                  if (displayBatches.length === 0) {
                     return (
-                      <TableRow>
-                        <TableCell colSpan={activeTab === 'active' ? 11 : 10} className="text-center py-8 text-muted-foreground">
-                          {activeTab === 'active' ? 'No active stock batches found' : 'No expired batches found'}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  }
-
-                  return displayBatches.map((batch) => {
-                    const stockLevel = getStockLevel(batch.qtyAvailable);
-                    return (
-                      <TableRow
-                        key={batch.id}
-                        className={
-                          activeTab === 'expired'
-                            ? 'bg-red-50'
-                            : isExpiringSoon(batch.expiryDate)
-                            ? 'bg-yellow-50'
-                            : ''
-                        }
-                      >
-                        {activeTab === 'active' && (
+                      <React.Fragment key={group.key}>
+                        {/* Medicine group summary row */}
+                        <TableRow
+                          key={group.key}
+                          className={`cursor-pointer hover:bg-muted/50 font-medium ${
+                            activeTab === 'expired'
+                              ? 'bg-red-50'
+                              : anyExpiringSoon
+                              ? 'bg-yellow-50'
+                              : 'bg-muted/20'
+                          }`}
+                          onClick={() => toggleGroup(group.key)}
+                        >
+                          {isActiveTab && (
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <div
+                                  className={`w-3 h-3 rounded-full ${stockLevel.color} ${
+                                    stockLevel.level === 'medium' ? 'blink-yellow' :
+                                    stockLevel.level === 'low' ? 'blink-red' : ''
+                                  }`}
+                                  title={stockLevel.label}
+                                />
+                              </div>
+                            </TableCell>
+                          )}
                           <TableCell>
-                            <div className="flex items-center gap-2">
-                              <div
-                                className={`w-4 h-4 rounded-full ${stockLevel.color} ${
-                                  stockLevel.level === 'medium' ? 'blink-yellow' :
-                                  stockLevel.level === 'low' ? 'blink-red' : ''
-                                }`}
-                                title={stockLevel.label}
-                              />
-                              {stockLevel.level === 'good' && (
-                                <CheckCircle className="h-4 w-4 text-green-500" />
-                              )}
-                              {stockLevel.level === 'medium' && (
-                                <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                              )}
-                              {stockLevel.level === 'low' && (
-                                <AlertTriangle className="h-4 w-4 text-red-500" />
-                              )}
+                            <div>
+                              <p className="font-semibold">{group.medicineName}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {[group.medicineStrength, group.medicineForm].filter(Boolean).join(' · ')}
+                              </p>
                             </div>
                           </TableCell>
-                        )}
-                        <TableCell className="font-mono text-sm">{batch.batchNo}</TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{batch.medicine.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {batch.medicine.strength} • {batch.medicine.form}
-                            </p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{batch.pharmacy.code}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={getStorageColor(batch.storageType)}>
-                            {batch.storageType.replace('_', ' ')}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            <p className="font-medium">{batch.qtyAvailable.toLocaleString()}</p>
-                            <p className="text-xs text-muted-foreground">
-                              of {batch.qtyReceived.toLocaleString()}
-                            </p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            {activeTab === 'expired' && (
-                              <AlertTriangle className="h-3 w-3 text-red-600" />
-                            )}
-                            {activeTab === 'active' && isExpiringSoon(batch.expiryDate) && (
-                              <Calendar className="h-3 w-3 text-yellow-600" />
-                            )}
-                            <span className="text-sm">{formatDate(batch.expiryDate)}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-xs space-y-0.5">
-                            <p>P: {Number(batch.purchasePrice).toFixed(2)}</p>
-                            <p>G: {Number(batch.governmentPrice).toFixed(2)}</p>
-                            <p>R: {Number(batch.retailPrice).toFixed(2)}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="font-semibold text-sm">
-                            PKR {(batch.qtyAvailable * batch.purchasePrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm">{formatDate(batch.receivedDate)}</TableCell>
-                        <TableCell>
-                          <Badge className={`${getStatusColor(batch.status)} text-white`}>
-                            {batch.status}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
+                          <TableCell className="text-center">
+                            <Badge variant="outline">{group.batches.length}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              <p className="font-semibold">{group.totalQtyAvailable.toLocaleString()}</p>
+                              <p className="text-xs text-muted-foreground">of {group.totalQtyReceived.toLocaleString()}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1 text-sm">
+                              {anyExpiringSoon && <Calendar className="h-3 w-3 text-yellow-600" />}
+                              {activeTab === 'expired' && <AlertTriangle className="h-3 w-3 text-red-600" />}
+                              {formatDate(group.nearestExpiry)}
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-semibold">
+                            PKR {group.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell>
+                            <button
+                              onClick={e => { e.stopPropagation(); toggleGroup(group.key); }}
+                              className="p-1 rounded hover:bg-muted transition-colors"
+                              title={isExpanded ? 'Collapse batches' : 'Expand batches'}
+                            >
+                              {isExpanded
+                                ? <ChevronDown className="h-4 w-4 text-primary" />
+                                : <Info className="h-4 w-4 text-muted-foreground" />
+                              }
+                            </button>
+                          </TableCell>
+                        </TableRow>
+
+                        {/* Batch detail sub-rows (accordion) */}
+                        {isExpanded && group.batches.map(batch => {
+                          const batchStockLevel = getStockLevel(batch.qtyAvailable);
+                          return (
+                            <TableRow
+                              key={batch.id}
+                              className={`text-sm ${
+                                activeTab === 'expired' || isExpired(batch.expiryDate)
+                                  ? 'bg-red-50/60'
+                                  : isExpiringSoon(batch.expiryDate)
+                                  ? 'bg-yellow-50/60'
+                                  : 'bg-white'
+                              }`}
+                            >
+                              {isActiveTab && (
+                                <TableCell>
+                                  <div className="flex items-center gap-1 pl-2">
+                                    {batchStockLevel.level === 'good' && <CheckCircle className="h-3 w-3 text-green-500" />}
+                                    {batchStockLevel.level === 'medium' && <AlertTriangle className="h-3 w-3 text-yellow-500" />}
+                                    {batchStockLevel.level === 'low' && <AlertTriangle className="h-3 w-3 text-red-500" />}
+                                  </div>
+                                </TableCell>
+                              )}
+                              <TableCell>
+                                <div className="flex items-center gap-2 pl-4 text-muted-foreground">
+                                  <ChevronRight className="h-3 w-3 shrink-0" />
+                                  <div>
+                                    <p className="font-mono text-xs font-medium text-foreground">{batch.batchNo}</p>
+                                    <div className="flex items-center gap-1 mt-0.5">
+                                      <Badge variant="outline" className="text-[10px] px-1 py-0">{batch.pharmacy.code}</Badge>
+                                      <Badge variant="outline" className={`text-[10px] px-1 py-0 ${getStorageColor(batch.storageType)}`}>
+                                        {batch.storageType.replace(/_/g, ' ')}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge className={`${getStatusColor(batch.status)} text-white text-[10px]`}>
+                                  {batch.status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <p className="font-medium">{batch.qtyAvailable.toLocaleString()}</p>
+                                <p className="text-xs text-muted-foreground">of {batch.qtyReceived.toLocaleString()}</p>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  {isExpiringSoon(batch.expiryDate) && <Calendar className="h-3 w-3 text-yellow-600" />}
+                                  {(activeTab === 'expired' || isExpired(batch.expiryDate)) && <AlertTriangle className="h-3 w-3 text-red-600" />}
+                                  <span>{formatDate(batch.expiryDate)}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="text-xs space-y-0.5 text-muted-foreground">
+                                  <p>P: <span className="text-foreground font-medium">{Number(batch.purchasePrice).toFixed(2)}</span></p>
+                                  <p>Total: <span className="text-foreground font-semibold">PKR {(batch.qtyAvailable * Number(batch.purchasePrice)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></p>
+                                </div>
+                              </TableCell>
+                              <TableCell />
+                            </TableRow>
+                          );
+                        })}
+                      </React.Fragment>
                     );
-                  });
-                })()}
+                  })
+                )}
               </TableBody>
             </Table>
           )}
         </CardContent>
       </Card>
+
+      {/* Export Column Selector Dialog */}
+      <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Export to Excel</DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-4">
+
+            {/* Scope selector */}
+            <div>
+              <p className="text-sm font-medium mb-2">What to export</p>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { value: 'current', label: 'Current tab' },
+                  { value: 'normal', label: 'Normal Items only' },
+                  { value: 'lp', label: 'LP Items only' },
+                  { value: 'both', label: 'Normal + LP (2 sheets)' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setExportScope(opt.value)}
+                    className={`px-3 py-2 text-sm rounded-md border text-left transition-colors ${
+                      exportScope === opt.value
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'border-muted-foreground/30 hover:bg-muted'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <hr />
+
+            {/* Column selector */}
+            <div>
+              <p className="text-sm font-medium mb-2">Columns to include</p>
+              <div className="space-y-1">
+            {EXPORT_COLUMNS.map(col => (
+              <label
+                key={col.key}
+                className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer"
+              >
+                <div
+                  className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                    selectedColumns[col.key]
+                      ? 'bg-primary border-primary'
+                      : 'border-muted-foreground/40'
+                  }`}
+                  onClick={() =>
+                    setSelectedColumns(prev => ({ ...prev, [col.key]: !prev[col.key] }))
+                  }
+                >
+                  {selectedColumns[col.key] && (
+                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+                <span className="text-sm">{col.label}</span>
+              </label>
+            ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setExportDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleExport}
+              disabled={exportLoading || !EXPORT_COLUMNS.some(c => selectedColumns[c.key])}
+            >
+              {exportLoading
+                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                : <FileDown className="mr-2 h-4 w-4" />
+              }
+              {exportLoading ? 'Exporting…' : 'Export'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -147,6 +147,7 @@ export class InventoryService {
             )
           : null,
         reorderLevel: createStockBatchDto.reorderLevel ?? 10,
+        category: createStockBatchDto.category ?? 'NORMAL',
       },
       include: {
         medicine: {
@@ -278,6 +279,7 @@ export class InventoryService {
       storageType,
       dispensingUnit,
       lowStockOnly,
+      category,
       expiringBefore,
       expiringAfter,
       limit = 50,
@@ -314,6 +316,7 @@ export class InventoryService {
     if (status) where.status = status;
     if (storageType) where.storageType = storageType;
     if (dispensingUnit) where.dispensingUnit = { contains: dispensingUnit, mode: 'insensitive' };
+    if (category) where.category = category;
 
     // Filter batches where qtyAvailableDispensing is at or below reorderLevel
     if (lowStockOnly) {

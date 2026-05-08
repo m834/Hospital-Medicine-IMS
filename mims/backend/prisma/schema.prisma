@@ -371,6 +371,7 @@ model StockBatch {
   retailPrice     Decimal     @map("retail_price") @db.Decimal(10, 2)
   receivedDate    DateTime    @default(now()) @map("received_date")
   status          BatchStatus @default(AVAILABLE)
+  category        BatchCategory @default(NORMAL)
   version         Int         @default(1)
   createdAt       DateTime    @default(now()) @map("created_at")
   updatedAt       DateTime    @updatedAt @map("updated_at")
@@ -410,6 +411,7 @@ model StockBatch {
   @@index([pharmacyId, expiryDate]) // For expiry alerts
   @@index([medicineId, expiryDate, status]) // For medicine-specific expiry queries
   @@index([pharmacyId, status, qtyAvailableDispensing]) // For low-stock alerts with unit tracking
+  @@index([hospitalId, category]) // For category tab filtering
   @@map("stock_batches")
 }
 
@@ -1331,6 +1333,11 @@ enum BatchStatus {
   EXPIRED
   DEPLETED
   QUARANTINE
+}
+
+enum BatchCategory {
+  NORMAL
+  LP
 }
 
 enum POStatus {
