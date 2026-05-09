@@ -533,14 +533,15 @@ model Prescription {
 }
 
 model PrescriptionItem {
-  id             String                 @id @default(uuid())
-  prescriptionId String                 @map("prescription_id")
-  medicineId     String                 @map("medicine_id")
-  qtyPrescribed  Int                    @map("qty_prescribed")
-  dosage         String?
-  frequency      String?
-  duration       String?
-  status         PrescriptionItemStatus @default(PENDING)
+  id               String                 @id @default(uuid())
+  prescriptionId   String                 @map("prescription_id")
+  medicineId       String                 @map("medicine_id")
+  qtyPrescribed    Int                    @map("qty_prescribed")
+  dosage           String?
+  frequency        String?
+  duration         String?
+  status           PrescriptionItemStatus @default(PENDING)
+  transferCategory BatchCategory          @default(NORMAL) @map("transfer_category")
 
   // Relations
   prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
@@ -689,13 +690,14 @@ model TransferRequest {
 }
 
 model TransferItem {
-  id            String @id @default(uuid())
-  transferId    String @map("transfer_id")
-  medicineId    String @map("medicine_id")
-  qtyRequested  Int    @map("qty_requested")
-  qtyApproved   Int?   @map("qty_approved")
-  qtyDispatched Int?   @map("qty_dispatched")
-  qtyReceived   Int?   @map("qty_received")
+  id                String        @id @default(uuid())
+  transferId        String        @map("transfer_id")
+  medicineId        String        @map("medicine_id")
+  qtyRequested      Int           @map("qty_requested")
+  qtyApproved       Int?          @map("qty_approved")
+  qtyDispatched     Int?          @map("qty_dispatched")
+  qtyReceived       Int?          @map("qty_received")
+  transferCategory  BatchCategory @default(NORMAL) @map("transfer_category")
 
   // Relations
   transferRequest TransferRequest        @relation(fields: [transferId], references: [id], onDelete: Cascade)

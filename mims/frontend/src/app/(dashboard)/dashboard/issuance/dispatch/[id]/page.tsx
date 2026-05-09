@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import {
   Loader2,
   ArrowLeft,
@@ -41,6 +42,7 @@ interface StockBatch {
   expiryDate: string;
   receivedDate: string;
   purchasePrice: number;
+  category?: 'NORMAL' | 'LP';
 }
 
 interface TransferItem {
@@ -53,6 +55,7 @@ interface TransferItem {
   };
   qtyRequested: number;
   qtyApproved: number;
+  transferCategory?: 'NORMAL' | 'LP';
   selectedBatches?: Array<{
     batchId: string;
     quantity: number;
@@ -97,7 +100,11 @@ export default function DispatchTransferPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [availableBatches, setAvailableBatches] = useState<Record<string, StockBatch[]>>({});
-  const [selectedBatches, setSelectedBatches] = useState<Record<string, Array<{ batchId: string; quantity: number }>>>({});
+  const [selectedBatches, setSelectedBatches] = useState<
+    Record<string, Array<{ batchId: string; quantity: number }>>
+  >({});
+  // Per-item LP toggles (keyed by item id)
+  const [itemLPToggle, setItemLPToggle] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (transferId) {
@@ -110,7 +117,7 @@ export default function DispatchTransferPage() {
     try {
       const response = await api.get(`/transfers/${transferId}`);
       const data = response.data;
-      
+
       if (data.status !== 'APPROVED') {
         alert('This transfer request has not been approved yet');
         router.push('/dashboard/issuance');
@@ -119,8 +126,14 @@ export default function DispatchTransferPage() {
 
       setTransfer(data);
 
-      // Fetch available batches for each medicine
-      await fetchAvailableBatches(data.items, data.toPharmacy.id);
+      // Initialize LP toggles based on stored transferCategory
+      const initialToggles: Record<string, boolean> = {};
+      data.items.forEach((item: TransferItem) => {
+        initialToggles[item.id] = item.transferCategory === 'LP';
+      });
+      setItemLPToggle(initialToggles);
+
+      await fetchAvailableBatches(data.items, data.toPharmacy.id, initialToggles);
     } catch (error) {
       console.error('Error fetching transfer details:', error);
     } finally {
@@ -128,15 +141,21 @@ export default function DispatchTransferPage() {
     }
   };
 
-  const fetchAvailableBatches = async (items: TransferItem[], pharmacyId: string) => {
+  const fetchAvailableBatches = async (
+    items: TransferItem[],
+    pharmacyId: string,
+    lpToggles: Record<string, boolean>
+  ) => {
     try {
       const batches: Record<string, StockBatch[]> = {};
 
       await Promise.all(
         items.map(async (item) => {
           try {
+            const category = lpToggles[item.id] ? 'LP' : 'NORMAL';
             const response = await api.get(
-              `/inventory/batches/available/${item.medicine.id}/${pharmacyId}`
+              `/inventory/batches/available/${item.medicine.id}/${pharmacyId}`,
+              { params: { category } }
             );
             batches[item.id] = response.data || [];
           } catch (error) {
@@ -147,15 +166,47 @@ export default function DispatchTransferPage() {
       );
 
       setAvailableBatches(batches);
-
-      // Auto-select batches using FIFO
       autoSelectBatches(items, batches);
     } catch (error) {
       console.error('Error fetching available batches:', error);
     }
   };
 
-  const autoSelectBatches = (items: TransferItem[], batches: Record<string, StockBatch[]>) => {
+  const refetchBatchesForItem = async (item: TransferItem, isLP: boolean) => {
+    if (!transfer) return;
+    const category = isLP ? 'LP' : 'NORMAL';
+    try {
+      const response = await api.get(
+        `/inventory/batches/available/${item.medicine.id}/${transfer.toPharmacy.id}`,
+        { params: { category } }
+      );
+      const batches = response.data || [];
+      setAvailableBatches((prev) => ({ ...prev, [item.id]: batches }));
+
+      // Auto-select from new batches for this item
+      let remaining = item.qtyApproved;
+      const itemSelected: Array<{ batchId: string; quantity: number }> = [];
+      for (const batch of batches) {
+        if (remaining <= 0) break;
+        const qtyToTake = Math.min(batch.qtyAvailable, remaining);
+        itemSelected.push({ batchId: batch.id, quantity: qtyToTake });
+        remaining -= qtyToTake;
+      }
+      setSelectedBatches((prev) => ({ ...prev, [item.id]: itemSelected }));
+    } catch (error) {
+      console.error(`Error refetching batches for ${item.medicine.name}:`, error);
+    }
+  };
+
+  const handleLPToggle = (item: TransferItem, value: boolean) => {
+    setItemLPToggle((prev) => ({ ...prev, [item.id]: value }));
+    refetchBatchesForItem(item, value);
+  };
+
+  const autoSelectBatches = (
+    items: TransferItem[],
+    batches: Record<string, StockBatch[]>
+  ) => {
     const selected: Record<string, Array<{ batchId: string; quantity: number }>> = {};
 
     items.forEach((item) => {
@@ -163,16 +214,10 @@ export default function DispatchTransferPage() {
       let remaining = item.qtyApproved;
       const itemSelected: Array<{ batchId: string; quantity: number }> = [];
 
-      // FIFO: Use oldest batches first
       for (const batch of itemBatches) {
         if (remaining <= 0) break;
-
         const qtyToTake = Math.min(batch.qtyAvailable, remaining);
-        itemSelected.push({
-          batchId: batch.id,
-          quantity: qtyToTake,
-        });
-
+        itemSelected.push({ batchId: batch.id, quantity: qtyToTake });
         remaining -= qtyToTake;
       }
 
@@ -184,7 +229,7 @@ export default function DispatchTransferPage() {
 
   const handleBatchQuantityChange = (itemId: string, batchId: string, value: string) => {
     const numValue = parseInt(value) || 0;
-    
+
     setSelectedBatches((prev) => {
       const itemBatches = prev[itemId] || [];
       const existingBatchIndex = itemBatches.findIndex((b) => b.batchId === batchId);
@@ -192,14 +237,12 @@ export default function DispatchTransferPage() {
       if (existingBatchIndex >= 0) {
         const updated = [...itemBatches];
         if (numValue === 0) {
-          // Remove if quantity is 0
           updated.splice(existingBatchIndex, 1);
         } else {
           updated[existingBatchIndex] = { batchId, quantity: numValue };
         }
         return { ...prev, [itemId]: updated };
       } else if (numValue > 0) {
-        // Add new batch selection
         return { ...prev, [itemId]: [...itemBatches, { batchId, quantity: numValue }] };
       }
 
@@ -215,18 +258,21 @@ export default function DispatchTransferPage() {
   const handleDispatch = async () => {
     if (!transfer) return;
 
-    // Validate all items have correct quantities
     const errors: string[] = [];
-    
+
     transfer.items.forEach((item) => {
       const selectedQty = getTotalSelectedQty(item.id);
       if (selectedQty !== item.qtyApproved) {
-        errors.push(`${item.medicine.name}: Selected ${selectedQty} but approved ${item.qtyApproved}`);
+        errors.push(
+          `${item.medicine.name}: Selected ${selectedQty} but approved ${item.qtyApproved}`
+        );
       }
     });
 
     if (errors.length > 0) {
-      alert('Please ensure selected quantities match approved quantities:\n\n' + errors.join('\n'));
+      alert(
+        'Please ensure selected quantities match approved quantities:\n\n' + errors.join('\n')
+      );
       return;
     }
 
@@ -236,7 +282,6 @@ export default function DispatchTransferPage() {
 
     setSubmitting(true);
     try {
-      // Prepare dispatch data
       const dispatchData = {
         items: transfer.items.map((item) => ({
           itemId: item.id,
@@ -295,15 +340,13 @@ export default function DispatchTransferPage() {
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Issuance
         </Button>
-        
+
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Dispatch Transfer</h1>
-            <p className="text-muted-foreground mt-1">
-              Request #{transfer.requestNumber}
-            </p>
+            <p className="text-muted-foreground mt-1">Request #{transfer.requestNumber}</p>
           </div>
-          
+
           <Badge variant="default" className="text-lg px-4 py-2 bg-green-600">
             <CheckCircle className="h-4 w-4 mr-2" />
             APPROVED
@@ -360,9 +403,10 @@ export default function DispatchTransferPage() {
       {/* Items to Dispatch */}
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Select Batches for Dispatch (FIFO)</CardTitle>
+          <CardTitle>Select Batches for Dispatch</CardTitle>
           <CardDescription>
-            Select stock batches to fulfill this transfer. Oldest batches are auto-selected.
+            Toggle LP to switch between Normal and LP stock pools per medicine. Oldest batches are
+            auto-selected.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -370,10 +414,11 @@ export default function DispatchTransferPage() {
             const itemBatches = availableBatches[item.id] || [];
             const totalSelected = getTotalSelectedQty(item.id);
             const isComplete = totalSelected === item.qtyApproved;
+            const isLPItem = itemLPToggle[item.id] ?? false;
 
             return (
               <div key={item.id} className="mb-8 last:mb-0">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-start justify-between mb-4 gap-4">
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold">{item.medicine.name}</h3>
                     <p className="text-sm text-muted-foreground">
@@ -381,6 +426,37 @@ export default function DispatchTransferPage() {
                       {item.medicine.strength && ` - ${item.medicine.strength}`}
                     </p>
                   </div>
+
+                  {/* LP toggle per item */}
+                  <div
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                      isLPItem
+                        ? 'bg-orange-50 border-orange-300'
+                        : 'bg-muted border-transparent'
+                    }`}
+                  >
+                    <span className="text-xs text-muted-foreground">Normal</span>
+                    <Switch
+                      checked={isLPItem}
+                      onCheckedChange={(val) => handleLPToggle(item, val)}
+                    />
+                    <span
+                      className={`text-xs font-medium ${
+                        isLPItem ? 'text-orange-600' : 'text-muted-foreground'
+                      }`}
+                    >
+                      LP
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={
+                        isLPItem ? 'border-orange-400 text-orange-600' : ''
+                      }
+                    >
+                      {isLPItem ? 'LP' : 'Normal'} Stock
+                    </Badge>
+                  </div>
+
                   <div className="text-right">
                     <p className="text-sm text-muted-foreground">Approved Quantity</p>
                     <p className="text-2xl font-bold">{item.qtyApproved}</p>
@@ -403,7 +479,7 @@ export default function DispatchTransferPage() {
                 {itemBatches.length === 0 ? (
                   <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
                     <p className="text-red-700 dark:text-red-300 text-sm">
-                      No available batches found for this medicine
+                      No available {isLPItem ? 'LP' : 'Normal'} batches found for this medicine
                     </p>
                   </div>
                 ) : (
@@ -411,6 +487,7 @@ export default function DispatchTransferPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Batch Number</TableHead>
+                        <TableHead>Category</TableHead>
                         <TableHead className="text-right">Available</TableHead>
                         <TableHead className="text-right">Expiry Date</TableHead>
                         <TableHead className="text-right">Received Date</TableHead>
@@ -419,12 +496,28 @@ export default function DispatchTransferPage() {
                     </TableHeader>
                     <TableBody>
                       {itemBatches.map((batch) => {
-                        const selected = selectedBatches[item.id]?.find((b) => b.batchId === batch.id);
+                        const selected = selectedBatches[item.id]?.find(
+                          (b) => b.batchId === batch.id
+                        );
                         const selectedQty = selected?.quantity || 0;
 
                         return (
                           <TableRow key={batch.id}>
-                            <TableCell className="font-medium">{batch.batchNumber}</TableCell>
+                            <TableCell className="font-medium">
+                              {batch.batchNumber || (batch as any).batchNo}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                className={
+                                  batch.category === 'LP'
+                                    ? 'border-orange-400 text-orange-600'
+                                    : ''
+                                }
+                              >
+                                {batch.category === 'LP' ? 'LP' : 'Normal'}
+                              </Badge>
+                            </TableCell>
                             <TableCell className="text-right">{batch.qtyAvailable}</TableCell>
                             <TableCell className="text-right">
                               {format(new Date(batch.expiryDate), 'PP')}
@@ -465,7 +558,7 @@ export default function DispatchTransferPage() {
         >
           Cancel
         </Button>
-        
+
         <Button
           onClick={handleDispatch}
           disabled={submitting}

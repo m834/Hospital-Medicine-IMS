@@ -325,6 +325,7 @@ export default function ReceiveStockPage() {
     };
     setItems([...items, newItem]);
     
+    
     // Reset form for next item
     form.reset({
       medicineId: '',

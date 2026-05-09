@@ -1,5 +1,6 @@
-import { IsString, IsArray, IsOptional, ValidateNested, IsInt, Min } from 'class-validator';
+import { IsString, IsArray, IsOptional, ValidateNested, IsInt, Min, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
+import { BatchCategory } from '@prisma/client';
 
 export class TransferItemDto {
   @IsString()
@@ -8,6 +9,10 @@ export class TransferItemDto {
   @IsInt()
   @Min(1)
   qtyRequested: number;
+
+  @IsEnum(BatchCategory)
+  @IsOptional()
+  transferCategory?: BatchCategory;
 }
 
 export class CreateTransferRequestDto {

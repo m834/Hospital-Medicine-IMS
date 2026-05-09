@@ -119,6 +119,7 @@ export class InventoryController {
   async getAvailableBatches(
     @Param('medicineId') medicineId: string,
     @Param('pharmacyId') pharmacyId: string,
+    @Query('category') category: 'NORMAL' | 'LP' | undefined,
     @Request() req,
   ) {
     let hospitalId = req.user.hospitalId;
@@ -136,6 +137,7 @@ export class InventoryController {
       medicineId,
       pharmacyId,
       hospitalId,
+      category,
     );
   }
 
@@ -164,12 +166,12 @@ export class InventoryController {
       hospitalId = pharmacy?.hospitalId;
     }
 
-    const totalStock = await this.inventoryService.getTotalAvailableStock(
+    const stockByCategory = await this.inventoryService.getStockByCategory(
       medicineId,
       pharmacyId,
       hospitalId,
     );
-    return { medicineId, pharmacyId, totalQty: totalStock };
+    return { medicineId, pharmacyId, ...stockByCategory };
   }
 
   @Get('alerts/low-stock')

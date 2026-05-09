@@ -91,6 +91,7 @@ export class PrescriptionsService {
                 frequency: item.frequency,
                 duration: item.duration,
                 status: 'ISSUED',
+                transferCategory: item.transferCategory ?? 'NORMAL',
               })),
             },
           },
@@ -104,6 +105,7 @@ export class PrescriptionsService {
         // Deduct stock from the issuing pharmacist's inventory
         let totalAmount = new Prisma.Decimal(0);
         for (const item of created.items) {
+          const category = (item as any).transferCategory ?? 'NORMAL';
           const batch = await tx.stockBatch.findFirst({
             where: {
               hospitalId,
@@ -112,18 +114,21 @@ export class PrescriptionsService {
               status: 'AVAILABLE',
               qtyAvailable: { gt: 0 },
               expiryDate: { gte: now },
+              category,
             },
             orderBy: [{ expiryDate: 'asc' }, { receivedDate: 'asc' }],
           });
 
           if (!batch) {
-            throw new BadRequestException(`No available stock for medicine: ${item.medicine.name}`);
+            throw new BadRequestException(
+              `No available ${category} stock for medicine: ${item.medicine.name}`,
+            );
           }
 
           const qtyPrescribed = (item as any).qtyPrescribed as number;
           if (batch.qtyAvailable < qtyPrescribed) {
             throw new BadRequestException(
-              `Insufficient stock for ${item.medicine.name}. Requested: ${qtyPrescribed}, Available: ${batch.qtyAvailable}`,
+              `Insufficient ${category} stock for ${item.medicine.name}. Requested: ${qtyPrescribed}, Available: ${batch.qtyAvailable}`,
             );
           }
 
@@ -214,6 +219,7 @@ export class PrescriptionsService {
             frequency: item.frequency,
             duration: item.duration,
             status: 'PENDING',
+            transferCategory: item.transferCategory ?? 'NORMAL',
           })),
         },
       },
@@ -417,6 +423,7 @@ export class PrescriptionsService {
 
       const updated = await this.prisma.$transaction(async (tx) => {
         for (const item of prescription.items) {
+          const category = (item as any).transferCategory ?? 'NORMAL';
           const batch = await tx.stockBatch.findFirst({
             where: {
               hospitalId,
@@ -425,19 +432,20 @@ export class PrescriptionsService {
               status: 'AVAILABLE',
               qtyAvailable: { gt: 0 },
               expiryDate: { gte: now },
+              category,
             },
             orderBy: [{ expiryDate: 'asc' }, { receivedDate: 'asc' }],
           });
 
           if (!batch) {
             throw new BadRequestException(
-              `No available stock for medicine ${item.medicineId}`,
+              `No available ${category} stock for medicine ${item.medicineId}`,
             );
           }
 
           if (batch.qtyAvailable < item.qtyPrescribed) {
             throw new BadRequestException(
-              `Insufficient stock for medicine ${item.medicineId}. ` +
+              `Insufficient ${category} stock for medicine ${item.medicineId}. ` +
                 `Requested: ${item.qtyPrescribed}, Available: ${batch.qtyAvailable}`,
             );
           }

@@ -53,6 +53,7 @@ export class TransfersService {
           create: createDto.items.map((item) => ({
             medicineId: item.medicineId,
             qtyRequested: item.qtyRequested,
+            transferCategory: item.transferCategory ?? 'NORMAL',
           })),
         },
       },
@@ -451,9 +452,16 @@ export class TransfersService {
           );
         }
 
+        // Validate batch category matches the requested transfer category
+        if (batch.category !== transferItem.transferCategory) {
+          throw new BadRequestException(
+            `Batch ${batch.batchNo} is ${batch.category} but this item requires ${transferItem.transferCategory} stock`
+          );
+        }
+
         if (batch.qtyAvailable < batchMapping.quantity) {
           throw new BadRequestException(
-            `Insufficient quantity in batch ${batch.batchNo}. Available: ${batch.qtyAvailable}, Requested: ${batchMapping.quantity}`
+            `Insufficient ${transferItem.transferCategory} quantity in batch ${batch.batchNo}. Available: ${batch.qtyAvailable}, Requested: ${batchMapping.quantity}`
           );
         }
 
@@ -592,6 +600,7 @@ export class TransfersService {
             retailPrice: sourceBatch.retailPrice,
             receivedDate: new Date(),
             status: BatchStatus.AVAILABLE,
+            category: sourceBatch.category, // Preserve category (NORMAL/LP) on transfer
           },
         });
 

@@ -479,6 +479,7 @@ export class InventoryService {
     medicineId: string,
     pharmacyId: string,
     hospitalId: string,
+    category?: 'NORMAL' | 'LP',
   ) {
     const now = new Date();
 
@@ -490,6 +491,7 @@ export class InventoryService {
         status: 'AVAILABLE',
         qtyAvailable: { gt: 0 },
         expiryDate: { gt: now },
+        ...(category ? { category } : {}),
       },
       orderBy: {
         receivedDate: 'asc', // FIFO: oldest batches first
@@ -582,6 +584,20 @@ export class InventoryService {
   ): Promise<number> {
     const batches = await this.getAvailableBatchesFIFO(medicineId, pharmacyId, hospitalId);
     return batches.reduce((total, batch) => total + batch.qtyAvailable, 0);
+  }
+
+  async getStockByCategory(
+    medicineId: string,
+    pharmacyId: string,
+    hospitalId: string,
+  ): Promise<{ normalStock: number; lpStock: number; totalStock: number }> {
+    const [normalBatches, lpBatches] = await Promise.all([
+      this.getAvailableBatchesFIFO(medicineId, pharmacyId, hospitalId, 'NORMAL'),
+      this.getAvailableBatchesFIFO(medicineId, pharmacyId, hospitalId, 'LP'),
+    ]);
+    const normalStock = normalBatches.reduce((sum, b) => sum + b.qtyAvailable, 0);
+    const lpStock = lpBatches.reduce((sum, b) => sum + b.qtyAvailable, 0);
+    return { normalStock, lpStock, totalStock: normalStock + lpStock };
   }
 
   /**

@@ -30,6 +30,7 @@ import {
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import {
   Table,
   TableBody,
@@ -83,16 +84,18 @@ interface TransferItem {
   medicineForm: string;
   medicineStrength?: string;
   qtyRequested: number;
-  availableStock?: number;
+  normalStock?: number;
+  lpStock?: number;
+  transferCategory: 'NORMAL' | 'LP';
 }
 
 interface StockInfo {
-  medicineId: string;
-  totalStock: number;
+  normalStock: number;
+  lpStock: number;
 }
 
 const transferRequestSchema = z.object({
-  hospitalId: z.string().optional(), // For Super Admin only
+  hospitalId: z.string().optional(),
   fromPharmacyId: z.string().min(1, 'Source pharmacy is required'),
   notes: z.string().optional(),
 });
@@ -103,13 +106,14 @@ export default function RequestTransferPage() {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
-  const [allPharmacies, setAllPharmacies] = useState<Pharmacy[]>([]); // Store all pharmacies
+  const [allPharmacies, setAllPharmacies] = useState<Pharmacy[]>([]);
   const [transferItems, setTransferItems] = useState<TransferItem[]>([]);
   const [selectedMedicine, setSelectedMedicine] = useState('');
   const [quantity, setQuantity] = useState<number>(1);
+  const [isLP, setIsLP] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [stockInfo, setStockInfo] = useState<Map<string, number>>(new Map());
+  const [stockInfo, setStockInfo] = useState<Map<string, StockInfo>>(new Map());
   const [userPharmacyType, setUserPharmacyType] = useState<'MAIN' | 'SUB' | null>(null);
 
   const router = useRouter();
@@ -137,20 +141,16 @@ export default function RequestTransferPage() {
   }, [currentHospitalId]);
 
   useEffect(() => {
-    // Filter pharmacies when hospital changes (for Super Admin)
     if (isSuperAdmin && selectedHospitalId) {
-      // For Super Admin: show both MAIN and SUB pharmacies of selected hospital
       const filteredPharmacies = allPharmacies.filter(
         (p) => p.hospitalId === selectedHospitalId
       );
       setPharmacies(filteredPharmacies);
-      // Reset pharmacy selection when hospital changes
       form.setValue('fromPharmacyId', '');
     }
   }, [selectedHospitalId, allPharmacies, isSuperAdmin]);
 
   useEffect(() => {
-    // Fetch stock info when source pharmacy changes
     if (selectedFromPharmacy && transferItems.length > 0) {
       fetchStockAvailability();
     }
@@ -160,9 +160,9 @@ export default function RequestTransferPage() {
     setLoading(true);
     try {
       await Promise.all([
-        fetchMedicines(), 
+        fetchMedicines(),
         fetchPharmacies(),
-        ...(isSuperAdmin ? [fetchHospitals()] : [])
+        ...(isSuperAdmin ? [fetchHospitals()] : []),
       ]);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -196,32 +196,27 @@ export default function RequestTransferPage() {
       const response = await api.get('/pharmacies');
       const pharmacyList = response.data || [];
       setAllPharmacies(pharmacyList);
-      
+
       if (isSuperAdmin) {
-        // For Super Admin, don't filter yet - wait for hospital selection
         setPharmacies([]);
       } else {
-        // For regular users, determine what pharmacies they can request TO based on their pharmacy type
         const userPharmacy = pharmacyList.find((p: Pharmacy) => p.id === userPharmacyId);
-        
+
         if (userPharmacy) {
-          // Store user pharmacy type for UI labels
           setUserPharmacyType(userPharmacy.type);
-          
+
           if (userPharmacy.type === 'SUB') {
-            // Sub-pharmacy requests TO Main pharmacy (asking main to provide stock)
             const filteredPharmacies = pharmacyList.filter(
-              (p: Pharmacy) => 
-                p.hospitalId === userPharmacy.hospitalId && 
+              (p: Pharmacy) =>
+                p.hospitalId === userPharmacy.hospitalId &&
                 p.type === 'MAIN' &&
                 p.id !== userPharmacyId
             );
             setPharmacies(filteredPharmacies);
           } else if (userPharmacy.type === 'MAIN') {
-            // Main pharmacy can request TO Sub pharmacies (asking sub to provide stock)
             const filteredPharmacies = pharmacyList.filter(
-              (p: Pharmacy) => 
-                p.hospitalId === userPharmacy.hospitalId && 
+              (p: Pharmacy) =>
+                p.hospitalId === userPharmacy.hospitalId &&
                 p.type === 'SUB' &&
                 p.id !== userPharmacyId
             );
@@ -244,27 +239,37 @@ export default function RequestTransferPage() {
       );
 
       const responses = await Promise.all(stockPromises);
-      const newStockInfo = new Map<string, number>();
+      const newStockInfo = new Map<string, StockInfo>();
 
       responses.forEach((response) => {
         const data = response.data;
-        if (data?.medicineId && data?.totalStock !== undefined) {
-          newStockInfo.set(data.medicineId, data.totalStock);
+        if (data?.medicineId) {
+          newStockInfo.set(data.medicineId, {
+            normalStock: data.normalStock ?? 0,
+            lpStock: data.lpStock ?? 0,
+          });
         }
       });
 
       setStockInfo(newStockInfo);
 
-      // Update transfer items with available stock
       setTransferItems((items) =>
-        items.map((item) => ({
-          ...item,
-          availableStock: newStockInfo.get(item.medicineId) || 0,
-        }))
+        items.map((item) => {
+          const info = newStockInfo.get(item.medicineId);
+          return {
+            ...item,
+            normalStock: info?.normalStock ?? 0,
+            lpStock: info?.lpStock ?? 0,
+          };
+        })
       );
     } catch (error) {
       console.error('Error fetching stock availability:', error);
     }
+  };
+
+  const getAvailableForCategory = (item: TransferItem) => {
+    return item.transferCategory === 'LP' ? (item.lpStock ?? 0) : (item.normalStock ?? 0);
   };
 
   const handleAddItem = () => {
@@ -273,35 +278,34 @@ export default function RequestTransferPage() {
     const medicine = medicines.find((m) => m.id === selectedMedicine);
     if (!medicine) return;
 
-    // Check if medicine already added
+    const category: 'NORMAL' | 'LP' = isLP ? 'LP' : 'NORMAL';
     const existingItem = transferItems.find((item) => item.medicineId === selectedMedicine);
     if (existingItem) {
-      // Update quantity
       setTransferItems((items) =>
         items.map((item) =>
           item.medicineId === selectedMedicine
-            ? { ...item, qtyRequested: item.qtyRequested + quantity }
+            ? { ...item, qtyRequested: item.qtyRequested + quantity, transferCategory: category }
             : item
         )
       );
     } else {
-      // Add new item
+      const info = stockInfo.get(medicine.id);
       const newItem: TransferItem = {
         medicineId: medicine.id,
         medicineName: medicine.name,
         medicineForm: medicine.form,
         medicineStrength: medicine.strength,
         qtyRequested: quantity,
-        availableStock: stockInfo.get(medicine.id) || 0,
+        normalStock: info?.normalStock ?? 0,
+        lpStock: info?.lpStock ?? 0,
+        transferCategory: category,
       };
       setTransferItems([...transferItems, newItem]);
     }
 
-    // Reset selection
     setSelectedMedicine('');
     setQuantity(1);
 
-    // Fetch stock for new item if source pharmacy selected
     if (selectedFromPharmacy) {
       fetchStockAvailability();
     }
@@ -326,47 +330,51 @@ export default function RequestTransferPage() {
       return;
     }
 
-    // Determine source and destination for transfer
-    // The user's pharmacy is always the REQUESTER (FROM pharmacy - asking for stock)
-    // The selected pharmacy is being asked to PROVIDE the stock (TO pharmacy - will give stock)
-    
+    // Validate per-category stock
+    if (selectedFromPharmacy) {
+      for (const item of transferItems) {
+        const available = getAvailableForCategory(item);
+        if (available < item.qtyRequested) {
+          alert(
+            `Insufficient ${item.transferCategory === 'LP' ? 'LP' : 'Normal'} stock for ${item.medicineName}. Available: ${available}, Requested: ${item.qtyRequested}`
+          );
+          return;
+        }
+      }
+    }
+
     let fromPharmacyId: string;
     let toPharmacyId: string;
-    
+
     if (isSuperAdmin) {
       alert('Super Admin transfer logic needs destination pharmacy selection');
       return;
     } else {
-      // For regular users (Sub or Main Pharmacy Manager)
       const userPharmacy = allPharmacies.find((p) => p.id === userPharmacyId);
       if (!userPharmacy || !userPharmacyId) {
         alert('User pharmacy not found');
         return;
       }
-      
-      // User's pharmacy is the one making the request (FROM - the requester)
+
       fromPharmacyId = userPharmacyId;
-      
-      // Selected pharmacy is being asked to provide stock (TO - the provider)
       toPharmacyId = data.fromPharmacyId;
-      
-      // Validate the transfer
+
       const targetPharmacy = allPharmacies.find((p) => p.id === toPharmacyId);
       if (!targetPharmacy) {
         alert('Target pharmacy not found');
         return;
       }
-      
+
       if (targetPharmacy.hospitalId !== userPharmacy.hospitalId) {
         alert('Cannot request to pharmacy in different hospital');
         return;
       }
-      
+
       if (userPharmacy.type === 'SUB' && targetPharmacy.type !== 'MAIN') {
         alert('Sub-pharmacy can only request to Main pharmacy');
         return;
       }
-      
+
       if (userPharmacy.type === 'MAIN' && targetPharmacy.type !== 'SUB') {
         alert('Main pharmacy can only request to Sub-pharmacies');
         return;
@@ -376,11 +384,12 @@ export default function RequestTransferPage() {
     setSubmitting(true);
     try {
       const payload = {
-        fromPharmacyId, // Requester: user's pharmacy making the request
-        toPharmacyId,   // Provider: selected pharmacy being asked to provide stock
+        fromPharmacyId,
+        toPharmacyId,
         items: transferItems.map((item) => ({
           medicineId: item.medicineId,
           qtyRequested: item.qtyRequested,
+          transferCategory: item.transferCategory,
         })),
         requestedBy: user?.id,
         notes: data.notes || undefined,
@@ -418,11 +427,11 @@ export default function RequestTransferPage() {
           <div>
             <h1 className="text-3xl font-bold">Request Stock Transfer</h1>
             <p className="text-muted-foreground">
-              {isSuperAdmin 
-                ? "Create transfer request between pharmacies" 
+              {isSuperAdmin
+                ? 'Create transfer request between pharmacies'
                 : userPharmacyType === 'SUB'
-                ? "Request medicines to main pharmacy"
-                : "Request medicines to sub-pharmacies"}
+                ? 'Request medicines to main pharmacy'
+                : 'Request medicines to sub-pharmacies'}
             </p>
           </div>
         </div>
@@ -434,17 +443,16 @@ export default function RequestTransferPage() {
           <CardHeader>
             <CardTitle>Transfer Details</CardTitle>
             <CardDescription>
-              {isSuperAdmin 
-                ? "Select hospital and pharmacies for transfer" 
+              {isSuperAdmin
+                ? 'Select hospital and pharmacies for transfer'
                 : userPharmacyType === 'SUB'
-                ? "Select main pharmacy to send your request to and add notes (optional)"
-                : "Select sub-pharmacy to send your request to and add notes (optional)"}
+                ? 'Select main pharmacy to send your request to and add notes (optional)'
+                : 'Select sub-pharmacy to send your request to and add notes (optional)'}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Form {...form}>
               <div className="grid gap-4">
-                {/* Hospital Selection - Super Admin Only */}
                 {isSuperAdmin && (
                   <FormField
                     control={form.control}
@@ -466,7 +474,9 @@ export default function RequestTransferPage() {
                                 sub: h.code,
                               }))}
                               value={field.value || ''}
-                              onValueChange={(val) => { field.onChange(val); }}
+                              onValueChange={(val) => {
+                                field.onChange(val);
+                              }}
                               placeholder="Select hospital..."
                               searchPlaceholder="Search hospital..."
                             />
@@ -484,8 +494,8 @@ export default function RequestTransferPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
-                        {isSuperAdmin 
-                          ? 'Target Pharmacy *' 
+                        {isSuperAdmin
+                          ? 'Target Pharmacy *'
                           : userPharmacyType === 'SUB'
                           ? 'Request To (Main Pharmacy) *'
                           : 'Request To (Sub-Pharmacy) *'}
@@ -493,7 +503,6 @@ export default function RequestTransferPage() {
                       <Select
                         onValueChange={(value) => {
                           field.onChange(value);
-                          // Re-fetch stock when target pharmacy changes
                           if (transferItems.length > 0) {
                             fetchStockAvailability();
                           }
@@ -503,25 +512,25 @@ export default function RequestTransferPage() {
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue 
+                            <SelectValue
                               placeholder={
                                 isSuperAdmin && !selectedHospitalId
-                                  ? "Select hospital first"
+                                  ? 'Select hospital first'
                                   : userPharmacyType === 'SUB'
-                                  ? "Select main pharmacy to request to"
-                                  : "Select sub-pharmacy to request to"
-                              } 
+                                  ? 'Select main pharmacy to request to'
+                                  : 'Select sub-pharmacy to request to'
+                              }
                             />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
                           {pharmacies.length === 0 && (
                             <div className="px-2 py-4 text-sm text-muted-foreground text-center">
-                              {isSuperAdmin 
-                                ? "Select a hospital first" 
+                              {isSuperAdmin
+                                ? 'Select a hospital first'
                                 : userPharmacyType === 'SUB'
-                                ? "No main pharmacies available"
-                                : "No sub-pharmacies available"}
+                                ? 'No main pharmacies available'
+                                : 'No sub-pharmacies available'}
                             </div>
                           )}
                           {pharmacies.map((pharmacy) => (
@@ -566,6 +575,27 @@ export default function RequestTransferPage() {
             <CardDescription>Select medicines and quantities to request</CardDescription>
           </CardHeader>
           <CardContent>
+            {/* LP Toggle */}
+            <div
+              className={`flex items-center justify-between p-3 rounded-lg border mb-4 transition-colors ${
+                isLP ? 'bg-orange-50 border-orange-300' : 'bg-muted border-transparent'
+              }`}
+            >
+              <div>
+                <p className="font-medium text-sm">Local Purchase (LP) Stock</p>
+                <p className="text-xs text-muted-foreground">
+                  {isLP
+                    ? 'Items will be requested from LP stock pool'
+                    : 'Items will be requested from Normal stock pool'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Normal</span>
+                <Switch checked={isLP} onCheckedChange={setIsLP} />
+                <span className={`text-xs font-medium ${isLP ? 'text-orange-600' : 'text-muted-foreground'}`}>LP</span>
+              </div>
+            </div>
+
             <div className="flex gap-4 items-end">
               <div className="flex-1">
                 <label className="text-sm font-medium mb-2 block">Medicine</label>
@@ -620,14 +650,20 @@ export default function RequestTransferPage() {
                   <TableRow>
                     <TableHead>Medicine</TableHead>
                     <TableHead>Form & Strength</TableHead>
+                    <TableHead>Category</TableHead>
                     <TableHead className="text-right">Requested Qty</TableHead>
-                    {selectedFromPharmacy && <TableHead className="text-right">Available Stock</TableHead>}
+                    {selectedFromPharmacy && (
+                      <>
+                        <TableHead className="text-right">Normal Stock</TableHead>
+                        <TableHead className="text-right">LP Stock</TableHead>
+                      </>
+                    )}
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {transferItems.map((item) => {
-                    const available = item.availableStock || 0;
+                    const available = getAvailableForCategory(item);
                     const requested = item.qtyRequested;
                     const hasStock = available >= requested;
 
@@ -637,6 +673,18 @@ export default function RequestTransferPage() {
                         <TableCell>
                           {item.medicineForm}
                           {item.medicineStrength && ` - ${item.medicineStrength}`}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={item.transferCategory === 'LP' ? 'outline' : 'secondary'}
+                            className={
+                              item.transferCategory === 'LP'
+                                ? 'border-orange-400 text-orange-600'
+                                : ''
+                            }
+                          >
+                            {item.transferCategory === 'LP' ? 'LP' : 'Normal'}
+                          </Badge>
                         </TableCell>
                         <TableCell className="text-right">
                           <Input
@@ -650,27 +698,48 @@ export default function RequestTransferPage() {
                           />
                         </TableCell>
                         {selectedFromPharmacy && (
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              {hasStock ? (
+                          <>
+                            <TableCell className="text-right">
+                              <span
+                                className={
+                                  item.transferCategory === 'NORMAL' && !hasStock
+                                    ? 'text-red-600 font-medium'
+                                    : 'text-muted-foreground'
+                                }
+                              >
+                                {item.normalStock ?? '—'}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span
+                                className={
+                                  item.transferCategory === 'LP' && !hasStock
+                                    ? 'text-red-600 font-medium'
+                                    : 'text-muted-foreground'
+                                }
+                              >
+                                {item.lpStock ?? '—'}
+                              </span>
+                            </TableCell>
+                          </>
+                        )}
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {selectedFromPharmacy && (
+                              hasStock ? (
                                 <CheckCircle className="h-4 w-4 text-green-600" />
                               ) : (
                                 <AlertCircle className="h-4 w-4 text-red-600" />
-                              )}
-                              <span className={hasStock ? 'text-green-600' : 'text-red-600'}>
-                                {available}
-                              </span>
-                            </div>
-                          </TableCell>
-                        )}
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleRemoveItem(item.medicineId)}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-600" />
-                          </Button>
+                              )
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveItem(item.medicineId)}
+                            >
+                              <Trash2 className="h-4 w-4 text-red-600" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -696,10 +765,12 @@ export default function RequestTransferPage() {
                       </span>
                     </div>
                     <div className="col-span-2">
-                      {transferItems.every((item) => (item.availableStock || 0) >= item.qtyRequested) ? (
+                      {transferItems.every(
+                        (item) => getAvailableForCategory(item) >= item.qtyRequested
+                      ) ? (
                         <Badge variant="default" className="bg-green-600">
                           <CheckCircle className="h-3 w-3 mr-1" />
-                          All items available in stock
+                          All items available in selected stock pool
                         </Badge>
                       ) : (
                         <Badge variant="destructive">
