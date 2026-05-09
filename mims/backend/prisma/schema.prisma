@@ -193,6 +193,8 @@ model User {
   labSamplesCollected   LabOrder[]          @relation("LabSampleCollector")
   labResultsEntered     LabOrder[]          @relation("LabResultEnterer")
   labResultsApproved    LabOrder[]          @relation("LabResultApprover")
+  prescriptionMedicinesAdded PrescriptionMedicine[] @relation("PrescriptionMedicineAdder")
+  prescriptionDispatches     PrescriptionDispatch[] @relation("PrescriptionDispatcher")
   // Attendance Module
   biometricEnrollments  BiometricEnrollment[]
   attendanceLogs        AttendanceLog[]
@@ -320,8 +322,9 @@ model Medicine {
   stockBatches      StockBatch[]
   poItems           PurchaseOrderItem[]
   grnItems          GRNItem[]
-  prescriptionItems PrescriptionItem[]
-  issueItems        IssueItem[]
+  prescriptionItems     PrescriptionItem[]
+  prescriptionMedicines PrescriptionMedicine[]
+  issueItems            IssueItem[]
   transferItems     TransferItem[]
   returnItems       ReturnItem[]
   alternativesFor   MedicineAlternative[] @relation("MainMedicine")
@@ -510,6 +513,7 @@ model Prescription {
   hospitalId       String             @map("hospital_id")
   nrNumber         String             @map("nr_number")
   doctorId         String?            @map("doctor_id")
+  visitId          String?            @map("visit_id")
   prescriptionType PrescriptionType   @map("prescription_type")
   scannedImageUrl  String?            @map("scanned_image_url")
   status           PrescriptionStatus @default(PENDING)
@@ -519,15 +523,19 @@ model Prescription {
   updatedAt        DateTime           @updatedAt @map("updated_at")
 
   // Relations
-  hospital          Hospital           @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  patient           Patient            @relation(fields: [nrNumber], references: [nrNumber])
-  doctor            User?              @relation(fields: [doctorId], references: [id])
+  hospital          Hospital              @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient           Patient               @relation(fields: [nrNumber], references: [nrNumber])
+  doctor            User?                 @relation(fields: [doctorId], references: [id])
+  visit             Visit?                @relation(fields: [visitId], references: [id], onDelete: SetNull)
   items             PrescriptionItem[]
+  medicines         PrescriptionMedicine[]
+  dispatches        PrescriptionDispatch[]
   issueTransactions IssueTransaction[]
 
   @@index([hospitalId])
   @@index([nrNumber])
   @@index([doctorId])
+  @@index([visitId])
   @@index([status])
   @@map("prescriptions")
 }
@@ -549,6 +557,55 @@ model PrescriptionItem {
 
   @@index([prescriptionId])
   @@map("prescription_items")
+}
+
+model PrescriptionMedicine {
+  id             String        @id @default(uuid())
+  prescriptionId String        @map("prescription_id")
+  medicineId     String        @map("medicine_id")
+  dosage         String?
+  instructions   String?
+  category       BatchCategory @default(NORMAL)
+  addedBy        String        @map("added_by")
+  addedAt        DateTime      @default(now()) @map("added_at")
+
+  prescription  Prescription              @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  medicine      Medicine                  @relation(fields: [medicineId], references: [id])
+  addedByUser   User                      @relation("PrescriptionMedicineAdder", fields: [addedBy], references: [id])
+  dispatchItems PrescriptionDispatchItem[]
+
+  @@index([prescriptionId])
+  @@map("prescription_medicines")
+}
+
+model PrescriptionDispatch {
+  id             String   @id @default(uuid())
+  prescriptionId String   @map("prescription_id")
+  visitId        String?  @map("visit_id")
+  dispatchedBy   String   @map("dispatched_by")
+  dispatchedAt   DateTime @default(now()) @map("dispatched_at")
+  notes          String?
+
+  prescription Prescription              @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  visit        Visit?                    @relation(fields: [visitId], references: [id], onDelete: SetNull)
+  dispatcher   User                      @relation("PrescriptionDispatcher", fields: [dispatchedBy], references: [id])
+  items        PrescriptionDispatchItem[]
+
+  @@index([prescriptionId])
+  @@map("prescription_dispatches")
+}
+
+model PrescriptionDispatchItem {
+  id                     String @id @default(uuid())
+  dispatchId             String @map("dispatch_id")
+  prescriptionMedicineId String @map("prescription_medicine_id")
+  quantityDispatched     Int    @map("quantity_dispatched")
+
+  dispatch             PrescriptionDispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  prescriptionMedicine PrescriptionMedicine @relation(fields: [prescriptionMedicineId], references: [id])
+
+  @@index([dispatchId])
+  @@map("prescription_dispatch_items")
 }
 
 // ============================================
@@ -903,12 +960,14 @@ model Visit {
   department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   bed        Bed?       @relation(fields: [bedId], references: [id], onDelete: SetNull)
   attendingDoctor User? @relation("VisitAttendingDoctor", fields: [attendingDoctorId], references: [id], onDelete: SetNull)
-  referrals  Referral[]
-  receipts   Receipt[]
-  admission  Admission?
-  operations Operation[]
+  referrals              Referral[]
+  receipts               Receipt[]
+  admission              Admission?
+  operations             Operation[]
   // Phase 3: Lab Services
-  labOrders  LabOrder[]
+  labOrders              LabOrder[]
+  prescriptions          Prescription[]
+  prescriptionDispatches PrescriptionDispatch[]
 
   @@unique([clinicId, visitDate, tokenNumber])
   @@index([hospitalId])
@@ -1361,6 +1420,8 @@ enum PrescriptionStatus {
   ISSUED
   PARTIALLY_ISSUED
   CANCELLED
+  ACTIVE
+  COMPLETED
 }
 
 enum PrescriptionItemStatus {

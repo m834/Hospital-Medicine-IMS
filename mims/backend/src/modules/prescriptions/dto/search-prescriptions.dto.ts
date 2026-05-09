@@ -5,6 +5,8 @@ export enum PrescriptionStatus {
   ISSUED = 'ISSUED',
   PARTIALLY_ISSUED = 'PARTIALLY_ISSUED',
   CANCELLED = 'CANCELLED',
+  ACTIVE = 'ACTIVE',
+  COMPLETED = 'COMPLETED',
 }
 import { Type } from 'class-transformer';
 
