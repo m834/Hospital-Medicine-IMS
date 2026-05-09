@@ -1,19 +1,15 @@
 import { IsOptional, IsString, IsEnum, IsInt, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 
-export enum PrescriptionStatus {
-  PENDING = 'PENDING',
-  ISSUED = 'ISSUED',
-  PARTIALLY_ISSUED = 'PARTIALLY_ISSUED',
-  CANCELLED = 'CANCELLED',
+export enum SearchPrescriptionStatus {
   ACTIVE = 'ACTIVE',
   COMPLETED = 'COMPLETED',
 }
-import { Type } from 'class-transformer';
 
 export class SearchPrescriptionsDto {
   @IsOptional()
   @IsString()
-  hospitalId?: string; // Passed from frontend but handled by controller
+  hospitalId?: string;
 
   @IsOptional()
   @IsString()
@@ -24,8 +20,8 @@ export class SearchPrescriptionsDto {
   doctorId?: string;
 
   @IsOptional()
-  @IsEnum(PrescriptionStatus)
-  status?: PrescriptionStatus;
+  @IsEnum(SearchPrescriptionStatus)
+  status?: SearchPrescriptionStatus;
 
   @IsOptional()
   @Type(() => Number)

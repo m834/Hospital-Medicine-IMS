@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsArray, ValidateNested, IsOptional, IsEnum, IsInt, Min, IsBoolean } from 'class-validator';
+import { IsString, IsNotEmpty, IsArray, ValidateNested, IsOptional, IsEnum } from 'class-validator';
 import { BatchCategory } from '@prisma/client';
 import { Type } from 'class-transformer';
 
@@ -6,32 +6,6 @@ export enum PrescriptionType {
   E_PRESCRIPTION = 'E_PRESCRIPTION',
   SCANNED = 'SCANNED',
   WRITTEN = 'WRITTEN',
-}
-
-export class PrescriptionItemDto {
-  @IsString()
-  @IsNotEmpty()
-  medicineId: string;
-
-  @IsInt()
-  @Min(1)
-  qtyPrescribed: number;
-
-  @IsOptional()
-  @IsString()
-  dosage?: string;
-
-  @IsOptional()
-  @IsString()
-  frequency?: string;
-
-  @IsOptional()
-  @IsString()
-  duration?: string;
-
-  @IsEnum(BatchCategory)
-  @IsOptional()
-  transferCategory?: BatchCategory;
 }
 
 export class PrescriptionMedicineDto {
@@ -66,7 +40,8 @@ export class CreatePrescriptionDto {
   visitId?: string;
 
   @IsEnum(PrescriptionType)
-  prescriptionType: PrescriptionType;
+  @IsOptional()
+  prescriptionType?: PrescriptionType;
 
   @IsOptional()
   @IsString()
@@ -76,19 +51,8 @@ export class CreatePrescriptionDto {
   @IsString()
   notes?: string;
 
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => PrescriptionItemDto)
-  items?: PrescriptionItemDto[];
-
-  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => PrescriptionMedicineDto)
-  prescriptionMedicines?: PrescriptionMedicineDto[];
-
-  @IsOptional()
-  @IsBoolean()
-  autoIssue?: boolean;
+  prescriptionMedicines: PrescriptionMedicineDto[];
 }

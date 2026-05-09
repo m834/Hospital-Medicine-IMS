@@ -516,7 +516,7 @@ model Prescription {
   visitId          String?            @map("visit_id")
   prescriptionType PrescriptionType   @map("prescription_type")
   scannedImageUrl  String?            @map("scanned_image_url")
-  status           PrescriptionStatus @default(PENDING)
+  status           PrescriptionStatus @default(ACTIVE)
   notes            String?
   version          Int                @default(1)
   createdAt        DateTime           @default(now()) @map("created_at")
@@ -1416,10 +1416,6 @@ enum PrescriptionType {
 }
 
 enum PrescriptionStatus {
-  PENDING
-  ISSUED
-  PARTIALLY_ISSUED
-  CANCELLED
   ACTIVE
   COMPLETED
 }

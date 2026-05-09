@@ -12,7 +12,6 @@ import {
 import { PrescriptionsService } from './prescriptions.service';
 import { CreatePrescriptionDto } from './dto/create-prescription.dto';
 import { SearchPrescriptionsDto } from './dto/search-prescriptions.dto';
-import { UpdatePrescriptionStatusDto } from './dto/update-prescription-status.dto';
 import { AddPrescriptionMedicineDto } from './dto/add-prescription-medicine.dto';
 import { CreatePrescriptionDispatchDto } from './dto/create-prescription-dispatch.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -25,6 +24,14 @@ const ALL_PRESCRIPTION_ROLES = [
   UserRole.HOSPITAL_ADMIN,
   UserRole.DOCTOR,
   UserRole.DOCTOR_ASSISTANT,
+  UserRole.MAIN_PHARMACY_MANAGER,
+  UserRole.PHARMACY_STAFF,
+  UserRole.SUB_PHARMACY_MANAGER,
+];
+
+const PHARMACY_ROLES = [
+  UserRole.SUPER_ADMIN,
+  UserRole.HOSPITAL_ADMIN,
   UserRole.MAIN_PHARMACY_MANAGER,
   UserRole.PHARMACY_STAFF,
   UserRole.SUB_PHARMACY_MANAGER,
@@ -65,16 +72,6 @@ export class PrescriptionsController {
     return this.prescriptionsService.findOne(id);
   }
 
-  @Patch(':id/status')
-  @Roles(...ALL_PRESCRIPTION_ROLES)
-  updateStatus(
-    @Param('id') id: string,
-    @Body() updateStatusDto: UpdatePrescriptionStatusDto,
-    @Request() req,
-  ) {
-    return this.prescriptionsService.updateStatus(id, updateStatusDto, req.user);
-  }
-
   @Post(':id/medicines')
   @Roles(...ALL_PRESCRIPTION_ROLES)
   addMedicine(
@@ -86,13 +83,7 @@ export class PrescriptionsController {
   }
 
   @Post(':id/dispatch')
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.HOSPITAL_ADMIN,
-    UserRole.MAIN_PHARMACY_MANAGER,
-    UserRole.PHARMACY_STAFF,
-    UserRole.SUB_PHARMACY_MANAGER,
-  )
+  @Roles(...PHARMACY_ROLES)
   dispatchRound(
     @Param('id') id: string,
     @Body() dto: CreatePrescriptionDispatchDto,
