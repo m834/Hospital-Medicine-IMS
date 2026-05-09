@@ -8,6 +8,7 @@ import { useHospitalStore } from '@/stores/hospital.store';
 import { format } from 'date-fns';
 import { ChevronDown, ChevronRight, Info, Loader2, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -105,10 +106,8 @@ function ExpandedPanel({
 
   // Add medicine state
   const [showAdd, setShowAdd] = useState(false);
-  const [medSearch, setMedSearch] = useState('');
-  const [medResults, setMedResults] = useState<MedicineInfo[]>([]);
-  const [medSearching, setMedSearching] = useState(false);
-  const [selectedMed, setSelectedMed] = useState<MedicineInfo | null>(null);
+  const [medicines, setMedicines] = useState<MedicineInfo[]>([]);
+  const [selectedMedId, setSelectedMedId] = useState('');
   const [addDosage, setAddDosage] = useState('');
   const [addInstructions, setAddInstructions] = useState('');
   const [addCategory, setAddCategory] = useState<'NORMAL' | 'LP'>('NORMAL');
@@ -117,25 +116,12 @@ function ExpandedPanel({
   // Dispatch history expand
   const [historyOpen, setHistoryOpen] = useState<Record<string, boolean>>({});
 
-  // Debounced medicine search
   useEffect(() => {
-    if (!medSearch.trim() || selectedMed) {
-      if (!selectedMed) setMedResults([]);
-      return;
-    }
-    const t = setTimeout(async () => {
-      setMedSearching(true);
-      try {
-        const res = await api.get('/medicines', { params: { search: medSearch, hospitalId, limit: 10 } });
-        setMedResults(res.data.data ?? res.data ?? []);
-      } catch {
-        setMedResults([]);
-      } finally {
-        setMedSearching(false);
-      }
-    }, 300);
-    return () => clearTimeout(t);
-  }, [medSearch, selectedMed, hospitalId]);
+    if (!hospitalId) return;
+    api.get('/medicines', { params: { hospitalId, limit: 1000 } })
+      .then((res) => setMedicines(res.data.data ?? res.data ?? []))
+      .catch(() => {});
+  }, [hospitalId]);
 
   function toggleCheck(pmId: string) {
     setChecked((p) => ({ ...p, [pmId]: !p[pmId] }));
@@ -200,11 +186,11 @@ function ExpandedPanel({
   }
 
   async function handleAddMedicine() {
-    if (!selectedMed) return;
+    if (!selectedMedId) return;
     setAdding(true);
     try {
       await api.post(`/prescriptions/${detail.id}/medicines`, {
-        medicineId: selectedMed.id,
+        medicineId: selectedMedId,
         dosage: addDosage || undefined,
         instructions: addInstructions || undefined,
         category: addCategory,
@@ -221,9 +207,7 @@ function ExpandedPanel({
 
   function resetAdd() {
     setShowAdd(false);
-    setMedSearch('');
-    setMedResults([]);
-    setSelectedMed(null);
+    setSelectedMedId('');
     setAddDosage('');
     setAddInstructions('');
     setAddCategory('NORMAL');
@@ -367,39 +351,20 @@ function ExpandedPanel({
       {showAdd && isActive && (
         <div className="bg-white rounded-lg border border-blue-200 p-4">
           <h4 className="text-sm font-semibold text-gray-800 mb-3">Add Medicine</h4>
-          <div className="relative mb-3">
-            <input
-              type="text"
-              placeholder="Search medicine..."
-              value={medSearch}
-              onChange={(e) => {
-                setMedSearch(e.target.value);
-                if (selectedMed) setSelectedMed(null);
-              }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 pr-8"
+          <div className="mb-3">
+            <SearchableSelect
+              options={medicines.map((m) => ({
+                value: m.id,
+                label: m.name,
+                sub: [m.genericName, m.strength, m.form].filter(Boolean).join(' · '),
+              }))}
+              value={selectedMedId}
+              onValueChange={setSelectedMedId}
+              placeholder="Select medicine..."
+              searchPlaceholder="Search by name or generic..."
             />
-            {medSearching && <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 animate-spin text-gray-400" />}
           </div>
-          {medResults.length > 0 && !selectedMed && (
-            <div className="border border-gray-200 rounded-lg mb-3 divide-y divide-gray-100 max-h-40 overflow-y-auto">
-              {medResults.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => {
-                    setSelectedMed(m);
-                    setMedSearch(`${m.name}${m.strength ? ` ${m.strength}` : ''}`);
-                    setMedResults([]);
-                  }}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm"
-                >
-                  <span className="font-medium">{m.name}</span>
-                  {m.strength && <span className="text-gray-500"> {m.strength}</span>}
-                  <span className="text-gray-400 ml-2">{m.form}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          {selectedMed && (
+          {selectedMedId && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
               <input type="text" placeholder="Dosage (e.g. 1 tablet)" value={addDosage}
                 onChange={(e) => setAddDosage(e.target.value)}
@@ -415,7 +380,7 @@ function ExpandedPanel({
             </div>
           )}
           <div className="flex gap-2">
-            <button onClick={handleAddMedicine} disabled={!selectedMed || adding}
+            <button onClick={handleAddMedicine} disabled={!selectedMedId || adding}
               className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
               {adding ? 'Adding...' : 'Add'}
             </button>

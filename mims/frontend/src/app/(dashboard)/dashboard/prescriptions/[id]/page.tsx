@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { ArrowLeft, ChevronDown, ChevronRight, Loader2, Plus } from 'lucide-react';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import api from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/auth.store';
@@ -106,10 +107,8 @@ export default function PrescriptionDetailPage() {
 
   // Add medicine panel state
   const [showAdd, setShowAdd] = useState(false);
-  const [medSearch, setMedSearch] = useState('');
-  const [medResults, setMedResults] = useState<MedicineInfo[]>([]);
-  const [medSearching, setMedSearching] = useState(false);
-  const [selectedMed, setSelectedMed] = useState<MedicineInfo | null>(null);
+  const [allMedicines, setAllMedicines] = useState<MedicineInfo[]>([]);
+  const [selectedMedId, setSelectedMedId] = useState('');
   const [addDosage, setAddDosage] = useState('');
   const [addInstructions, setAddInstructions] = useState('');
   const [addCategory, setAddCategory] = useState<'NORMAL' | 'LP'>('NORMAL');
@@ -119,15 +118,12 @@ export default function PrescriptionDetailPage() {
     if (id) fetchPrescription();
   }, [id]);
 
-  // Debounced medicine search
   useEffect(() => {
-    if (!medSearch.trim() || selectedMed) {
-      if (!selectedMed) setMedResults([]);
-      return;
-    }
-    const t = setTimeout(() => doMedSearch(medSearch), 300);
-    return () => clearTimeout(t);
-  }, [medSearch, selectedMed]);
+    if (!currentHospitalId) return;
+    api.get('/medicines', { params: { hospitalId: currentHospitalId, limit: 1000 } })
+      .then((res) => setAllMedicines(res.data.data ?? res.data ?? []))
+      .catch(() => {});
+  }, [currentHospitalId]);
 
   async function fetchPrescription() {
     setLoading(true);
@@ -147,20 +143,6 @@ export default function PrescriptionDetailPage() {
       });
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function doMedSearch(q: string) {
-    setMedSearching(true);
-    try {
-      const res = await api.get('/medicines', {
-        params: { search: q, hospitalId: currentHospitalId, limit: 10 },
-      });
-      setMedResults(res.data.data ?? res.data ?? []);
-    } catch {
-      setMedResults([]);
-    } finally {
-      setMedSearching(false);
     }
   }
 
@@ -230,14 +212,14 @@ export default function PrescriptionDetailPage() {
   }
 
   async function handleAddMedicine() {
-    if (!selectedMed) {
+    if (!selectedMedId) {
       toast({ title: 'Select a medicine first', variant: 'destructive' });
       return;
     }
     setAdding(true);
     try {
       await api.post(`/prescriptions/${id}/medicines`, {
-        medicineId: selectedMed.id,
+        medicineId: selectedMedId,
         dosage: addDosage || undefined,
         instructions: addInstructions || undefined,
         category: addCategory,
@@ -254,9 +236,7 @@ export default function PrescriptionDetailPage() {
 
   function resetAddPanel() {
     setShowAdd(false);
-    setMedSearch('');
-    setMedResults([]);
-    setSelectedMed(null);
+    setSelectedMedId('');
     setAddDosage('');
     setAddInstructions('');
     setAddCategory('NORMAL');
@@ -442,46 +422,21 @@ export default function PrescriptionDetailPage() {
         <div className="bg-white rounded-lg shadow-sm border border-blue-200 p-6">
           <h3 className="font-semibold text-gray-800 mb-4">Add Medicine to Prescription</h3>
 
-          {/* Search */}
-          <div className="relative mb-3">
-            <input
-              type="text"
-              placeholder="Search medicine by name..."
-              value={medSearch}
-              onChange={(e) => {
-                setMedSearch(e.target.value);
-                if (selectedMed && e.target.value !== `${selectedMed.name}${selectedMed.strength ? ` ${selectedMed.strength}` : ''}`) {
-                  setSelectedMed(null);
-                }
-              }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm pr-8"
+          <div className="mb-4">
+            <SearchableSelect
+              options={allMedicines.map((m) => ({
+                value: m.id,
+                label: m.name,
+                sub: [m.genericName, m.strength, m.form].filter(Boolean).join(' · '),
+              }))}
+              value={selectedMedId}
+              onValueChange={setSelectedMedId}
+              placeholder="Select medicine..."
+              searchPlaceholder="Search by name or generic..."
             />
-            {medSearching && <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 animate-spin text-gray-400" />}
           </div>
 
-          {/* Results dropdown */}
-          {medResults.length > 0 && !selectedMed && (
-            <div className="border border-gray-200 rounded-lg mb-4 divide-y divide-gray-100 max-h-48 overflow-y-auto">
-              {medResults.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => {
-                    setSelectedMed(m);
-                    setMedSearch(`${m.name}${m.strength ? ` ${m.strength}` : ''}`);
-                    setMedResults([]);
-                  }}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm"
-                >
-                  <span className="font-medium">{m.name}</span>
-                  {m.strength && <span className="text-gray-500"> {m.strength}</span>}
-                  <span className="text-gray-400 ml-2">{m.form}</span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Fields — only shown after selecting a medicine */}
-          {selectedMed && (
+          {selectedMedId && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Dosage</label>
@@ -520,7 +475,7 @@ export default function PrescriptionDetailPage() {
           <div className="flex gap-2">
             <button
               onClick={handleAddMedicine}
-              disabled={!selectedMed || adding}
+              disabled={!selectedMedId || adding}
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {adding ? 'Adding...' : 'Add'}

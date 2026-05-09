@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CacheService } from '../../common/services/cache.service';
 import { CreatePrescriptionDto } from './dto/create-prescription.dto';
@@ -6,9 +6,12 @@ import { SearchPrescriptionsDto } from './dto/search-prescriptions.dto';
 import { AddPrescriptionMedicineDto } from './dto/add-prescription-medicine.dto';
 import { CreatePrescriptionDispatchDto } from './dto/create-prescription-dispatch.dto';
 import { PrescriptionStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class PrescriptionsService {
+  private readonly logger = new Logger(PrescriptionsService.name);
+
   constructor(
     private prisma: PrismaService,
     private cacheService: CacheService,
@@ -287,57 +290,73 @@ export class PrescriptionsService {
       return { dispatch: null, results };
     }
 
-    // Create dispatch record
-    const dispatch = await this.prisma.prescriptionDispatch.create({
-      data: {
-        prescriptionId,
-        visitId: prescription.visitId,
-        dispatchedBy: user.id,
-        notes: dto.notes,
-      },
-    });
-
-    // Deduct stock and create dispatch items for valid items
-    for (const { pm, qty } of validItems) {
-      const batch = await this.prisma.stockBatch.findFirst({
-        where: {
-          hospitalId: user.hospitalId,
-          pharmacyId: user.pharmacyId,
-          medicineId: pm.medicineId,
-          status: 'AVAILABLE',
-          qtyAvailable: { gte: qty },
-          expiryDate: { gte: now },
-          category: pm.category,
-        },
-        orderBy: [{ expiryDate: 'asc' }, { receivedDate: 'asc' }],
-      });
-
-      if (!batch) {
-        results.push({
-          prescriptionMedicineId: pm.id,
-          success: false,
-          error: 'Stock changed during dispatch',
+    let dispatch: any;
+    try {
+      dispatch = await this.prisma.$transaction(async (tx) => {
+        const dispatchRecord = await tx.prescriptionDispatch.create({
+          data: {
+            prescriptionId,
+            visitId: prescription.visitId ?? null,
+            dispatchedBy: user.id,
+            notes: dto.notes ?? null,
+          },
         });
-        continue;
+
+        for (const { pm, qty } of validItems) {
+          const batch = await tx.stockBatch.findFirst({
+            where: {
+              hospitalId: user.hospitalId,
+              pharmacyId: user.pharmacyId,
+              medicineId: pm.medicineId,
+              status: 'AVAILABLE',
+              qtyAvailable: { gte: qty },
+              expiryDate: { gte: now },
+              category: pm.category,
+            },
+            orderBy: [{ expiryDate: 'asc' }, { receivedDate: 'asc' }],
+          });
+
+          if (!batch) {
+            results.push({
+              prescriptionMedicineId: pm.id,
+              success: false,
+              error: 'Stock changed during dispatch',
+            });
+            continue;
+          }
+
+          await tx.stockBatch.update({
+            where: { id: batch.id },
+            data: {
+              qtyAvailable: { decrement: qty },
+              status: batch.qtyAvailable - qty === 0 ? 'DEPLETED' : batch.status,
+            },
+          });
+
+          await tx.prescriptionDispatchItem.create({
+            data: {
+              dispatchId: dispatchRecord.id,
+              prescriptionMedicineId: pm.id,
+              quantityDispatched: qty,
+            },
+          });
+
+          results.push({ prescriptionMedicineId: pm.id, success: true, quantityDispatched: qty });
+        }
+
+        return dispatchRecord;
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        this.logger.error(`Dispatch DB error [${err.code}]: ${err.message}`, err.meta);
+        throw new BadRequestException(`Dispatch failed: ${err.message} (code: ${err.code})`);
       }
-
-      await this.prisma.stockBatch.update({
-        where: { id: batch.id },
-        data: {
-          qtyAvailable: { decrement: qty },
-          status: batch.qtyAvailable - qty === 0 ? 'DEPLETED' : batch.status,
-        },
-      });
-
-      await this.prisma.prescriptionDispatchItem.create({
-        data: {
-          dispatchId: dispatch.id,
-          prescriptionMedicineId: pm.id,
-          quantityDispatched: qty,
-        },
-      });
-
-      results.push({ prescriptionMedicineId: pm.id, success: true, quantityDispatched: qty });
+      if (err instanceof Prisma.PrismaClientValidationError) {
+        this.logger.error('Dispatch validation error:', err.message);
+        throw new BadRequestException(`Dispatch validation failed: ${err.message}`);
+      }
+      this.logger.error('Unexpected dispatch error:', err);
+      throw new InternalServerErrorException('Dispatch failed unexpectedly');
     }
 
     try {
