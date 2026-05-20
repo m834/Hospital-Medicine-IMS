@@ -179,10 +179,11 @@ export default function InventoryDashboardPage() {
   const router = useRouter();
 
   const currentHospitalId = selectedHospital?.id || user?.hospitalId;
+  const isMasterAdmin = user?.role === 'MASTER_ADMIN';
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const isHospitalAdmin = user?.role === 'HOSPITAL_ADMIN';
   const isMainManager = user?.role === 'MAIN_PHARMACY_MANAGER';
-  const canManageInventory = isSuperAdmin || isHospitalAdmin || isMainManager;
+  const canManageInventory = isMasterAdmin || isSuperAdmin || isHospitalAdmin || isMainManager;
   const userPharmacyId = user?.pharmacyId;
 
   useEffect(() => {
