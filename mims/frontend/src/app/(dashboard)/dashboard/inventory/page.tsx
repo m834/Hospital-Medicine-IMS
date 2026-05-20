@@ -51,6 +51,7 @@ import {
   ChevronRight,
   FileDown,
 } from 'lucide-react';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
@@ -97,6 +98,7 @@ interface Medicine {
   id: string;
   name: string;
   form: string;
+  strength?: string;
 }
 
 interface Pharmacy {
@@ -238,7 +240,7 @@ export default function InventoryDashboardPage() {
 
   const fetchMedicines = async () => {
     try {
-      const params: any = {};
+      const params: any = { limit: 2000, status: 'ACTIVE' };
       if (currentHospitalId) params.hospitalId = currentHospitalId;
       if (!params.hospitalId) return;
       const response = await api.get('/medicines', { params });
@@ -537,15 +539,20 @@ export default function InventoryDashboardPage() {
                 onChange={e => setSearchQuery(e.target.value)}
               />
             </div>
-            <Select value={selectedMedicine} onValueChange={setSelectedMedicine}>
-              <SelectTrigger><SelectValue placeholder="All Medicines" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Medicines</SelectItem>
-                {medicines.map(m => (
-                  <SelectItem key={m.id} value={m.id}>{m.name} - {m.form}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              options={[
+                { value: 'all', label: 'All Medicines' },
+                ...medicines.map(m => ({
+                  value: m.id,
+                  label: m.name,
+                  sub: [m.strength, m.form].filter(Boolean).join(' · '),
+                })),
+              ]}
+              value={selectedMedicine}
+              onValueChange={setSelectedMedicine}
+              placeholder="All Medicines"
+              searchPlaceholder="Search medicine..."
+            />
             <Select
               value={selectedPharmacy}
               onValueChange={setSelectedPharmacy}
