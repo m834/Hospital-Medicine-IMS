@@ -50,6 +50,7 @@ import {
   ChevronDown,
   ChevronRight,
   FileDown,
+  Pencil,
 } from 'lucide-react';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import api from '@/lib/api';
@@ -159,6 +160,11 @@ export default function InventoryDashboardPage() {
 
   // Expanded groups (accordion)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  // Edit batch dialog
+  const [editBatch, setEditBatch] = useState<StockBatch | null>(null);
+  const [editForm, setEditForm] = useState({ batchNo: '', expiryDate: '', purchasePrice: 0, storageType: '', status: '' });
+  const [editSaving, setEditSaving] = useState(false);
 
   // Export dialog
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -326,6 +332,37 @@ export default function InventoryDashboardPage() {
       next.has(key) ? next.delete(key) : next.add(key);
       return next;
     });
+  };
+
+  const openEditBatch = (batch: StockBatch) => {
+    setEditBatch(batch);
+    setEditForm({
+      batchNo: batch.batchNo,
+      expiryDate: batch.expiryDate.slice(0, 10),
+      purchasePrice: Number(batch.purchasePrice),
+      storageType: batch.storageType,
+      status: batch.status,
+    });
+  };
+
+  const handleBatchUpdate = async () => {
+    if (!editBatch) return;
+    setEditSaving(true);
+    try {
+      await api.patch(`/inventory/batches/${editBatch.id}`, {
+        batchNo: editForm.batchNo,
+        expiryDate: editForm.expiryDate,
+        purchasePrice: Number(editForm.purchasePrice),
+        storageType: editForm.storageType,
+        status: editForm.status,
+      });
+      setEditBatch(null);
+      fetchData();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to update batch');
+    } finally {
+      setEditSaving(false);
+    }
   };
 
   // Fetch batches for a specific category (used by export)
@@ -809,7 +846,17 @@ export default function InventoryDashboardPage() {
                                   <p>Total: <span className="text-foreground font-semibold">PKR {(batch.qtyAvailable * Number(batch.purchasePrice)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></p>
                                 </div>
                               </TableCell>
-                              <TableCell />
+                              <TableCell>
+                                {canManageInventory && (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); openEditBatch(batch); }}
+                                    className="p-1 rounded hover:bg-muted transition-colors"
+                                    title="Edit batch"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5 text-blue-500" />
+                                  </button>
+                                )}
+                              </TableCell>
                             </TableRow>
                           );
                         })}
@@ -822,6 +869,57 @@ export default function InventoryDashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Batch Dialog */}
+      <Dialog open={!!editBatch} onOpenChange={open => { if (!open) setEditBatch(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Batch</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Batch Number</label>
+              <Input value={editForm.batchNo} onChange={e => setEditForm(f => ({ ...f, batchNo: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Expiry Date</label>
+              <Input type="date" value={editForm.expiryDate} onChange={e => setEditForm(f => ({ ...f, expiryDate: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Purchase Price (PKR)</label>
+              <Input type="number" min="0" step="0.01" value={editForm.purchasePrice} onChange={e => setEditForm(f => ({ ...f, purchasePrice: Number(e.target.value) }))} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Storage Type</label>
+              <Select value={editForm.storageType} onValueChange={v => setEditForm(f => ({ ...f, storageType: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {STORAGE_TYPES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Status</label>
+              <Select value={editForm.status} onValueChange={v => setEditForm(f => ({ ...f, status: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="AVAILABLE">Available</SelectItem>
+                  <SelectItem value="DEPLETED">Depleted</SelectItem>
+                  <SelectItem value="QUARANTINE">Quarantine</SelectItem>
+                  <SelectItem value="EXPIRED">Expired</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setEditBatch(null)}>Cancel</Button>
+            <Button onClick={handleBatchUpdate} disabled={editSaving}>
+              {editSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Export Column Selector Dialog */}
       <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>

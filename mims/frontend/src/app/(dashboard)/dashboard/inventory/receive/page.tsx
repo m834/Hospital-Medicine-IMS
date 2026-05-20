@@ -40,7 +40,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { PackagePlus, Loader2, Calendar, DollarSign, Package, Building2, FileSpreadsheet, Plus, Trash2, Save } from 'lucide-react';
+import { PackagePlus, Loader2, Calendar, DollarSign, Package, Building2, FileSpreadsheet, Plus, Trash2, Save, Pencil, Check, X } from 'lucide-react';
 import { BulkImportModal } from '@/components/inventory/bulk-import-modal';
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
@@ -159,6 +159,8 @@ export default function ReceiveStockPage() {
   const [manualEntry, setManualEntry] = useState(false);
   const [isLP, setIsLP] = useState(false);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<Partial<StockItem>>({});
 
   const { user } = useAuthStore();
   const { selectedHospital } = useHospitalStore();
@@ -350,6 +352,30 @@ export default function ReceiveStockPage() {
 
   const removeItem = (tempId: string) => {
     setItems(items.filter(item => item.tempId !== tempId));
+  };
+
+  const startEdit = (item: StockItem) => {
+    setEditingItemId(item.tempId);
+    setEditDraft({
+      batchNo: item.batchNo,
+      qtyReceived: item.qtyReceived,
+      expiryDate: item.expiryDate,
+      purchasePrice: item.purchasePrice,
+      isLP: item.isLP,
+    });
+  };
+
+  const saveEdit = (tempId: string) => {
+    setItems(items.map(item =>
+      item.tempId === tempId ? { ...item, ...editDraft } : item
+    ));
+    setEditingItemId(null);
+    setEditDraft({});
+  };
+
+  const cancelEdit = () => {
+    setEditingItemId(null);
+    setEditDraft({});
   };
 
   const resolveOrCreateMedicineId = async (item: StockItem): Promise<string> => {
@@ -952,9 +978,10 @@ export default function ReceiveStockPage() {
                         const pharmacy = pharmacies.find(p => p.id === item.pharmacyId);
                         const medicineName = medicine?.name || item.medicineName;
                         const pharmacyCode = pharmacy?.code || item.pharmacyId;
+                        const isEditing = editingItemId === item.tempId;
 
                         return (
-                          <TableRow key={item.tempId}>
+                          <TableRow key={item.tempId} className={isEditing ? 'bg-blue-50' : ''}>
                             <TableCell className="font-medium">
                               {medicineName}
                               {medicine?.strength && ` (${medicine.strength})`}
@@ -962,25 +989,87 @@ export default function ReceiveStockPage() {
                             <TableCell>
                               <Badge variant="outline">{pharmacyCode}</Badge>
                             </TableCell>
-                            <TableCell className="font-mono text-sm">{item.batchNo}</TableCell>
-                            <TableCell>{item.qtyReceived}</TableCell>
-                            <TableCell className="text-sm">{formatDate(item.expiryDate)}</TableCell>
-                            <TableCell className="font-mono text-sm">PKR {Number(item.purchasePrice).toFixed(2)}</TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {isEditing ? (
+                                <Input
+                                  className="h-7 w-36 font-mono text-xs"
+                                  value={editDraft.batchNo ?? ''}
+                                  onChange={e => setEditDraft(d => ({ ...d, batchNo: e.target.value }))}
+                                />
+                              ) : item.batchNo}
+                            </TableCell>
                             <TableCell>
-                              {item.isLP ? (
+                              {isEditing ? (
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  className="h-7 w-20 text-sm"
+                                  value={editDraft.qtyReceived ?? 0}
+                                  onChange={e => setEditDraft(d => ({ ...d, qtyReceived: Number(e.target.value) }))}
+                                />
+                              ) : item.qtyReceived}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {isEditing ? (
+                                <Input
+                                  type="date"
+                                  className="h-7 text-xs"
+                                  value={editDraft.expiryDate ?? ''}
+                                  onChange={e => setEditDraft(d => ({ ...d, expiryDate: e.target.value }))}
+                                />
+                              ) : formatDate(item.expiryDate)}
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {isEditing ? (
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  className="h-7 w-24 text-sm font-mono"
+                                  value={editDraft.purchasePrice ?? 0}
+                                  onChange={e => setEditDraft(d => ({ ...d, purchasePrice: Number(e.target.value) }))}
+                                />
+                              ) : `PKR ${Number(item.purchasePrice).toFixed(2)}`}
+                            </TableCell>
+                            <TableCell>
+                              {isEditing ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditDraft(d => ({ ...d, isLP: !d.isLP }))}
+                                  className={`px-2 py-1 text-xs rounded border font-medium transition-colors ${
+                                    editDraft.isLP
+                                      ? 'bg-orange-500 text-white border-orange-500'
+                                      : 'bg-white text-gray-700 border-gray-300'
+                                  }`}
+                                >
+                                  {editDraft.isLP ? 'LP' : 'Normal'}
+                                </button>
+                              ) : item.isLP ? (
                                 <Badge className="bg-orange-500 text-white">LP</Badge>
                               ) : (
                                 <Badge variant="outline">Normal</Badge>
                               )}
                             </TableCell>
                             <TableCell className="text-right">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => removeItem(item.tempId)}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
+                              {isEditing ? (
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button variant="ghost" size="sm" onClick={() => saveEdit(item.tempId)} title="Save">
+                                    <Check className="h-4 w-4 text-green-600" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={cancelEdit} title="Cancel">
+                                    <X className="h-4 w-4 text-muted-foreground" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button variant="ghost" size="sm" onClick={() => startEdit(item)} title="Edit">
+                                    <Pencil className="h-4 w-4 text-blue-500" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={() => removeItem(item.tempId)} title="Remove">
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </div>
+                              )}
                             </TableCell>
                           </TableRow>
                         );
