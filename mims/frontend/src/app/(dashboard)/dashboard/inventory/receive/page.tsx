@@ -352,6 +352,44 @@ export default function ReceiveStockPage() {
     setItems(items.filter(item => item.tempId !== tempId));
   };
 
+  const resolveOrCreateMedicineId = async (item: StockItem): Promise<string> => {
+    // Already has a medicine ID — no lookup needed
+    if (item.medicineId && item.medicineId.trim() !== '') return item.medicineId;
+
+    // Search for an existing medicine with the same name + form
+    const searchRes = await api.get('/medicines', {
+      params: {
+        hospitalId: currentHospitalId,
+        name: item.medicineName,
+        form: item.form,
+        limit: 10,
+      },
+    });
+    const existing: Medicine[] = searchRes.data?.data || searchRes.data || [];
+    const match = existing.find(
+      m =>
+        m.name.toLowerCase() === (item.medicineName ?? '').toLowerCase() &&
+        m.form === item.form &&
+        (item.strength ? m.strength === item.strength : true)
+    );
+    if (match) return match.id;
+
+    // Not found — create it
+    const createPayload: any = {
+      hospitalId: currentHospitalId,
+      name: item.medicineName,
+      form: item.form,
+    };
+    if (item.strength) createPayload.strength = item.strength;
+    if (item.genericName) createPayload.genericName = item.genericName;
+    if (item.medicineManufacturer) createPayload.manufacturer = item.medicineManufacturer;
+
+    const createRes = await api.post('/medicines', createPayload);
+    const newMedicine: Medicine = createRes.data;
+    setMedicines(prev => [...prev, newMedicine]);
+    return newMedicine.id;
+  };
+
   const saveAllItems = async () => {
     if (items.length === 0) {
       alert('Please add at least one item to save');
@@ -363,15 +401,20 @@ export default function ReceiveStockPage() {
     let failedItems: { item: StockItem; error: string }[] = [];
 
     try {
-      // Log user and hospital context for debugging
-      console.log('Current User:', user?.email, 'Role:', user?.role);
-      console.log('Hospital ID:', currentHospitalId);
-      console.log('Processing', items.length, 'items');
-
       // Process items sequentially to better track errors
       for (const item of items) {
         try {
+          let medicineId: string;
+          try {
+            medicineId = await resolveOrCreateMedicineId(item);
+          } catch (err: any) {
+            const errorMessage = err.response?.data?.message || 'Failed to resolve medicine';
+            failedItems.push({ item, error: errorMessage });
+            continue;
+          }
+
           const cleanData: any = {
+            medicineId,
             pharmacyId: item.pharmacyId,
             batchNo: item.batchNo,
             qtyReceived: Number(item.qtyReceived),
@@ -381,25 +424,10 @@ export default function ReceiveStockPage() {
             category: item.isLP ? 'LP' : 'NORMAL',
           };
 
-          // Add medicineId OR manual medicine details
-          if (item.medicineId && item.medicineId.trim() !== '') {
-            cleanData.medicineId = item.medicineId;
-          } else {
-            // Manual entry mode
-            cleanData.medicineName = item.medicineName;
-            cleanData.form = item.form;
-            if (item.strength) cleanData.strength = item.strength;
-            if (item.genericName) cleanData.genericName = item.genericName;
-            if (item.medicineManufacturer) cleanData.medicineManufacturer = item.medicineManufacturer;
-          }
-
-          // Add optional fields only if they have values
           if (item.manufacturer && item.manufacturer.trim() !== '') {
             cleanData.manufacturer = item.manufacturer;
           }
 
-          console.log('Sending data for item:', cleanData);
-          
           await api.post('/inventory/batches', cleanData);
           successCount++;
         } catch (err: any) {
@@ -447,11 +475,11 @@ export default function ReceiveStockPage() {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+    const d = new Date(dateString);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
   };
 
   const getStatusColor = (status: string) => {

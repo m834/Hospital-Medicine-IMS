@@ -174,6 +174,7 @@ export default function InventoryDashboardPage() {
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const isHospitalAdmin = user?.role === 'HOSPITAL_ADMIN';
   const isMainManager = user?.role === 'MAIN_PHARMACY_MANAGER';
+  const canManageInventory = isSuperAdmin || isHospitalAdmin || isMainManager;
   const userPharmacyId = user?.pharmacyId;
 
   useEffect(() => {
@@ -260,8 +261,13 @@ export default function InventoryDashboardPage() {
     }
   };
 
-  const formatDate = (dateString: string) =>
-    new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  const formatDate = (dateString: string) => {
+    const d = new Date(dateString);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
 
   const getStatusColor = (status: string) =>
     ({ AVAILABLE: 'bg-green-500', EXPIRED: 'bg-red-500', DEPLETED: 'bg-gray-500', QUARANTINE: 'bg-yellow-500' }[status] || 'bg-gray-500');
@@ -445,18 +451,22 @@ export default function InventoryDashboardPage() {
           <p className="text-muted-foreground">Monitor stock levels, expiry dates, and batch information</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setExportDialogOpen(true)}>
-            <FileDown className="mr-2 h-4 w-4" />
-            Export to Excel
-          </Button>
+          {canManageInventory && (
+            <Button variant="outline" onClick={() => setExportDialogOpen(true)}>
+              <FileDown className="mr-2 h-4 w-4" />
+              Export to Excel
+            </Button>
+          )}
           <Button variant="outline" onClick={() => router.push('/dashboard/inventory/alerts')}>
             <Bell className="mr-2 h-4 w-4" />
             View Alerts
           </Button>
-          <Button onClick={() => router.push('/dashboard/inventory/receive')}>
-            <PackagePlus className="mr-2 h-4 w-4" />
-            Receive Stock
-          </Button>
+          {canManageInventory && (
+            <Button onClick={() => router.push('/dashboard/inventory/receive')}>
+              <PackagePlus className="mr-2 h-4 w-4" />
+              Receive Stock
+            </Button>
+          )}
         </div>
       </div>
 
