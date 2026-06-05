@@ -32,14 +32,25 @@ interface MedicineInfo {
   form: string;
 }
 
+type DosageFrequency = 'OD' | 'BID' | 'TDS' | 'SOS';
+
+const DOSAGE_FREQUENCY_LABELS: Record<DosageFrequency, string> = {
+  OD: 'OD – Once a day',
+  BID: 'BID – Twice a day',
+  TDS: 'TDS – Thrice a day',
+  SOS: 'SOS – If needed',
+};
+
 interface PrescriptionMedicine {
   id: string;
   medicineId: string;
   dosage?: string;
+  dosageFrequency?: DosageFrequency;
   instructions?: string;
   category: 'NORMAL' | 'LP';
   medicine: MedicineInfo;
   addedByUser?: { id: string; fullName: string };
+  availableQty?: number;
 }
 
 interface DispatchHistoryItem {
@@ -100,15 +111,25 @@ function ExpandedPanel({
     detail.medicines.forEach((m) => { init[m.id] = 1; });
     return init;
   });
+  const [dispatchFreq, setDispatchFreq] = useState<Record<string, DosageFrequency | ''>>(
+    () => {
+      const init: Record<string, DosageFrequency | ''> = {};
+      detail.medicines.forEach((m) => { init[m.id] = m.dosageFrequency ?? ''; });
+      return init;
+    }
+  );
   const [itemErrors, setItemErrors] = useState<Record<string, string>>({});
   const [dispatching, setDispatching] = useState(false);
   const [completing, setCompleting] = useState(false);
+
+  const FREQ_QTY: Record<DosageFrequency, number | null> = { OD: 1, BID: 2, TDS: 3, SOS: null };
 
   // Add medicine state
   const [showAdd, setShowAdd] = useState(false);
   const [medicines, setMedicines] = useState<MedicineInfo[]>([]);
   const [selectedMedId, setSelectedMedId] = useState('');
   const [addDosage, setAddDosage] = useState('');
+  const [addDosageFrequency, setAddDosageFrequency] = useState<DosageFrequency | ''>('');
   const [addInstructions, setAddInstructions] = useState('');
   const [addCategory, setAddCategory] = useState<'NORMAL' | 'LP'>('NORMAL');
   const [adding, setAdding] = useState(false);
@@ -126,6 +147,13 @@ function ExpandedPanel({
   function toggleCheck(pmId: string) {
     setChecked((p) => ({ ...p, [pmId]: !p[pmId] }));
     setItemErrors((p) => { const n = { ...p }; delete n[pmId]; return n; });
+  }
+
+  function handleFreqChange(pmId: string, freq: DosageFrequency | '') {
+    setDispatchFreq((p) => ({ ...p, [pmId]: freq }));
+    if (freq && FREQ_QTY[freq] !== null) {
+      setQtys((p) => ({ ...p, [pmId]: FREQ_QTY[freq as DosageFrequency] as number }));
+    }
   }
 
   async function handleDispatch() {
@@ -192,6 +220,7 @@ function ExpandedPanel({
       await api.post(`/prescriptions/${detail.id}/medicines`, {
         medicineId: selectedMedId,
         dosage: addDosage || undefined,
+        dosageFrequency: addDosageFrequency || undefined,
         instructions: addInstructions || undefined,
         category: addCategory,
       });
@@ -209,12 +238,22 @@ function ExpandedPanel({
     setShowAdd(false);
     setSelectedMedId('');
     setAddDosage('');
+    setAddDosageFrequency('');
     setAddInstructions('');
     setAddCategory('NORMAL');
   }
 
   const lastDispatch = detail.dispatches?.[0];
   const checkedCount = Object.values(checked).filter(Boolean).length;
+
+  // Checked items that have 0 stock — block dispatch
+  const zeroStockChecked = Object.entries(checked)
+    .filter(([, v]) => v)
+    .some(([pmId]) => {
+      const pm = detail.medicines.find((m) => m.id === pmId);
+      return pm?.availableQty !== undefined && pm.availableQty === 0;
+    });
+  const canDispatchNow = checkedCount > 0 && !zeroStockChecked;
 
   return (
     <div className="border-t border-blue-100 bg-blue-50/40 px-6 py-4 space-y-4">
@@ -258,18 +297,33 @@ function ExpandedPanel({
       {/* Medicine checklist — ACTIVE only */}
       {isActive && detail.medicines.length > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
+          {/* Column headers */}
+          <div className="px-4 py-2 flex items-center gap-3 bg-gray-50 rounded-t-lg border-b border-gray-200">
+            <div className="w-4 shrink-0" />
+            <div className="flex-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">Medicine</div>
+            <div className="w-28 shrink-0 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center">Remaining</div>
+            {canDispatch && (
+              <>
+                <div className="w-28 shrink-0 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center">Frequency</div>
+                <div className="w-20 shrink-0 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center">Issue Qty</div>
+              </>
+            )}
+          </div>
           {detail.medicines.map((pm) => (
-            <div key={pm.id} className="px-4 py-3 flex items-start gap-3">
+            <div key={pm.id} className="px-4 py-3 flex items-center gap-3">
               {canDispatch ? (
                 <input
                   type="checkbox"
                   checked={!!checked[pm.id]}
                   onChange={() => toggleCheck(pm.id)}
-                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 cursor-pointer shrink-0"
+                  disabled={pm.availableQty !== undefined && pm.availableQty === 0}
+                  title={pm.availableQty === 0 ? 'Out of stock' : undefined}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 cursor-pointer shrink-0 disabled:cursor-not-allowed disabled:opacity-40"
                 />
               ) : (
                 <div className="w-4 shrink-0" />
               )}
+              {/* Medicine info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-gray-900 text-sm">
@@ -279,6 +333,11 @@ function ExpandedPanel({
                   <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${pm.category === 'LP' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
                     {pm.category}
                   </span>
+                  {pm.dosageFrequency && (
+                    <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-blue-100 text-blue-700">
+                      {pm.dosageFrequency}
+                    </span>
+                  )}
                 </div>
                 {(pm.dosage || pm.instructions) && (
                   <p className="text-xs text-gray-500 mt-0.5">
@@ -291,17 +350,51 @@ function ExpandedPanel({
                   </p>
                 )}
               </div>
-              {canDispatch && checked[pm.id] && (
-                <div className="flex items-center gap-1 shrink-0">
-                  <label className="text-xs text-gray-500">Qty:</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={qtys[pm.id] ?? 1}
-                    onChange={(e) => setQtys((p) => ({ ...p, [pm.id]: Math.max(1, parseInt(e.target.value) || 1) }))}
-                    className="w-16 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
+              {/* Remaining stock column */}
+              <div className="shrink-0 w-28 text-center">
+                {pm.availableQty !== undefined ? (
+                  <span className={`text-sm font-semibold ${pm.availableQty > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    {pm.availableQty}
+                  </span>
+                ) : (
+                  <span className="text-sm text-gray-300">—</span>
+                )}
+              </div>
+              {/* Frequency + Issue Qty columns */}
+              {canDispatch && (
+                <>
+                  <div className="shrink-0 w-28 flex justify-center">
+                    {checked[pm.id] ? (
+                      <select
+                        value={dispatchFreq[pm.id] ?? ''}
+                        onChange={(e) => handleFreqChange(pm.id, e.target.value as DosageFrequency | '')}
+                        className="w-full px-1 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="">— select —</option>
+                        <option value="OD">OD (×1/day)</option>
+                        <option value="BID">BID (×2/day)</option>
+                        <option value="TDS">TDS (×3/day)</option>
+                        <option value="SOS">SOS (if needed)</option>
+                      </select>
+                    ) : (
+                      <span className="text-sm text-gray-300">—</span>
+                    )}
+                  </div>
+                  <div className="shrink-0 w-20 flex justify-center">
+                    {checked[pm.id] ? (
+                      <input
+                        type="number"
+                        min={1}
+                        value={qtys[pm.id] ?? 1}
+                        disabled={!!dispatchFreq[pm.id] && FREQ_QTY[dispatchFreq[pm.id] as DosageFrequency] !== null}
+                        onChange={(e) => setQtys((p) => ({ ...p, [pm.id]: Math.max(1, parseInt(e.target.value) || 1) }))}
+                        className="w-16 px-2 py-1 text-sm border border-blue-400 rounded focus:ring-1 focus:ring-blue-500 text-center disabled:bg-gray-100 disabled:text-gray-500 disabled:border-gray-300 disabled:cursor-not-allowed"
+                      />
+                    ) : (
+                      <span className="text-sm text-gray-300">—</span>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           ))}
@@ -325,14 +418,19 @@ function ExpandedPanel({
             </button>
           )}
           {canDispatch && (
-            <button
-              onClick={handleDispatch}
-              disabled={dispatching || checkedCount === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {dispatching && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Dispatch Now ({checkedCount})
-            </button>
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={handleDispatch}
+                disabled={dispatching || !canDispatchNow}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {dispatching && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Dispatch Now ({checkedCount})
+              </button>
+              {zeroStockChecked && (
+                <p className="text-xs text-red-500">Some selected medicines have 0 stock</p>
+              )}
+            </div>
           )}
           {canDispatch && (
             <button
@@ -365,7 +463,18 @@ function ExpandedPanel({
             />
           </div>
           {selectedMedId && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+              <select
+                value={addDosageFrequency}
+                onChange={(e) => setAddDosageFrequency(e.target.value as DosageFrequency | '')}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Frequency (optional)</option>
+                <option value="OD">OD – Once a day</option>
+                <option value="BID">BID – Twice a day</option>
+                <option value="TDS">TDS – Thrice a day</option>
+                <option value="SOS">SOS – If needed</option>
+              </select>
               <input type="text" placeholder="Dosage (e.g. 1 tablet)" value={addDosage}
                 onChange={(e) => setAddDosage(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
@@ -389,6 +498,7 @@ function ExpandedPanel({
               Cancel
             </button>
           </div>
+          
         </div>
       )}
 

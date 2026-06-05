@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import api from '@/lib/api';
 import {
@@ -389,12 +389,10 @@ export default function DailyTransactionsPage() {
 
             <div>
               <Label htmlFor="date">Report Date</Label>
-              <Input
+              <DateInput
                 id="date"
-                type="date"
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
-                max={new Date().toISOString().split('T')[0]}
+                onChange={setDate}
               />
             </div>
 

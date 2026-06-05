@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -217,10 +218,9 @@ export default function ExpenditurePage() {
       <div className="space-y-3">
         <div className="flex items-center gap-3">
           <Label className="text-sm font-medium text-gray-700">View totals for date:</Label>
-          <Input
-            type="date"
+          <DateInput
             value={totalsDate}
-            onChange={(e) => setTotalsDate(e.target.value)}
+            onChange={setTotalsDate}
             className="w-44"
           />
         </div>
@@ -316,11 +316,10 @@ export default function ExpenditurePage() {
               {/* Date */}
               <div className="space-y-1.5">
                 <Label htmlFor="exp-date">Date <span className="text-red-500">*</span></Label>
-                <Input
+                <DateInput
                   id="exp-date"
-                  type="date"
                   value={form.date}
-                  onChange={(e) => setForm({ ...form, date: e.target.value })}
+                  onChange={(value) => setForm({ ...form, date: value })}
                 />
               </div>
 
@@ -392,19 +391,17 @@ export default function ExpenditurePage() {
           <div className="flex flex-wrap gap-3 items-end">
             <div className="space-y-1.5">
               <Label className="text-xs text-gray-600">From Date</Label>
-              <Input
-                type="date"
+              <DateInput
                 value={filterStart}
-                onChange={(e) => setFilterStart(e.target.value)}
+                onChange={setFilterStart}
                 className="w-40"
               />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-gray-600">To Date</Label>
-              <Input
-                type="date"
+              <DateInput
                 value={filterEnd}
-                onChange={(e) => setFilterEnd(e.target.value)}
+                onChange={setFilterEnd}
                 className="w-40"
               />
             </div>

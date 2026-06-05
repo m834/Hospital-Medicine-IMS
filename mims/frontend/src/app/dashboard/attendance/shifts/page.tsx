@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
@@ -411,21 +412,19 @@ export default function ShiftsPage() {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Effective from</Label>
-              <Input
-                type="date"
+              <DateInput
                 value={assignmentForm.effectiveFrom}
-                onChange={(event) =>
-                  setAssignmentForm((prev) => ({ ...prev, effectiveFrom: event.target.value }))
+                onChange={(value) =>
+                  setAssignmentForm((prev) => ({ ...prev, effectiveFrom: value }))
                 }
               />
             </div>
             <div className="space-y-2">
               <Label>Effective to (optional)</Label>
-              <Input
-                type="date"
+              <DateInput
                 value={assignmentForm.effectiveTo}
-                onChange={(event) =>
-                  setAssignmentForm((prev) => ({ ...prev, effectiveTo: event.target.value }))
+                onChange={(value) =>
+                  setAssignmentForm((prev) => ({ ...prev, effectiveTo: value }))
                 }
               />
             </div>

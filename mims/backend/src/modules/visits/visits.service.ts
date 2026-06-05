@@ -100,7 +100,9 @@ export class VisitsService {
       throw new BadRequestException('clinicId is only applicable for OPD visits');
     }
 
-    if (createVisitDto.visitType !== VisitType.OPD) {
+    // Create a simple visit (no clinic/token) for non-OPD visits, or for OPD
+    // visits registered without a clinic since visit info is optional
+    if (createVisitDto.visitType !== VisitType.OPD || !createVisitDto.clinicId) {
       const prisma = this.prisma as any;
       const visit = await prisma.visit.create({
         data: {
@@ -133,11 +135,7 @@ export class VisitsService {
       return { visit };
     }
 
-    // Validate clinic exists and is active
-    if (!createVisitDto.clinicId) {
-      throw new BadRequestException('clinicId is required for OPD visits');
-    }
-
+    // At this point an OPD clinic was provided — validate it exists and is active
     const clinic = await this.prisma.clinic.findUnique({
       where: { id: createVisitDto.clinicId },
       include: {

@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import {
   Select,
   SelectContent,
@@ -240,17 +241,15 @@ export default function ActivityLogsPage() {
               </SelectContent>
             </Select>
             <div className="flex gap-2">
-              <Input
-                type="date"
+              <DateInput
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={setStartDate}
                 className="text-sm"
                 title="From date"
               />
-              <Input
-                type="date"
+              <DateInput
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={setEndDate}
                 className="text-sm"
                 title="To date"
               />

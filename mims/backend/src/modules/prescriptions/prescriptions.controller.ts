@@ -68,8 +68,8 @@ export class PrescriptionsController {
 
   @Get(':id')
   @Roles(...ALL_PRESCRIPTION_ROLES)
-  findOne(@Param('id') id: string) {
-    return this.prescriptionsService.findOne(id);
+  findOne(@Param('id') id: string, @Request() req) {
+    return this.prescriptionsService.findOne(id, req.user?.pharmacyId);
   }
 
   @Post(':id/medicines')

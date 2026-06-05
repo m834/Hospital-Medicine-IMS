@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { useFinancialDetailed, FinancialReportPeriod } from '@/hooks/use-financial-reports';
@@ -72,7 +72,7 @@ export default function FinancialReportPage() {
         </div>
         <div className="space-y-2">
           <label className="text-sm font-medium">Reference Date</label>
-          <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="w-48" />
+          <DateInput value={date} onChange={setDate} className="w-48" />
         </div>
       </div>
 

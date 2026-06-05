@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/auth.store';
+import { getAccessToken } from '@/lib/auth';
 
 // Types
 export interface Room {
@@ -242,7 +243,7 @@ export function useCreateRoom() {
 
   return useMutation({
     mutationFn: (data: CreateRoomData) => {
-      const token = useAuthStore.getState().token;
+      const token = useAuthStore.getState().token || getAccessToken();
       if (!token) throw new Error('No authentication token available');
       return createRoom(data, token);
     },
@@ -257,7 +258,7 @@ export function useUpdateRoom() {
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<CreateRoomData> }) => {
-      const token = useAuthStore.getState().token;
+      const token = useAuthStore.getState().token || getAccessToken();
       if (!token) throw new Error('No authentication token available');
       return updateRoom(id, data, token);
     },
@@ -273,7 +274,7 @@ export function useDeleteRoom() {
 
   return useMutation({
     mutationFn: (id: string) => {
-      const token = useAuthStore.getState().token;
+      const token = useAuthStore.getState().token || getAccessToken();
       if (!token) throw new Error('No authentication token available');
       return deleteRoom(id, token);
     },

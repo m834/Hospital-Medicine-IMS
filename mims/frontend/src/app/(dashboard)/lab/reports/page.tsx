@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
 import { Search, Download, FileText, Calendar, User, TestTube } from "lucide-react";
 
@@ -118,18 +119,16 @@ export default function LabReportsPage() {
               </div>
             </div>
             <div>
-              <Input
-                type="date"
+              <DateInput
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={setStartDate}
                 placeholder="Start Date"
               />
             </div>
             <div>
-              <Input
-                type="date"
+              <DateInput
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={setEndDate}
                 placeholder="End Date"
               />
             </div>

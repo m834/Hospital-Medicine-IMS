@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import {
   Card,
   CardContent,
@@ -884,7 +885,7 @@ export default function InventoryDashboardPage() {
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">Expiry Date</label>
-              <Input type="date" value={editForm.expiryDate} onChange={e => setEditForm(f => ({ ...f, expiryDate: e.target.value }))} />
+              <DateInput value={editForm.expiryDate} onChange={v => setEditForm(f => ({ ...f, expiryDate: v }))} />
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">Purchase Price (PKR)</label>

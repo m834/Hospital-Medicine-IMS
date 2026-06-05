@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,6 +32,8 @@ import { ArrowLeft, Calendar, DollarSign, History, Loader2, Phone, Printer } fro
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import api from '@/lib/api';
+import { printPatientReceipt } from '@/lib/print-receipt';
+import { DateInput } from '@/components/ui/date-input';
 
 interface Patient {
   id: string;
@@ -97,6 +99,9 @@ interface Visit {
 
 export default function PatientDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const shouldAutoPrint = searchParams.get('autoprint') === '1';
+  const hasAutoPrinted = useRef(false);
   const router = useRouter();
   const { user } = useAuthStore();
   const { selectedHospital } = useHospitalStore();
@@ -150,6 +155,22 @@ export default function PatientDetailPage() {
       fetchVisits();
     }
   }, [id, visitTypeFilter, departmentFilter, startDate, endDate]);
+
+  // Auto-print the patient slip when arriving here right after registration
+  useEffect(() => {
+    if (
+      shouldAutoPrint &&
+      !hasAutoPrinted.current &&
+      patient &&
+      !loading &&
+      !loadingVisits
+    ) {
+      hasAutoPrinted.current = true;
+      printPatientDetails();
+      // Drop the autoprint flag so refresh/back doesn't reprint
+      router.replace(`/dashboard/patients/${id}`);
+    }
+  }, [shouldAutoPrint, patient, loading, loadingVisits]);
 
   const fetchPatient = async () => {
     setLoading(true);
@@ -233,273 +254,8 @@ export default function PatientDetailPage() {
 
   const printPatientDetails = () => {
     if (!patient) return;
-
     const hospitalName = selectedHospital?.name || 'Hospital Medical Center';
-
-    const visitRows = visits
-      .map((visit) => {
-        const departmentName = getDepartmentName(visit);
-        const doctorName = visit.clinic?.doctor?.fullName || '-';
-        const visitDate = format(new Date(visit.visitDate), 'dd/MM/yyyy');
-        const fee = getVisitFee(visit);
-        const room = getRoomLabel(visit);
-        const bed = getBedLabel(visit);
-        return `
-          <tr>
-            <td>${visit.visitNumber || visit.id.slice(0, 8)}</td>
-            <td>${visit.visitType}</td>
-            <td>${departmentName}</td>
-            <td>${doctorName}</td>
-            <td>${visit.status}</td>
-            <td>${visitDate}</td>
-            <td>${fee}</td>
-            <td>${room}</td>
-            <td>${bed}</td>
-          </tr>
-        `;
-      })
-      .join('');
-
-    const receiptHTML = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Patient Details - ${patient.nrNumber}</title>
-          <style>
-            @page { size: A4; margin: 15mm; }
-            * { box-sizing: border-box; }
-            body { font-family: Arial, sans-serif; color: #111827; }
-            h1, h2 { margin: 0 0 8px 0; }
-            .header { border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 16px; }
-            .meta { font-size: 12px; color: #374151; }
-            .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
-            .label { font-size: 11px; color: #6b7280; margin-bottom: 4px; }
-            .value { font-size: 13px; font-weight: 600; }
-            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-            th, td { border: 1px solid #e5e7eb; padding: 6px 8px; font-size: 12px; text-align: left; }
-            th { background: #f3f4f6; }
-            .footer { margin-top: 16px; font-size: 10px; color: #6b7280; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>${hospitalName}</h1>
-            <div class="meta">Patient Details</div>
-            <div class="meta">Printed: ${format(new Date(), 'dd/MM/yyyy hh:mm a')}</div>
-          </div>
-
-          <h2>Patient Information</h2>
-          <div class="grid">
-            <div>
-              <div class="label">MRN</div>
-              <div class="value">${patient.nrNumber}</div>
-            </div>
-            <div>
-              <div class="label">Full Name</div>
-              <div class="value">${patient.fullName}</div>
-            </div>
-            <div>
-              <div class="label">Gender</div>
-              <div class="value">${patient.gender}</div>
-            </div>
-            <div>
-              <div class="label">Mobile</div>
-              <div class="value">${patient.mobile || '-'}</div>
-            </div>
-            <div>
-              <div class="label">CNIC</div>
-              <div class="value">${patient.cnic || '-'}</div>
-            </div>
-            <div>
-              <div class="label">Registered</div>
-              <div class="value">${format(new Date(patient.registeredAt), 'dd/MM/yyyy')}</div>
-            </div>
-            <div>
-              <div class="label">Default Visit Type</div>
-              <div class="value">${patient.visitType}</div>
-            </div>
-            <div>
-              <div class="label">Department</div>
-              <div class="value">${patient.departmentInfo?.name || '-'}</div>
-            </div>
-            <div>
-              <div class="label">Attending Doctor</div>
-              <div class="value">${patient.attendingDoctor?.fullName || '-'}</div>
-            </div>
-          </div>
-
-          <h2>Visit History</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Visit #</th>
-                <th>Type</th>
-                <th>Department</th>
-                <th>Doctor</th>
-                <th>Status</th>
-                <th>Date</th>
-                <th>Fee</th>
-                <th>Room</th>
-                <th>Bed</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${visitRows || '<tr><td colspan="9">No visits found.</td></tr>'}
-            </tbody>
-          </table>
-
-          <div class="footer">Generated by M-IMS</div>
-        </body>
-      </html>
-    `;
-
-    const printFrame = document.createElement('iframe');
-    printFrame.style.position = 'fixed';
-    printFrame.style.right = '0';
-    printFrame.style.bottom = '0';
-    printFrame.style.width = '0';
-    printFrame.style.height = '0';
-    printFrame.style.border = 'none';
-    document.body.appendChild(printFrame);
-
-    const frameDoc = printFrame.contentWindow?.document;
-    if (frameDoc) {
-      frameDoc.open();
-      frameDoc.write(receiptHTML);
-      frameDoc.close();
-
-      printFrame.onload = () => {
-        setTimeout(() => {
-          printFrame.contentWindow?.print();
-          setTimeout(() => {
-            document.body.removeChild(printFrame);
-          }, 100);
-        }, 250);
-      };
-    }
-  };
-
-  const printVisitDetails = (visit: Visit) => {
-    if (!patient) return;
-
-    const hospitalName = selectedHospital?.name || 'Hospital Medical Center';
-    const departmentName = getDepartmentName(visit);
-    const doctorName = visit.clinic?.doctor?.fullName || '-';
-    const visitDate = format(new Date(visit.visitDate), 'dd/MM/yyyy');
-    const fee = getVisitFee(visit);
-    const room = getRoomLabel(visit);
-    const bed = getBedLabel(visit);
-
-    const receiptHTML = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Visit Details - ${visit.visitNumber || visit.id.slice(0, 8)}</title>
-          <style>
-            @page { size: A4; margin: 15mm; }
-            * { box-sizing: border-box; }
-            body { font-family: Arial, sans-serif; color: #111827; }
-            h1, h2 { margin: 0 0 8px 0; }
-            .header { border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 16px; }
-            .meta { font-size: 12px; color: #374151; }
-            .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
-            .label { font-size: 11px; color: #6b7280; margin-bottom: 4px; }
-            .value { font-size: 13px; font-weight: 600; }
-            .footer { margin-top: 16px; font-size: 10px; color: #6b7280; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>${hospitalName}</h1>
-            <div class="meta">Visit Details</div>
-            <div class="meta">Printed: ${format(new Date(), 'dd/MM/yyyy hh:mm a')}</div>
-          </div>
-
-          <h2>Patient</h2>
-          <div class="grid">
-            <div>
-              <div class="label">MRN</div>
-              <div class="value">${patient.nrNumber}</div>
-            </div>
-            <div>
-              <div class="label">Full Name</div>
-              <div class="value">${patient.fullName}</div>
-            </div>
-            <div>
-              <div class="label">CNIC</div>
-              <div class="value">${patient.cnic || '-'}</div>
-            </div>
-          </div>
-
-          <h2>Visit</h2>
-          <div class="grid">
-            <div>
-              <div class="label">Visit #</div>
-              <div class="value">${visit.visitNumber || visit.id.slice(0, 8)}</div>
-            </div>
-            <div>
-              <div class="label">Type</div>
-              <div class="value">${visit.visitType}</div>
-            </div>
-            <div>
-              <div class="label">Department</div>
-              <div class="value">${departmentName}</div>
-            </div>
-            <div>
-              <div class="label">Doctor</div>
-              <div class="value">${doctorName}</div>
-            </div>
-            <div>
-              <div class="label">Status</div>
-              <div class="value">${visit.status}</div>
-            </div>
-            <div>
-              <div class="label">Date</div>
-              <div class="value">${visitDate}</div>
-            </div>
-            <div>
-              <div class="label">Fee</div>
-              <div class="value">${fee}</div>
-            </div>
-            <div>
-              <div class="label">Room</div>
-              <div class="value">${room}</div>
-            </div>
-            <div>
-              <div class="label">Bed</div>
-              <div class="value">${bed}</div>
-            </div>
-          </div>
-
-          <div class="footer">Generated by M-IMS</div>
-        </body>
-      </html>
-    `;
-
-    const printFrame = document.createElement('iframe');
-    printFrame.style.position = 'fixed';
-    printFrame.style.right = '0';
-    printFrame.style.bottom = '0';
-    printFrame.style.width = '0';
-    printFrame.style.height = '0';
-    printFrame.style.border = 'none';
-    document.body.appendChild(printFrame);
-
-    const frameDoc = printFrame.contentWindow?.document;
-    if (frameDoc) {
-      frameDoc.open();
-      frameDoc.write(receiptHTML);
-      frameDoc.close();
-
-      printFrame.onload = () => {
-        setTimeout(() => {
-          printFrame.contentWindow?.print();
-          setTimeout(() => {
-            document.body.removeChild(printFrame);
-          }, 100);
-        }, 250);
-      };
-    }
+    printPatientReceipt(patient, hospitalName);
   };
 
   if (loading) {
@@ -640,12 +396,12 @@ export default function PatientDetailPage() {
 
             <div>
               <p className="text-sm text-muted-foreground mb-2">Start Date</p>
-              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+              <DateInput value={startDate} onChange={setStartDate} />
             </div>
 
             <div>
               <p className="text-sm text-muted-foreground mb-2">End Date</p>
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+              <DateInput value={endDate} onChange={setEndDate} />
             </div>
           </div>
 
@@ -718,7 +474,7 @@ export default function PatientDetailPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => printVisitDetails(visit)}
+                          onClick={printPatientDetails}
                         >
                           <Printer className="h-4 w-4 mr-1" />
                           Print

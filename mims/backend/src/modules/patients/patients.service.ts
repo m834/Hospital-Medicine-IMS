@@ -48,12 +48,9 @@ export class PatientsService {
       return null;
     }
 
-    if (!createPatientDto.department) {
-      throw new BadRequestException('Department is required for indoor admission');
-    }
-
-    if (!createPatientDto.attendingDoctorId) {
-      throw new BadRequestException('Attending doctor is required for indoor admission');
+    // Skip admission creation if minimum required fields are absent
+    if (!createPatientDto.department || !createPatientDto.attendingDoctorId) {
+      return null;
     }
 
     return this.admissionsService.create({
@@ -177,9 +174,9 @@ export class PatientsService {
         mobile: createPatientDto.mobile ?? null,
         cnic: createPatientDto.cnic,
         dob: createPatientDto.dob ? new Date(createPatientDto.dob) : null,
-        gender: createPatientDto.gender,
+        gender: createPatientDto.gender ?? 'MALE',
         address: createPatientDto.address,
-        visitType: createPatientDto.visitType,
+        visitType: createPatientDto.visitType ?? 'OPD',
         department: createPatientDto.department,
         ward: createPatientDto.ward,
         bed: createPatientDto.bed,

@@ -1,9 +1,9 @@
 'use client';
 
 import { Card } from '@/components/ui/card';
+import { DateInput } from '@/components/ui/date-input';
 import { Filter, X } from 'lucide-react';
 import { useState } from 'react';
-import { format, subDays } from 'date-fns';
 import { AttendanceFilters } from '@/hooks/useAttendanceData';
 
 interface FilterControlsProps {
@@ -21,10 +21,10 @@ export function FilterControls({
 }: FilterControlsProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDateChange = (value: string) => {
     onFiltersChange({
       ...filters,
-      date: e.target.value,
+      date: value,
     });
   };
 
@@ -79,11 +79,9 @@ export function FilterControls({
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Date
             </label>
-            <input
-              type="date"
+            <DateInput
               value={filters.date || ''}
               onChange={handleDateChange}
-              max={format(new Date(), 'yyyy-MM-dd')}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
             />
           </div>

@@ -59,6 +59,7 @@ export class PrescriptionsService {
           create: prescriptionMedicines.map((m) => ({
             medicineId: m.medicineId,
             dosage: m.dosage,
+            dosageFrequency: m.dosageFrequency ?? null,
             instructions: m.instructions,
             category: m.category ?? 'NORMAL',
             addedBy: user?.id ?? '',
@@ -108,7 +109,7 @@ export class PrescriptionsService {
     return { data: prescriptions, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, pharmacyId?: string) {
     const prescription = await this.prisma.prescription.findUnique({
       where: { id },
       include: {
@@ -145,6 +146,37 @@ export class PrescriptionsService {
     });
 
     if (!prescription) throw new NotFoundException(`Prescription with ID ${id} not found`);
+
+    if (pharmacyId && prescription.medicines.length > 0) {
+      const now = new Date();
+      const medicineIds = [...new Set(prescription.medicines.map((m) => m.medicineId))];
+
+      const stockAgg = await this.prisma.stockBatch.groupBy({
+        by: ['medicineId', 'category'],
+        where: {
+          hospitalId: prescription.hospitalId,
+          pharmacyId,
+          medicineId: { in: medicineIds },
+          status: 'AVAILABLE',
+          expiryDate: { gte: now },
+        },
+        _sum: { qtyAvailable: true },
+      });
+
+      const stockMap = new Map(
+        stockAgg.map((s) => [`${s.medicineId}:${s.category}`, s._sum.qtyAvailable ?? 0]),
+      );
+
+      const enriched = {
+        ...prescription,
+        medicines: prescription.medicines.map((m) => ({
+          ...m,
+          availableQty: stockMap.get(`${m.medicineId}:${m.category}`) ?? 0,
+        })),
+      };
+      return enriched;
+    }
+
     return prescription;
   }
 
@@ -199,6 +231,7 @@ export class PrescriptionsService {
         prescriptionId,
         medicineId: dto.medicineId,
         dosage: dto.dosage,
+        dosageFrequency: dto.dosageFrequency ?? null,
         instructions: dto.instructions,
         category: dto.category ?? 'NORMAL',
         addedBy: userId,

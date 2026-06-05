@@ -17,6 +17,17 @@ import { Plus, Search, Edit, Trash2, TestTube, DollarSign, Clock, FileText } fro
 import type { LabTest, CreateLabTestInput } from "@/hooks/use-lab-tests";
 import { generateNextCode } from "@/lib/code";
 
+const PREDEFINED_CATEGORIES = [
+  "X-RAY",
+  "MICROBIOLOGY",
+  "CHEMICAL PATH",
+  "CARDIAC",
+  "HAEMATOLOGY",
+  "HIST PATHOLOGY",
+  "GENERAL LAB",
+  "OTHER",
+];
+
 export default function LabTestsPage() {
   const { selectedHospital } = useHospitalStore();
   const [searchQuery, setSearchQuery] = useState("");
@@ -25,6 +36,8 @@ export default function LabTestsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedTest, setSelectedTest] = useState<LabTest | null>(null);
+  const [categorySelection, setCategorySelection] = useState("");
+  const [customCategory, setCustomCategory] = useState("");
 
   const { data: labTests, isLoading } = useLabTests(selectedHospital?.id || "", {
     status: selectedStatus === "all" ? undefined : selectedStatus,
@@ -99,7 +112,24 @@ export default function LabTestsPage() {
     await updateStatusMutation.mutateAsync({ id, status });
   };
 
+  const handleCategoryChange = (value: string) => {
+    setCategorySelection(value);
+    if (value !== "OTHER") {
+      setCustomCategory("");
+      setFormData((prev) => ({ ...prev, testCategory: value }));
+    } else {
+      setFormData((prev) => ({ ...prev, testCategory: "" }));
+    }
+  };
+
+  const handleCustomCategoryChange = (value: string) => {
+    setCustomCategory(value);
+    setFormData((prev) => ({ ...prev, testCategory: value }));
+  };
+
   const resetForm = () => {
+    setCategorySelection("");
+    setCustomCategory("");
     setFormData({
       hospitalId: selectedHospital?.id || "",
       testCode: nextTestCode,
@@ -126,6 +156,9 @@ export default function LabTestsPage() {
 
   const openEditDialog = (test: LabTest) => {
     setSelectedTest(test);
+    const isPredefined = PREDEFINED_CATEGORIES.filter((c) => c !== "OTHER").includes(test.testCategory);
+    setCategorySelection(isPredefined ? test.testCategory : "OTHER");
+    setCustomCategory(isPredefined ? "" : test.testCategory);
     setFormData({
       hospitalId: test.hospitalId,
       testCode: test.testCode,
@@ -387,12 +420,24 @@ export default function LabTestsPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="testCategory">Category *</Label>
-                <Input
-                  id="testCategory"
-                  value={formData.testCategory}
-                  onChange={(e) => setFormData({ ...formData, testCategory: e.target.value })}
-                  placeholder="e.g., Hematology, Biochemistry"
-                />
+                <Select value={categorySelection} onValueChange={handleCategoryChange}>
+                  <SelectTrigger id="testCategory">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PREDEFINED_CATEGORIES.map((cat) => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {categorySelection === "OTHER" && (
+                  <Input
+                    value={customCategory}
+                    onChange={(e) => handleCustomCategoryChange(e.target.value)}
+                    placeholder="Enter category name"
+                    className="mt-2"
+                  />
+                )}
               </div>
             </div>
 
@@ -501,11 +546,24 @@ export default function LabTestsPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-testCategory">Category *</Label>
-                <Input
-                  id="edit-testCategory"
-                  value={formData.testCategory}
-                  onChange={(e) => setFormData({ ...formData, testCategory: e.target.value })}
-                />
+                <Select value={categorySelection} onValueChange={handleCategoryChange}>
+                  <SelectTrigger id="edit-testCategory">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PREDEFINED_CATEGORIES.map((cat) => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {categorySelection === "OTHER" && (
+                  <Input
+                    value={customCategory}
+                    onChange={(e) => handleCustomCategoryChange(e.target.value)}
+                    placeholder="Enter category name"
+                    className="mt-2"
+                  />
+                )}
               </div>
             </div>
 

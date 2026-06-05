@@ -133,6 +133,11 @@ export function ClinicManagement() {
     }
   };
 
+  const parseTimeRange = (value: string) => {
+    const [from, to] = value.split('-').map((t) => t.trim());
+    return { availableFrom: from || undefined, availableTo: to || undefined };
+  };
+
   const handleCreateClinic = async () => {
     if (!currentHospitalId) {
       toast({
@@ -143,6 +148,8 @@ export function ClinicManagement() {
       return;
     }
 
+    const timeRange = form.availableTime ? parseTimeRange(form.availableTime) : {};
+
     try {
       await createClinic.mutateAsync({
         hospitalId: currentHospitalId,
@@ -151,7 +158,7 @@ export function ClinicManagement() {
         name: form.name || undefined,
         opdFee: parseFloat(form.opdFee),
         availableDays: form.availableDays.length > 0 ? form.availableDays : undefined,
-        availableTime: form.availableTime || undefined,
+        ...timeRange,
         status: form.status,
       });
       setShowDialog(false);
@@ -165,6 +172,8 @@ export function ClinicManagement() {
   const handleUpdateClinic = async () => {
     if (!editingClinic) return;
 
+    const timeRange = form.availableTime ? parseTimeRange(form.availableTime) : {};
+
     try {
       await updateClinic.mutateAsync({
         id: editingClinic.id,
@@ -172,7 +181,7 @@ export function ClinicManagement() {
           name: form.name || undefined,
           opdFee: parseFloat(form.opdFee),
           availableDays: form.availableDays.length > 0 ? form.availableDays : undefined,
-          availableTime: form.availableTime || undefined,
+          ...timeRange,
           status: form.status,
         },
       });
@@ -221,7 +230,7 @@ export function ClinicManagement() {
       name: clinic.name || '',
       opdFee: clinic.opdFee,
       availableDays: parseAvailableDays(clinic.availableDays),
-      availableTime: clinic.availableTime || '',
+      availableTime: [clinic.availableFrom, clinic.availableTo].filter(Boolean).join('-'),
       status: clinic.status,
     });
     setShowDialog(true);
@@ -371,10 +380,10 @@ export function ClinicManagement() {
                   </span>
                   <span className="text-muted-foreground">consultation fee</span>
                 </div>
-                {clinic.availableTime && (
+                {(clinic.availableFrom || clinic.availableTo) && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Clock className="h-4 w-4" />
-                    {clinic.availableTime}
+                    {[clinic.availableFrom, clinic.availableTo].filter(Boolean).join(' - ')}
                   </div>
                 )}
                 {clinic.availableDays && (

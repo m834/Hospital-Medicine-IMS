@@ -560,14 +560,15 @@ model PrescriptionItem {
 }
 
 model PrescriptionMedicine {
-  id             String        @id @default(uuid())
-  prescriptionId String        @map("prescription_id")
-  medicineId     String        @map("medicine_id")
-  dosage         String?
-  instructions   String?
-  category       BatchCategory @default(NORMAL)
-  addedBy        String        @map("added_by")
-  addedAt        DateTime      @default(now()) @map("added_at")
+  id              String           @id @default(uuid())
+  prescriptionId  String           @map("prescription_id")
+  medicineId      String           @map("medicine_id")
+  dosage          String?
+  dosageFrequency DosageFrequency? @map("dosage_frequency")
+  instructions    String?
+  category        BatchCategory    @default(NORMAL)
+  addedBy         String           @map("added_by")
+  addedAt         DateTime         @default(now()) @map("added_at")
 
   prescription  Prescription              @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
   medicine      Medicine                  @relation(fields: [medicineId], references: [id])
@@ -1418,6 +1419,13 @@ enum PrescriptionType {
 enum PrescriptionStatus {
   ACTIVE
   COMPLETED
+}
+
+enum DosageFrequency {
+  OD
+  BID
+  TDS
+  SOS
 }
 
 enum PrescriptionItemStatus {

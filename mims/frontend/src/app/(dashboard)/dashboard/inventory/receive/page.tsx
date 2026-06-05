@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import {
   Card,
   CardContent,
@@ -860,7 +861,7 @@ export default function ReceiveStockPage() {
                       <FormItem className="col-span-2">
                         <FormLabel>Expiry *</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} value={field.value || ''} />
+                          <DateInput {...field} value={field.value || ''} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1011,11 +1012,10 @@ export default function ReceiveStockPage() {
                             </TableCell>
                             <TableCell className="text-sm">
                               {isEditing ? (
-                                <Input
-                                  type="date"
+                                <DateInput
                                   className="h-7 text-xs"
                                   value={editDraft.expiryDate ?? ''}
-                                  onChange={e => setEditDraft(d => ({ ...d, expiryDate: e.target.value }))}
+                                  onChange={v => setEditDraft(d => ({ ...d, expiryDate: v }))}
                                 />
                               ) : formatDate(item.expiryDate)}
                             </TableCell>

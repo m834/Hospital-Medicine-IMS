@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import {
   Select,
   SelectContent,
@@ -229,12 +229,10 @@ export default function MainPharmacyDashboard() {
 
             <div>
               <Label htmlFor="date">Report Date</Label>
-              <Input
+              <DateInput
                 id="date"
-                type="date"
                 value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                max={new Date().toISOString().split('T')[0]}
+                onChange={setSelectedDate}
               />
             </div>
 

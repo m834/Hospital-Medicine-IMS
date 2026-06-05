@@ -1,5 +1,5 @@
 import { IsString, IsNotEmpty, IsArray, ValidateNested, IsOptional, IsEnum } from 'class-validator';
-import { BatchCategory } from '@prisma/client';
+import { BatchCategory, DosageFrequency } from '@prisma/client';
 import { Type } from 'class-transformer';
 
 export enum PrescriptionType {
@@ -16,6 +16,10 @@ export class PrescriptionMedicineDto {
   @IsOptional()
   @IsString()
   dosage?: string;
+
+  @IsOptional()
+  @IsEnum(DosageFrequency)
+  dosageFrequency?: DosageFrequency;
 
   @IsOptional()
   @IsString()

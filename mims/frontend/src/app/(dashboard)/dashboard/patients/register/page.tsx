@@ -30,29 +30,40 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, Loader2, UserPlus, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Loader2, UserPlus, CheckCircle, Printer } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import api from '@/lib/api';
 
-const patientSchema = z.object({
-  fullName: z.string().min(2, 'Full name is required'),
-  mobile: z.string().optional(),
-  cnic: z.string().optional(),
-  dob: z.string().optional(),
-  gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
-  address: z.string().optional(),
-  visitType: z.enum(['OPD', 'EMERGENCY', 'WARD_INDOOR']),
-  department: z.string().optional(),
-  clinicId: z.string().optional(),
-  roomType: z.string().optional(),
-  roomId: z.string().optional(),
-  bedId: z.string().optional(),
-  ward: z.string().optional(),
-  bed: z.string().optional(),
-  attendingDoctorId: z.string().optional(),
-});
+const patientSchema = z
+  .object({
+    fullName: z.string().min(2, 'Full name is required'),
+    dob: z
+      .string()
+      .optional()
+      .refine((v) => !v || /^\d{2}\/\d{2}\/\d{4}$/.test(v), {
+        message: 'Use date format dd/mm/yyyy',
+      }),
+    mobile: z.string().optional(),
+    cnic: z.string().optional(),
+    gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
+    address: z.string().optional(),
+    visitType: z.enum(['OPD', 'EMERGENCY', 'WARD_INDOOR']).optional(),
+    department: z.string().optional(),
+    clinicId: z.string().optional(),
+    roomType: z.string().optional(),
+    roomId: z.string().optional(),
+    bedId: z.string().optional(),
+    ward: z.string().optional(),
+    bed: z.string().optional(),
+    attendingDoctorId: z.string().optional(),
+  })
+  // Require at least one of mobile number or date of birth
+  .refine((data) => !!data.mobile?.trim() || !!data.dob?.trim(), {
+    message: 'Provide either a mobile number or date of birth',
+    path: ['mobile'],
+  });
 
 type PatientFormData = z.infer<typeof patientSchema>;
 
@@ -64,6 +75,26 @@ const formatCnic = (value: string) => {
   if (digits.length <= 5) return part1;
   if (digits.length <= 12) return `${part1}-${part2}`;
   return `${part1}-${part2}-${part3}`;
+};
+
+// Mask free text into dd/mm/yyyy, capping the year at 4 digits
+const formatDob = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  const day = digits.slice(0, 2);
+  const month = digits.slice(2, 4);
+  const year = digits.slice(4, 8);
+  if (digits.length <= 2) return day;
+  if (digits.length <= 4) return `${day}/${month}`;
+  return `${day}/${month}/${year}`;
+};
+
+// Convert dd/mm/yyyy to ISO (yyyy-mm-dd) for the backend
+const dobToIso = (value?: string) => {
+  if (!value) return undefined;
+  const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return undefined;
+  const [, day, month, year] = match;
+  return `${year}-${month}-${day}`;
 };
 
 interface Doctor {
@@ -157,12 +188,12 @@ export default function RegisterPatientPage() {
     resolver: zodResolver(patientSchema),
     defaultValues: {
       fullName: '',
+      dob: '',
       mobile: '',
       cnic: '',
-      dob: '',
-      gender: 'MALE',
+      gender: 'MALE' as const,
       address: '',
-      visitType: 'OPD',
+      visitType: 'OPD' as const,
       department: '',
       clinicId: '',
       roomType: '',
@@ -324,17 +355,11 @@ export default function RegisterPatientPage() {
         return;
       }
 
-      if (data.visitType === 'WARD_INDOOR' && !data.roomId && !data.bedId) {
-        alert('Please select a ward or bed for indoor visits');
-        setSubmitting(false);
-        return;
-      }
-
       // Patient creation payload (includes visit details for visit record creation)
       const patientPayload = {
         fullName: data.fullName,
         gender: data.gender,
-        dob: data.dob || undefined,
+        dob: dobToIso(data.dob),
         mobile: data.mobile || undefined,
         cnic: data.cnic || undefined,
         address: data.address || undefined,
@@ -354,8 +379,8 @@ export default function RegisterPatientPage() {
       const response = await api.post('/patients', patientPayload, { params });
       const patient = response.data;
 
-      alert(`Patient registered successfully!\nMRN: ${patient.nrNumber}`);
-      router.push('/dashboard/patients');
+      // On successful save, go straight to the patient page and auto-print
+      router.push(`/dashboard/patients/${patient.id}?autoprint=1`);
     } catch (error: any) {
       console.error('Error registering patient:', error);
       alert(error.response?.data?.message || 'Failed to register patient');
@@ -384,7 +409,7 @@ export default function RegisterPatientPage() {
         <CardHeader>
           <CardTitle>Patient Information</CardTitle>
           <CardDescription>
-            All fields marked with * are required. MRN will be auto-generated.
+            Full Name is required, along with either a Mobile Number or Date of Birth. All other fields are optional. MRN will be auto-generated.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -414,7 +439,7 @@ export default function RegisterPatientPage() {
                     name="gender"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Gender *</FormLabel>
+                        <FormLabel>Gender</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
@@ -439,7 +464,14 @@ export default function RegisterPatientPage() {
                       <FormItem>
                         <FormLabel>Date of Birth</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} />
+                          <Input
+                            placeholder="dd/mm/yyyy"
+                            inputMode="numeric"
+                            value={field.value || ''}
+                            onChange={(event) => {
+                              field.onChange(formatDob(event.target.value));
+                            }}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -508,7 +540,7 @@ export default function RegisterPatientPage() {
                     name="visitType"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Visit Type *</FormLabel>
+                        <FormLabel>Visit Type</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
@@ -580,7 +612,7 @@ export default function RegisterPatientPage() {
                       name="clinicId"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Clinic *</FormLabel>
+                          <FormLabel>Clinic</FormLabel>
                           <Select 
                             onValueChange={(value) => {
                               field.onChange(value);
@@ -674,7 +706,7 @@ export default function RegisterPatientPage() {
                         name="roomType"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Room Type *</FormLabel>
+                            <FormLabel>Room Type</FormLabel>
                             <Select 
                               onValueChange={(value) => {
                                 field.onChange(value);
@@ -708,7 +740,7 @@ export default function RegisterPatientPage() {
                           name="roomId"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Room *</FormLabel>
+                              <FormLabel>Room</FormLabel>
                               <Select 
                                 onValueChange={(value) => {
                                   field.onChange(value);
@@ -752,7 +784,7 @@ export default function RegisterPatientPage() {
                           name="bedId"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Bed *</FormLabel>
+                              <FormLabel>Bed</FormLabel>
                               <Select 
                                 onValueChange={(value) => {
                                   field.onChange(value);
@@ -821,12 +853,12 @@ export default function RegisterPatientPage() {
                   {submitting ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Registering...
+                      Saving...
                     </>
                   ) : (
                     <>
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Register Patient
+                      <Printer className="h-4 w-4 mr-2" />
+                      Save and Print
                     </>
                   )}
                 </Button>

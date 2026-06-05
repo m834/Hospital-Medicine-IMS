@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
@@ -338,21 +339,19 @@ export default function LeavesPage() {
               </div>
               <div className="space-y-2">
                 <Label>Start date</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={applyForm.startDate}
-                  onChange={(event) =>
-                    setApplyForm((prev) => ({ ...prev, startDate: event.target.value }))
+                  onChange={(value) =>
+                    setApplyForm((prev) => ({ ...prev, startDate: value }))
                   }
                 />
               </div>
               <div className="space-y-2">
                 <Label>End date</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={applyForm.endDate}
-                  onChange={(event) =>
-                    setApplyForm((prev) => ({ ...prev, endDate: event.target.value }))
+                  onChange={(value) =>
+                    setApplyForm((prev) => ({ ...prev, endDate: value }))
                   }
                 />
               </div>
@@ -424,21 +423,19 @@ export default function LeavesPage() {
               </div>
               <div className="space-y-2">
                 <Label>From</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={filters.fromDate}
-                  onChange={(event) =>
-                    setFilters((prev) => ({ ...prev, fromDate: event.target.value }))
+                  onChange={(value) =>
+                    setFilters((prev) => ({ ...prev, fromDate: value }))
                   }
                 />
               </div>
               <div className="space-y-2">
                 <Label>To</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={filters.toDate}
-                  onChange={(event) =>
-                    setFilters((prev) => ({ ...prev, toDate: event.target.value }))
+                  onChange={(value) =>
+                    setFilters((prev) => ({ ...prev, toDate: value }))
                   }
                 />
               </div>
@@ -700,11 +697,10 @@ export default function LeavesPage() {
               </div>
               <div className="space-y-2">
                 <Label>Date</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={holidayForm.date}
-                  onChange={(event) =>
-                    setHolidayForm((prev) => ({ ...prev, date: event.target.value }))
+                  onChange={(value) =>
+                    setHolidayForm((prev) => ({ ...prev, date: value }))
                   }
                 />
               </div>

@@ -16,7 +16,8 @@ export interface Clinic {
   name: string | null;
   opdFee: string;
   availableDays: string | null;
-  availableTime: string | null;
+  availableFrom: string | null;
+  availableTo: string | null;
   status: 'ACTIVE' | 'INACTIVE' | 'TEMPORARILY_CLOSED';
   version: number;
   createdAt: string;
@@ -59,7 +60,8 @@ export interface CreateClinicDto {
   name?: string;
   opdFee: number;
   availableDays?: string[];
-  availableTime?: string;
+  availableFrom?: string;
+  availableTo?: string;
   status?: 'ACTIVE' | 'INACTIVE' | 'TEMPORARILY_CLOSED';
 }
 
@@ -67,7 +69,8 @@ export interface UpdateClinicDto {
   name?: string;
   opdFee?: number;
   availableDays?: string[];
-  availableTime?: string;
+  availableFrom?: string;
+  availableTo?: string;
   status?: 'ACTIVE' | 'INACTIVE' | 'TEMPORARILY_CLOSED';
 }
 
