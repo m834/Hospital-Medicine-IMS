@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/auth.store';
+import api, { getErrorMessage } from '@/lib/api';
 
 // Types
 export interface Bed {
@@ -67,134 +68,70 @@ export interface UpdateBedStatusData {
 }
 
 // API Functions
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
-
-async function fetchBeds(filters: BedFilters, token: string) {
-  const params = new URLSearchParams();
+async function fetchBeds(filters: BedFilters) {
+  const params: Record<string, string> = {};
   Object.entries(filters).forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
-      params.append(key, value.toString());
+      params[key] = value.toString();
     }
   });
 
-  const response = await fetch(`${API_URL}/beds?${params}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch beds');
-  }
-
-  return response.json();
+  const { data } = await api.get(`/beds`, { params });
+  return data;
 }
 
-async function fetchBed(id: string, token: string) {
-  const response = await fetch(`${API_URL}/beds/${id}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch bed');
-  }
-
-  return response.json();
+async function fetchBed(id: string) {
+  const { data } = await api.get(`/beds/${id}`);
+  return data;
 }
 
 async function fetchAvailableBeds(
   hospitalId: string,
   roomId: string | undefined,
-  bedType: string | undefined,
-  token: string
+  bedType: string | undefined
 ) {
-  const params = new URLSearchParams();
-  if (roomId) params.append('roomId', roomId);
-  if (bedType) params.append('bedType', bedType);
+  const params: Record<string, string> = {};
+  if (roomId) params.roomId = roomId;
+  if (bedType) params.bedType = bedType;
 
-  const response = await fetch(`${API_URL}/beds/available/${hospitalId}?${params}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch available beds');
-  }
-
-  return response.json();
+  const { data } = await api.get(`/beds/available/${hospitalId}`, { params });
+  return data;
 }
 
-async function createBed(data: CreateBedData, token: string) {
-  const response = await fetch(`${API_URL}/beds`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to create bed');
+async function createBed(data: CreateBedData) {
+  try {
+    const res = await api.post(`/beds`, data);
+    return res.data;
+  } catch (error) {
+    throw new Error(getErrorMessage(error) || 'Failed to create bed');
   }
-
-  return response.json();
 }
 
-async function updateBed(id: string, data: Partial<CreateBedData>, token: string) {
-  const response = await fetch(`${API_URL}/beds/${id}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to update bed');
+async function updateBed(id: string, data: Partial<CreateBedData>) {
+  try {
+    const res = await api.patch(`/beds/${id}`, data);
+    return res.data;
+  } catch (error) {
+    throw new Error(getErrorMessage(error) || 'Failed to update bed');
   }
-
-  return response.json();
 }
 
-async function updateBedStatus(id: string, status: string, token: string) {
-  const response = await fetch(`${API_URL}/beds/${id}/status`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ status }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to update bed status');
+async function updateBedStatus(id: string, status: string) {
+  try {
+    const res = await api.patch(`/beds/${id}/status`, { status });
+    return res.data;
+  } catch (error) {
+    throw new Error(getErrorMessage(error) || 'Failed to update bed status');
   }
-
-  return response.json();
 }
 
-async function deleteBed(id: string, token: string) {
-  const response = await fetch(`${API_URL}/beds/${id}`, {
-    method: 'DELETE',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to delete bed');
+async function deleteBed(id: string) {
+  try {
+    const res = await api.delete(`/beds/${id}`);
+    return res.data;
+  } catch (error) {
+    throw new Error(getErrorMessage(error) || 'Failed to delete bed');
   }
-
-  return response.json();
 }
 
 // Hooks
@@ -203,7 +140,7 @@ export function useBeds(filters: BedFilters = {}) {
 
   return useQuery({
     queryKey: ['beds', filters],
-    queryFn: () => fetchBeds(filters, token!),
+    queryFn: () => fetchBeds(filters),
     enabled: !!token,
   });
 }
@@ -213,7 +150,7 @@ export function useBed(id: string) {
 
   return useQuery({
     queryKey: ['bed', id],
-    queryFn: () => fetchBed(id, token!),
+    queryFn: () => fetchBed(id),
     enabled: !!token && !!id,
   });
 }
@@ -223,17 +160,16 @@ export function useAvailableBeds(hospitalId: string, roomId?: string, bedType?: 
 
   return useQuery({
     queryKey: ['beds', 'available', hospitalId, roomId, bedType],
-    queryFn: () => fetchAvailableBeds(hospitalId, roomId, bedType, token!),
+    queryFn: () => fetchAvailableBeds(hospitalId, roomId, bedType),
     enabled: !!token && !!hospitalId,
   });
 }
 
 export function useCreateBed() {
-  const token = useAuthStore((state) => state.token);
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: CreateBedData) => createBed(data, token!),
+    mutationFn: (data: CreateBedData) => createBed(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['beds'] });
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
@@ -242,12 +178,11 @@ export function useCreateBed() {
 }
 
 export function useUpdateBed() {
-  const token = useAuthStore((state) => state.token);
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<CreateBedData> }) =>
-      updateBed(id, data, token!),
+      updateBed(id, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['beds'] });
       queryClient.invalidateQueries({ queryKey: ['bed', variables.id] });
@@ -257,12 +192,11 @@ export function useUpdateBed() {
 }
 
 export function useUpdateBedStatus() {
-  const token = useAuthStore((state) => state.token);
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
-      updateBedStatus(id, status, token!),
+      updateBedStatus(id, status),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['beds'] });
       queryClient.invalidateQueries({ queryKey: ['bed', variables.id] });
@@ -272,11 +206,10 @@ export function useUpdateBedStatus() {
 }
 
 export function useDeleteBed() {
-  const token = useAuthStore((state) => state.token);
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => deleteBed(id, token!),
+    mutationFn: (id: string) => deleteBed(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['beds'] });
       queryClient.invalidateQueries({ queryKey: ['rooms'] });

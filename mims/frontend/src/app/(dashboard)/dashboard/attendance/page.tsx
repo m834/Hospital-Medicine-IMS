@@ -16,9 +16,8 @@ import { Download, RefreshCw, Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useAuthStore } from '@/stores/auth.store';
 import { UserRole } from '@/lib/constants';
+import api from '@/lib/api';
 import Link from 'next/link';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
 interface DepartmentOption {
   id: string;
@@ -68,27 +67,17 @@ export default function AttendanceDashboard() {
 
       setIsDepartmentsLoading(true);
       try {
-        const response = await fetch(
-          `${API_BASE}/departments?hospitalId=${user.hospitalId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          const activeDepartments = data
-            .filter((dept: { status: string }) => dept.status === 'ACTIVE')
-            .map((dept: { id: string; name: string }) => ({
-              id: dept.id,
-              name: dept.name,
-            }));
-          setDepartments(activeDepartments);
-        } else {
-          setDepartments([]);
-        }
+        const { data } = await api.get(`/departments`, {
+          params: { hospitalId: user.hospitalId },
+        });
+        const list = data?.data || data || [];
+        const activeDepartments = list
+          .filter((dept: { status: string }) => dept.status === 'ACTIVE')
+          .map((dept: { id: string; name: string }) => ({
+            id: dept.id,
+            name: dept.name,
+          }));
+        setDepartments(activeDepartments);
       } catch (err) {
         console.error('Failed to fetch departments:', err);
         setDepartments([]);

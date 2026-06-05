@@ -1,9 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
 import { useState, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth.store';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+import api from '@/lib/api';
 
 // TypeScript interfaces
 export interface DashboardStats {
@@ -83,10 +81,8 @@ export function useAttendanceData() {
   const dashboardStatsQuery = useQuery<DashboardStats>({
     queryKey: ['attendance', 'dashboard', 'stats', filters.date],
     queryFn: async () => {
-      const { data } = await axios.get(`${API_BASE}/attendance-records/dashboard/stats`, {
+      const { data } = await api.get(`/attendance-records/dashboard/stats`, {
         params: { date: filters.date },
-        headers: { Authorization: `Bearer ${token}` },
-        withCredentials: true,
       });
       return data;
     },
@@ -99,12 +95,10 @@ export function useAttendanceData() {
   const departmentBreakdownQuery = useQuery<Department[]>({
     queryKey: ['attendance', 'dashboard', 'department-breakdown', filters.date],
     queryFn: async () => {
-      const { data } = await axios.get(
-        `${API_BASE}/attendance-records/dashboard/department-breakdown`,
+      const { data } = await api.get(
+        `/attendance-records/dashboard/department-breakdown`,
         {
           params: { date: filters.date },
-          headers: { Authorization: `Bearer ${token}` },
-          withCredentials: true,
         }
       );
       return data;
@@ -118,12 +112,10 @@ export function useAttendanceData() {
   const dailyTrendQuery = useQuery<DailyTrendData[]>({
     queryKey: ['attendance', 'dashboard', 'daily-trend', filters.days],
     queryFn: async () => {
-      const { data } = await axios.get(
-        `${API_BASE}/attendance-records/dashboard/daily-trend`,
+      const { data } = await api.get(
+        `/attendance-records/dashboard/daily-trend`,
         {
           params: { days: filters.days },
-          headers: { Authorization: `Bearer ${token}` },
-          withCredentials: true,
         }
       );
       return data;
@@ -136,12 +128,8 @@ export function useAttendanceData() {
   const weeklyPatternQuery = useQuery<WeeklyPattern[]>({
     queryKey: ['attendance', 'dashboard', 'weekly-pattern'],
     queryFn: async () => {
-      const { data } = await axios.get(
-        `${API_BASE}/attendance-records/dashboard/weekly-pattern`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          withCredentials: true,
-        }
+      const { data } = await api.get(
+        `/attendance-records/dashboard/weekly-pattern`
       );
       return data;
     },
@@ -160,16 +148,14 @@ export function useAttendanceData() {
       filters.status,
     ],
     queryFn: async () => {
-      const { data } = await axios.get(
-        `${API_BASE}/attendance-records/dashboard/recent-checkins`,
+      const { data } = await api.get(
+        `/attendance-records/dashboard/recent-checkins`,
         {
           params: {
             limit: filters.limit,
             departmentId: filters.departmentId,
             status: filters.status,
           },
-          headers: { Authorization: `Bearer ${token}` },
-          withCredentials: true,
         }
       );
       return data;

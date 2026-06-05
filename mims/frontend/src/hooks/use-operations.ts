@@ -3,8 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/stores/auth.store";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1";
+import api, { getErrorMessage } from "@/lib/api";
 
 export type OperationStatus = "SCHEDULED" | "PRE_OP" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "POSTPONED";
 export type OperationPatientType = "OPD" | "IN_HOUSE";
@@ -158,26 +157,19 @@ export function useOperations(
   return useQuery<OperationListResponse>({
     queryKey: ["operations", hospitalId, filters],
     queryFn: async () => {
-      const params = new URLSearchParams({ hospitalId });
-      if (filters?.patientId) params.append("patientId", filters.patientId);
-      if (filters?.surgeonId) params.append("surgeonId", filters.surgeonId);
-      if (filters?.departmentId) params.append("departmentId", filters.departmentId);
-      if (filters?.theatreId) params.append("theatreId", filters.theatreId);
-      if (filters?.status) params.append("status", filters.status);
-      if (filters?.startDate) params.append("startDate", filters.startDate);
-      if (filters?.endDate) params.append("endDate", filters.endDate);
-      if (filters?.page) params.append("page", filters.page.toString());
-      if (filters?.limit) params.append("limit", filters.limit.toString());
+      const params: Record<string, string> = { hospitalId };
+      if (filters?.patientId) params.patientId = filters.patientId;
+      if (filters?.surgeonId) params.surgeonId = filters.surgeonId;
+      if (filters?.departmentId) params.departmentId = filters.departmentId;
+      if (filters?.theatreId) params.theatreId = filters.theatreId;
+      if (filters?.status) params.status = filters.status;
+      if (filters?.startDate) params.startDate = filters.startDate;
+      if (filters?.endDate) params.endDate = filters.endDate;
+      if (filters?.page) params.page = filters.page.toString();
+      if (filters?.limit) params.limit = filters.limit.toString();
 
-      const response = await fetch(`${API_URL}/operations?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch operations");
-      }
-
-      return response.json();
+      const { data } = await api.get(`/operations`, { params });
+      return data;
     },
     enabled: !!token && !!hospitalId,
   });
@@ -188,38 +180,25 @@ export function useOperation(id: string) {
   return useQuery<Operation>({
     queryKey: ["operation", id],
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/operations/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error("Failed to fetch operation");
-      return response.json();
+      const { data } = await api.get(`/operations/${id}`);
+      return data;
     },
     enabled: !!token && !!id,
   });
 }
 
 export function useCreateOperation() {
-  const { token } = useAuthStore();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async (data: CreateOperationInput) => {
-      const response = await fetch(`${API_URL}/operations`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to create operation");
+      try {
+        const res = await api.post(`/operations`, data);
+        return res.data;
+      } catch (error) {
+        throw new Error(getErrorMessage(error) || "Failed to create operation");
       }
-
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["operations"] });
@@ -229,27 +208,17 @@ export function useCreateOperation() {
 }
 
 export function useUpdateOperation() {
-  const { token } = useAuthStore();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: UpdateOperationInput }) => {
-      const response = await fetch(`${API_URL}/operations/${id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to update operation");
+      try {
+        const res = await api.patch(`/operations/${id}`, data);
+        return res.data;
+      } catch (error) {
+        throw new Error(getErrorMessage(error) || "Failed to update operation");
       }
-
-      return response.json();
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["operations"] });
@@ -260,27 +229,17 @@ export function useUpdateOperation() {
 }
 
 export function useUpdateOperationStatus() {
-  const { token } = useAuthStore();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: UpdateOperationStatusInput }) => {
-      const response = await fetch(`${API_URL}/operations/${id}/status`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to update operation status");
+      try {
+        const res = await api.post(`/operations/${id}/status`, data);
+        return res.data;
+      } catch (error) {
+        throw new Error(getErrorMessage(error) || "Failed to update operation status");
       }
-
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["operations"] });
@@ -290,27 +249,17 @@ export function useUpdateOperationStatus() {
 }
 
 export function useRescheduleOperation() {
-  const { token } = useAuthStore();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: RescheduleOperationInput }) => {
-      const response = await fetch(`${API_URL}/operations/${id}/reschedule`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to reschedule operation");
+      try {
+        const res = await api.post(`/operations/${id}/reschedule`, data);
+        return res.data;
+      } catch (error) {
+        throw new Error(getErrorMessage(error) || "Failed to reschedule operation");
       }
-
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["operations"] });
@@ -328,48 +277,31 @@ export function useOperationTheatres(
   return useQuery<TheatreListResponse>({
     queryKey: ["operationTheatres", hospitalId, filters],
     queryFn: async () => {
-      const params = new URLSearchParams({ hospitalId });
-      if (filters?.departmentId) params.append("departmentId", filters.departmentId);
-      if (filters?.status) params.append("status", filters.status);
-      if (filters?.page) params.append("page", filters.page.toString());
-      if (filters?.limit) params.append("limit", filters.limit.toString());
+      const params: Record<string, string> = { hospitalId };
+      if (filters?.departmentId) params.departmentId = filters.departmentId;
+      if (filters?.status) params.status = filters.status;
+      if (filters?.page) params.page = filters.page.toString();
+      if (filters?.limit) params.limit = filters.limit.toString();
 
-      const response = await fetch(`${API_URL}/operations/theatres?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch theatres");
-      }
-
-      return response.json();
+      const { data } = await api.get(`/operations/theatres`, { params });
+      return data;
     },
     enabled: !!token && !!hospitalId,
   });
 }
 
 export function useCreateOperationTheatre() {
-  const { token } = useAuthStore();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async (data: CreateOperationTheatreInput) => {
-      const response = await fetch(`${API_URL}/operations/theatres`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to create theatre");
+      try {
+        const res = await api.post(`/operations/theatres`, data);
+        return res.data;
+      } catch (error) {
+        throw new Error(getErrorMessage(error) || "Failed to create theatre");
       }
-
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["operationTheatres"] });
@@ -379,27 +311,17 @@ export function useCreateOperationTheatre() {
 }
 
 export function useUpdateOperationTheatre() {
-  const { token } = useAuthStore();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: UpdateOperationTheatreInput }) => {
-      const response = await fetch(`${API_URL}/operations/theatres/${id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to update theatre");
+      try {
+        const res = await api.patch(`/operations/theatres/${id}`, data);
+        return res.data;
+      } catch (error) {
+        throw new Error(getErrorMessage(error) || "Failed to update theatre");
       }
-
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["operationTheatres"] });
@@ -414,16 +336,10 @@ export function useTheatreAvailability(theatreId: string, date: string) {
   return useQuery<TheatreAvailabilityResponse>({
     queryKey: ["operationTheatreAvailability", theatreId, date],
     queryFn: async () => {
-      const params = new URLSearchParams({ theatreId, date });
-      const response = await fetch(`${API_URL}/operations/theatres/availability?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const { data } = await api.get(`/operations/theatres/availability`, {
+        params: { theatreId, date },
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch availability");
-      }
-
-      return response.json();
+      return data;
     },
     enabled: !!token && !!theatreId && !!date,
   });

@@ -3,8 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/stores/auth.store";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1";
+import api, { getErrorMessage } from "@/lib/api";
 
 export interface LabOrder {
   id: string;
@@ -103,22 +102,15 @@ export function useLabOrders(
   return useQuery({
     queryKey: ["labOrders", hospitalId, filters],
     queryFn: async () => {
-      const params = new URLSearchParams({ hospitalId });
-      if (filters?.patientId) params.append("patientId", filters.patientId);
-      if (filters?.visitId) params.append("visitId", filters.visitId);
-      if (filters?.status) params.append("status", filters.status);
-      if (filters?.priority) params.append("priority", filters.priority);
-      if (filters?.startDate) params.append("startDate", filters.startDate);
-      if (filters?.endDate) params.append("endDate", filters.endDate);
+      const params: Record<string, string> = { hospitalId };
+      if (filters?.patientId) params.patientId = filters.patientId;
+      if (filters?.visitId) params.visitId = filters.visitId;
+      if (filters?.status) params.status = filters.status;
+      if (filters?.priority) params.priority = filters.priority;
+      if (filters?.startDate) params.startDate = filters.startDate;
+      if (filters?.endDate) params.endDate = filters.endDate;
 
-      const response = await fetch(`${API_URL}/lab-orders?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) {
-        console.error("Failed to fetch lab orders:", response.status, response.statusText);
-        throw new Error(`Failed to fetch lab orders (${response.status})`);
-      }
-      const data = await response.json();
+      const { data } = await api.get(`/lab-orders`, { params });
       // Handle both wrapped and unwrapped responses
       return (data?.data || data) as LabOrder[];
     },
@@ -131,14 +123,7 @@ export function useLabOrder(id: string) {
   return useQuery({
     queryKey: ["labOrders", id],
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/lab-orders/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) {
-        console.error("Failed to fetch lab order:", response.status);
-        throw new Error("Failed to fetch lab order");
-      }
-      const data = await response.json();
+      const { data } = await api.get(`/lab-orders/${id}`);
       return (data?.data || data) as LabOrder;
     },
     enabled: !!id && !!token,
@@ -150,14 +135,7 @@ export function usePendingLabOrders(hospitalId: string) {
   return useQuery({
     queryKey: ["labOrders", "pending", hospitalId],
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/lab-orders/pending?hospitalId=${hospitalId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) {
-        console.error("Failed to fetch pending orders:", response.status, response.statusText);
-        throw new Error(`Failed to fetch pending orders (${response.status})`);
-      }
-      const data = await response.json();
+      const { data } = await api.get(`/lab-orders/pending`, { params: { hospitalId } });
       // Handle both wrapped and unwrapped responses
       return (data?.data || data) as LabOrder[];
     },
@@ -171,14 +149,7 @@ export function usePatientLabOrders(patientId: string) {
   return useQuery({
     queryKey: ["labOrders", "patient", patientId],
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/lab-orders/patient/${patientId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) {
-        console.error("Failed to fetch patient lab orders:", response.status);
-        throw new Error("Failed to fetch patient lab orders");
-      }
-      const data = await response.json();
+      const { data } = await api.get(`/lab-orders/patient/${patientId}`);
       return (data?.data || data) as LabOrder[];
     },
     enabled: !!patientId && !!token,
@@ -190,14 +161,7 @@ export function useLabOrderStats(hospitalId: string) {
   return useQuery({
     queryKey: ["labOrderStats", hospitalId],
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/lab-orders/statistics?hospitalId=${hospitalId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) {
-        console.error("Failed to fetch lab order stats:", response.status);
-        throw new Error("Failed to fetch stats");
-      }
-      const data = await response.json();
+      const { data } = await api.get(`/lab-orders/statistics`, { params: { hospitalId } });
       return data?.data || data;
     },
     enabled: !!hospitalId && !!token,
@@ -211,21 +175,12 @@ export function useCreateLabOrder() {
 
   return useMutation({
     mutationFn: async (data: CreateLabOrderInput) => {
-      // Read token fresh from store at call time to avoid stale closure
-      const { token } = useAuthStore.getState();
-      const response = await fetch(`${API_URL}/lab-orders`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to create lab order");
+      try {
+        const res = await api.post(`/lab-orders`, data);
+        return res.data;
+      } catch (error) {
+        throw new Error(getErrorMessage(error) || "Failed to create lab order");
       }
-      return response.json();
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["labOrders", variables.hospitalId] });
@@ -248,20 +203,12 @@ export function useCollectSample() {
 
   return useMutation({
     mutationFn: async ({ orderId, data }: { orderId: string; data: CollectSampleInput }) => {
-      const { token } = useAuthStore.getState();
-      const response = await fetch(`${API_URL}/lab-orders/${orderId}/collect-sample`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to collect sample");
+      try {
+        const res = await api.post(`/lab-orders/${orderId}/collect-sample`, data);
+        return res.data;
+      } catch (error) {
+        throw new Error(getErrorMessage(error) || "Failed to collect sample");
       }
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["labOrders"] });
@@ -284,20 +231,12 @@ export function useEnterResult() {
 
   return useMutation({
     mutationFn: async ({ orderId, data }: { orderId: string; data: EnterResultInput }) => {
-      const { token } = useAuthStore.getState();
-      const response = await fetch(`${API_URL}/lab-orders/${orderId}/enter-result`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to enter result");
+      try {
+        const res = await api.post(`/lab-orders/${orderId}/enter-result`, data);
+        return res.data;
+      } catch (error) {
+        throw new Error(getErrorMessage(error) || "Failed to enter result");
       }
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["labOrders"] });
@@ -319,20 +258,12 @@ export function useApproveResult() {
 
   return useMutation({
     mutationFn: async ({ orderId, data }: { orderId: string; data: ApproveResultInput }) => {
-      const { token } = useAuthStore.getState();
-      const response = await fetch(`${API_URL}/lab-orders/${orderId}/approve-result`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to approve result");
+      try {
+        const res = await api.post(`/lab-orders/${orderId}/approve-result`, data);
+        return res.data;
+      } catch (error) {
+        throw new Error(getErrorMessage(error) || "Failed to approve result");
       }
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["labOrders"] });
@@ -348,16 +279,12 @@ export function useApproveResult() {
   });
 }
 
-export async function downloadLabResultPdf(orderId: string, token: string) {
-  const response = await fetch(`${API_URL}/lab-orders/${orderId}/pdf`, {
-    headers: { Authorization: `Bearer ${token}` },
+export async function downloadLabResultPdf(orderId: string, _token?: string) {
+  const response = await api.get(`/lab-orders/${orderId}/pdf`, {
+    responseType: "blob",
   });
 
-  if (!response.ok) {
-    throw new Error("Failed to download PDF");
-  }
-
-  const blob = await response.blob();
+  const blob = response.data as Blob;
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

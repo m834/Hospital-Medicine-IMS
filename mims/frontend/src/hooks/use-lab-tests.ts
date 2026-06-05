@@ -3,9 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/stores/auth.store";
-import { API_BASE_URL } from "@/lib/constants";
-
-const API_URL = API_BASE_URL;
+import api, { getErrorMessage } from "@/lib/api";
 
 export interface LabTest {
   id: string;
@@ -58,17 +56,14 @@ export function useLabTests(
   return useQuery({
     queryKey: ["labTests", hospitalId, filters],
     queryFn: async () => {
-      const params = new URLSearchParams({ hospitalId });
-      if (filters?.departmentId) params.append("departmentId", filters.departmentId);
-      if (filters?.subDepartmentId) params.append("subDepartmentId", filters.subDepartmentId);
-      if (filters?.testCategory) params.append("testCategory", filters.testCategory);
-      if (filters?.status) params.append("status", filters.status);
+      const params: Record<string, string> = { hospitalId };
+      if (filters?.departmentId) params.departmentId = filters.departmentId;
+      if (filters?.subDepartmentId) params.subDepartmentId = filters.subDepartmentId;
+      if (filters?.testCategory) params.testCategory = filters.testCategory;
+      if (filters?.status) params.status = filters.status;
 
-      const response = await fetch(`${API_URL}/lab-tests?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error("Failed to fetch lab tests");
-      return response.json() as Promise<LabTest[]>;
+      const { data } = await api.get(`/lab-tests`, { params });
+      return (data?.data || data) as LabTest[];
     },
     enabled: !!hospitalId && !!token,
   });
@@ -79,11 +74,8 @@ export function useLabTest(id: string) {
   return useQuery({
     queryKey: ["labTests", id],
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/lab-tests/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error("Failed to fetch lab test");
-      return response.json() as Promise<LabTest>;
+      const { data } = await api.get(`/lab-tests/${id}`);
+      return (data?.data || data) as LabTest;
     },
     enabled: !!id && !!token,
   });
@@ -94,11 +86,8 @@ export function useLabTestsByDepartment(departmentId: string) {
   return useQuery({
     queryKey: ["labTests", "department", departmentId],
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/lab-tests/department/${departmentId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error("Failed to fetch department lab tests");
-      return response.json() as Promise<LabTest[]>;
+      const { data } = await api.get(`/lab-tests/department/${departmentId}`);
+      return (data?.data || data) as LabTest[];
     },
     enabled: !!departmentId && !!token,
   });
@@ -109,12 +98,8 @@ export function useLabTestCategories(hospitalId: string) {
   return useQuery({
     queryKey: ["labTestCategories", hospitalId],
     queryFn: async () => {
-      const response = await fetch(
-        `${API_URL}/lab-tests/categories?hospitalId=${hospitalId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (!response.ok) throw new Error("Failed to fetch categories");
-      return response.json() as Promise<{ category: string; count: number }[]>;
+      const { data } = await api.get(`/lab-tests/categories`, { params: { hospitalId } });
+      return (data?.data || data) as { category: string; count: number }[];
     },
     enabled: !!hospitalId && !!token,
   });
@@ -123,23 +108,15 @@ export function useLabTestCategories(hospitalId: string) {
 export function useCreateLabTest() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { token } = useAuthStore();
 
   return useMutation({
     mutationFn: async (data: CreateLabTestInput) => {
-      const response = await fetch(`${API_URL}/lab-tests`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to create lab test");
+      try {
+        const res = await api.post(`/lab-tests`, data);
+        return res.data;
+      } catch (error) {
+        throw new Error(getErrorMessage(error) || "Failed to create lab test");
       }
-      return response.json();
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["labTests", variables.hospitalId] });
@@ -159,20 +136,15 @@ export function useCreateLabTest() {
 export function useUpdateLabTest() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { token } = useAuthStore();
 
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<CreateLabTestInput> }) => {
-      const response = await fetch(`${API_URL}/lab-tests/${id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error("Failed to update lab test");
-      return response.json();
+      try {
+        const res = await api.patch(`/lab-tests/${id}`, data);
+        return res.data;
+      } catch (error) {
+        throw new Error(getErrorMessage(error) || "Failed to update lab test");
+      }
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["labTests"] });
@@ -191,19 +163,15 @@ export function useUpdateLabTest() {
 export function useDeleteLabTest() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { token } = useAuthStore();
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`${API_URL}/lab-tests/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to delete lab test");
+      try {
+        const res = await api.delete(`/lab-tests/${id}`);
+        return res.data;
+      } catch (error) {
+        throw new Error(getErrorMessage(error) || "Failed to delete lab test");
       }
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["labTests"] });
@@ -222,7 +190,6 @@ export function useDeleteLabTest() {
 export function useUpdateLabTestStatus() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { token } = useAuthStore();
 
   return useMutation({
     mutationFn: async ({
@@ -232,16 +199,12 @@ export function useUpdateLabTestStatus() {
       id: string;
       status: "ACTIVE" | "INACTIVE" | "DISCONTINUED";
     }) => {
-      const response = await fetch(`${API_URL}/lab-tests/${id}/status`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status }),
-      });
-      if (!response.ok) throw new Error("Failed to update status");
-      return response.json();
+      try {
+        const res = await api.patch(`/lab-tests/${id}/status`, { status });
+        return res.data;
+      } catch (error) {
+        throw new Error(getErrorMessage(error) || "Failed to update status");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["labTests"] });

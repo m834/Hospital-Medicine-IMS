@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/auth.store';
-import { getAccessToken } from '@/lib/auth';
+import api, { getErrorMessage } from '@/lib/api';
 
 // Types
 export interface Room {
@@ -77,124 +77,61 @@ export interface OccupancyStats {
 }
 
 // API Functions
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
-
-async function fetchRooms(filters: RoomFilters, token: string) {
-  const params = new URLSearchParams();
+async function fetchRooms(filters: RoomFilters) {
+  const params: Record<string, string> = {};
   Object.entries(filters).forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
-      params.append(key, value.toString());
+      params[key] = value.toString();
     }
   });
 
-  const response = await fetch(`${API_URL}/rooms?${params}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch rooms');
-  }
-
-  return response.json();
+  const { data } = await api.get(`/rooms`, { params });
+  return data;
 }
 
-async function fetchRoom(id: string, token: string) {
-  const response = await fetch(`${API_URL}/rooms/${id}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch room');
-  }
-
-  return response.json();
+async function fetchRoom(id: string) {
+  const { data } = await api.get(`/rooms/${id}`);
+  return data;
 }
 
-async function fetchAvailableRooms(hospitalId: string, roomType: string | undefined, token: string) {
-  const params = new URLSearchParams();
-  if (roomType) params.append('roomType', roomType);
+async function fetchAvailableRooms(hospitalId: string, roomType: string | undefined) {
+  const params: Record<string, string> = {};
+  if (roomType) params.roomType = roomType;
 
-  const response = await fetch(`${API_URL}/rooms/available/${hospitalId}?${params}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch available rooms');
-  }
-
-  return response.json();
+  const { data } = await api.get(`/rooms/available/${hospitalId}`, { params });
+  return data;
 }
 
-async function fetchOccupancyStats(hospitalId: string, token: string) {
-  const response = await fetch(`${API_URL}/rooms/occupancy/${hospitalId}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch occupancy stats');
-  }
-
-  return response.json();
+async function fetchOccupancyStats(hospitalId: string) {
+  const { data } = await api.get(`/rooms/occupancy/${hospitalId}`);
+  return data;
 }
 
-async function createRoom(data: CreateRoomData, token: string) {
-  const response = await fetch(`${API_URL}/rooms`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to create room');
+async function createRoom(data: CreateRoomData) {
+  try {
+    const res = await api.post(`/rooms`, data);
+    return res.data;
+  } catch (error) {
+    throw new Error(getErrorMessage(error) || 'Failed to create room');
   }
-
-  return response.json();
 }
 
-async function updateRoom(id: string, data: Partial<CreateRoomData>, token: string) {
-  const response = await fetch(`${API_URL}/rooms/${id}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to update room');
+async function updateRoom(id: string, data: Partial<CreateRoomData>) {
+  try {
+    const res = await api.patch(`/rooms/${id}`, data);
+    return res.data;
+  } catch (error) {
+    throw new Error(getErrorMessage(error) || 'Failed to update room');
   }
-
-  return response.json();
 }
 
-async function deleteRoom(id: string, token: string) {
-  const response = await fetch(`${API_URL}/rooms/${id}`, {
-    method: 'DELETE',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to delete room');
+async function deleteRoom(id: string) {
+  try {
+    const res = await api.delete(`/rooms/${id}`);
+    return res.data;
+  } catch (error) {
+    throw new Error(getErrorMessage(error) || 'Failed to delete room');
   }
-
-  return response.json();
 }
 
 // Hooks
@@ -203,7 +140,7 @@ export function useRooms(filters: RoomFilters = {}) {
 
   return useQuery({
     queryKey: ['rooms', filters],
-    queryFn: () => fetchRooms(filters, token!),
+    queryFn: () => fetchRooms(filters),
     enabled: !!token,
   });
 }
@@ -213,7 +150,7 @@ export function useRoom(id: string) {
 
   return useQuery({
     queryKey: ['room', id],
-    queryFn: () => fetchRoom(id, token!),
+    queryFn: () => fetchRoom(id),
     enabled: !!token && !!id,
   });
 }
@@ -223,7 +160,7 @@ export function useAvailableRooms(hospitalId: string, roomType?: string) {
 
   return useQuery({
     queryKey: ['rooms', 'available', hospitalId, roomType],
-    queryFn: () => fetchAvailableRooms(hospitalId, roomType, token!),
+    queryFn: () => fetchAvailableRooms(hospitalId, roomType),
     enabled: !!token && !!hospitalId,
   });
 }
@@ -233,7 +170,7 @@ export function useOccupancyStats(hospitalId: string) {
 
   return useQuery({
     queryKey: ['rooms', 'occupancy', hospitalId],
-    queryFn: () => fetchOccupancyStats(hospitalId, token!),
+    queryFn: () => fetchOccupancyStats(hospitalId),
     enabled: !!token && !!hospitalId,
   });
 }
@@ -242,11 +179,7 @@ export function useCreateRoom() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: CreateRoomData) => {
-      const token = useAuthStore.getState().token || getAccessToken();
-      if (!token) throw new Error('No authentication token available');
-      return createRoom(data, token);
-    },
+    mutationFn: (data: CreateRoomData) => createRoom(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
     },
@@ -257,11 +190,8 @@ export function useUpdateRoom() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<CreateRoomData> }) => {
-      const token = useAuthStore.getState().token || getAccessToken();
-      if (!token) throw new Error('No authentication token available');
-      return updateRoom(id, data, token);
-    },
+    mutationFn: ({ id, data }: { id: string; data: Partial<CreateRoomData> }) =>
+      updateRoom(id, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
       queryClient.invalidateQueries({ queryKey: ['room', variables.id] });
@@ -273,11 +203,7 @@ export function useDeleteRoom() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => {
-      const token = useAuthStore.getState().token || getAccessToken();
-      if (!token) throw new Error('No authentication token available');
-      return deleteRoom(id, token);
-    },
+    mutationFn: (id: string) => deleteRoom(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
     },

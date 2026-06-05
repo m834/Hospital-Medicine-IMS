@@ -170,16 +170,7 @@ export default function UsersPage() {
 
     setIsDeleting(true);
     try {
-      const response = await fetch(`http://localhost:3001/api/v1/users/${deleteUserModal.id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete user');
-      }
+      await api.delete(`/users/${deleteUserModal.id}`);
 
       // Refresh users list
       await fetchUsers();

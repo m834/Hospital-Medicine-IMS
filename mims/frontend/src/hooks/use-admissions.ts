@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/auth.store';
 import { getAccessToken } from '@/lib/auth';
+import api, { getErrorMessage } from '@/lib/api';
 
 // Types
 export interface Admission {
@@ -130,109 +131,53 @@ export interface DischargeAdmissionData {
 }
 
 // API Functions
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
-
-async function fetchAdmissions(filters: AdmissionFilters, token: string) {
-  const params = new URLSearchParams();
+async function fetchAdmissions(filters: AdmissionFilters) {
+  const params: Record<string, string> = {};
   Object.entries(filters).forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
-      params.append(key, value.toString());
+      params[key] = value.toString();
     }
   });
 
-  const response = await fetch(`${API_URL}/admissions?${params}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch admissions');
-  }
-
-  return response.json();
+  const { data } = await api.get(`/admissions`, { params });
+  return data;
 }
 
-async function fetchAdmission(id: string, token: string) {
-  const response = await fetch(`${API_URL}/admissions/${id}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch admission');
-  }
-
-  return response.json();
+async function fetchAdmission(id: string) {
+  const { data } = await api.get(`/admissions/${id}`);
+  return data;
 }
 
-async function fetchActiveAdmissions(hospitalId: string, token: string) {
-  const response = await fetch(`${API_URL}/admissions/active/${hospitalId}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch active admissions');
-  }
-
-  return response.json();
+async function fetchActiveAdmissions(hospitalId: string) {
+  const { data } = await api.get(`/admissions/active/${hospitalId}`);
+  return data;
 }
 
-async function createAdmission(data: CreateAdmissionData, token: string) {
-  const response = await fetch(`${API_URL}/admissions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to create admission');
+async function createAdmission(data: CreateAdmissionData) {
+  try {
+    const res = await api.post(`/admissions`, data);
+    return res.data;
+  } catch (error) {
+    throw new Error(getErrorMessage(error) || 'Failed to create admission');
   }
-
-  return response.json();
 }
 
-async function updateAdmission(id: string, data: Partial<CreateAdmissionData>, token: string) {
-  const response = await fetch(`${API_URL}/admissions/${id}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to update admission');
+async function updateAdmission(id: string, data: Partial<CreateAdmissionData>) {
+  try {
+    const res = await api.patch(`/admissions/${id}`, data);
+    return res.data;
+  } catch (error) {
+    throw new Error(getErrorMessage(error) || 'Failed to update admission');
   }
-
-  return response.json();
 }
 
-async function dischargeAdmission(id: string, data: DischargeAdmissionData, token: string) {
-  const response = await fetch(`${API_URL}/admissions/${id}/discharge`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to discharge admission');
+async function dischargeAdmission(id: string, data: DischargeAdmissionData) {
+  try {
+    const res = await api.post(`/admissions/${id}/discharge`, data);
+    return res.data;
+  } catch (error) {
+    throw new Error(getErrorMessage(error) || 'Failed to discharge admission');
   }
-
-  return response.json();
 }
 
 // Hooks
@@ -241,7 +186,7 @@ export function useAdmissions(filters: AdmissionFilters = {}) {
 
   return useQuery({
     queryKey: ['admissions', filters],
-    queryFn: () => fetchAdmissions(filters, token!),
+    queryFn: () => fetchAdmissions(filters),
     enabled: !!token,
   });
 }
@@ -251,7 +196,7 @@ export function useAdmission(id: string) {
 
   return useQuery({
     queryKey: ['admission', id],
-    queryFn: () => fetchAdmission(id, token!),
+    queryFn: () => fetchAdmission(id),
     enabled: !!token && !!id,
   });
 }
@@ -261,17 +206,16 @@ export function useActiveAdmissions(hospitalId: string) {
 
   return useQuery({
     queryKey: ['admissions', 'active', hospitalId],
-    queryFn: () => fetchActiveAdmissions(hospitalId, token!),
+    queryFn: () => fetchActiveAdmissions(hospitalId),
     enabled: !!token && !!hospitalId,
   });
 }
 
 export function useCreateAdmission() {
-  const token = useAuthStore((state) => state.token) || getAccessToken();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: CreateAdmissionData) => createAdmission(data, token!),
+    mutationFn: (data: CreateAdmissionData) => createAdmission(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admissions'] });
       queryClient.invalidateQueries({ queryKey: ['beds'] });
@@ -281,12 +225,11 @@ export function useCreateAdmission() {
 }
 
 export function useUpdateAdmission() {
-  const token = useAuthStore((state) => state.token) || getAccessToken();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<CreateAdmissionData> }) =>
-      updateAdmission(id, data, token!),
+      updateAdmission(id, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['admissions'] });
       queryClient.invalidateQueries({ queryKey: ['admission', variables.id] });
@@ -297,12 +240,11 @@ export function useUpdateAdmission() {
 }
 
 export function useDischargeAdmission() {
-  const token = useAuthStore((state) => state.token) || getAccessToken();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: DischargeAdmissionData }) =>
-      dischargeAdmission(id, data, token!),
+      dischargeAdmission(id, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['admissions'] });
       queryClient.invalidateQueries({ queryKey: ['admission', variables.id] });

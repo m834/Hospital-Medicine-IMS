@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import api from '@/lib/api';
 
 interface SubDepartment {
   id: string;
@@ -53,20 +54,9 @@ export function SubDepartmentSelect({
   const fetchSubDepartments = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('mims_access_token');
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/sub-departments?departmentId=${departmentId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setSubDepartments(data.filter((sd: SubDepartment) => sd.status === 'ACTIVE'));
-      }
+      const { data } = await api.get(`/sub-departments`, { params: { departmentId } });
+      const list: SubDepartment[] = data?.data || data || [];
+      setSubDepartments(list.filter((sd: SubDepartment) => sd.status === 'ACTIVE'));
     } catch (error) {
       console.error('Failed to fetch sub-departments:', error);
     } finally {

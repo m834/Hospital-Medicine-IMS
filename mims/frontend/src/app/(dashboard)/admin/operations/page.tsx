@@ -249,16 +249,9 @@ export default function OperationsPage() {
     setPatientDepartment(null);
 
     try {
-      const params = new URLSearchParams({ hospitalId, cnic: patientCnic, limit: "1" });
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/patients?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const { data: result } = await api.get(`/patients`, {
+        params: { hospitalId, cnic: patientCnic, limit: "1" },
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch patient");
-      }
-
-      const result = await response.json();
       const patient = result?.data?.[0] || result?.patients?.[0] || result?.[0];
 
       if (!patient) {
@@ -300,20 +293,10 @@ export default function OperationsPage() {
       }
 
       if (patient.visitType === "WARD_INDOOR" && (!patient.roomInfo || !patient.bedInfo || !patient.admissionInfo)) {
-        const admissionParams = new URLSearchParams({
-          hospitalId,
-          patientId: patient.id,
-          status: "ADMITTED",
-          limit: "1",
-        });
-
-        const admissionResponse = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/admissions?${admissionParams}`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
-
-        if (admissionResponse.ok) {
-          const admissionResult = await admissionResponse.json();
+        try {
+          const { data: admissionResult } = await api.get(`/admissions`, {
+            params: { hospitalId, patientId: patient.id, status: "ADMITTED", limit: "1" },
+          });
           const admission = admissionResult?.data?.[0];
           if (admission) {
             setRoomInfo(admission.room || null);
@@ -332,17 +315,16 @@ export default function OperationsPage() {
               }));
             }
           }
+        } catch {
+          /* admission lookup is best-effort */
         }
       }
 
       if (patient.visitType !== "WARD_INDOOR") {
-        const visitResponse = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/visits/patient/${patient.id}?limit=1`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
-
-        if (visitResponse.ok) {
-          const visitResult = await visitResponse.json();
+        try {
+          const { data: visitResult } = await api.get(`/visits/patient/${patient.id}`, {
+            params: { limit: 1 },
+          });
           const latestVisit = Array.isArray(visitResult) ? visitResult[0] : visitResult?.data?.[0];
           if (latestVisit?.id) {
             setOperationForm((prev) => ({
@@ -351,6 +333,8 @@ export default function OperationsPage() {
               departmentId: prev.departmentId || latestVisit?.clinic?.department?.id || prev.departmentId,
             }));
           }
+        } catch {
+          /* visit lookup is best-effort */
         }
       }
     } catch (error) {
