@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/table";
 import { Search, Plus, Trash2, FileText, Printer, CheckCircle2, UserCheck, Loader2, X } from "lucide-react";
 import api from "@/lib/api";
+import { printLabReceipt } from "@/lib/print-receipt";
 import type { LabTest } from "@/hooks/use-lab-tests";
 import type { LabOrder } from "@/hooks/use-lab-orders";
 
@@ -339,19 +340,13 @@ export default function NewLabOrderPageComponent() {
   };
 
   const handlePrint = () => {
-    const content = printRef.current?.innerHTML;
-    if (!content) return;
-    const win = window.open("", "_blank", "width=700,height=900");
-    if (!win) return;
-    win.document.write(`<!DOCTYPE html><html><head><title>Lab Test Slip</title>
-      <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
-        @media print { body { margin: 0; } }
-      </style>
-    </head><body>${content}</body></html>`);
-    win.document.close();
-    win.focus();
-    setTimeout(() => { win.print(); win.close(); }, 300);
+    if (createdOrders.length === 0) return;
+    printLabReceipt(createdOrders, {
+      patientId: patientNrNumber,
+      hospitalName: selectedHospital?.name || user?.hospitalId || "Hospital",
+      printedBy: user?.fullName || user?.email || "Staff",
+      clinicalNotes,
+    });
   };
 
   const handleNewOrder = () => {
