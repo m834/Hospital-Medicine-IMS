@@ -36,34 +36,33 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import api from '@/lib/api';
 
-const patientSchema = z
-  .object({
-    fullName: z.string().min(2, 'Full name is required'),
-    dob: z
-      .string()
-      .optional()
-      .refine((v) => !v || /^\d{2}\/\d{2}\/\d{4}$/.test(v), {
-        message: 'Use date format dd/mm/yyyy',
-      }),
-    mobile: z.string().optional(),
-    cnic: z.string().optional(),
-    gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
-    address: z.string().optional(),
-    visitType: z.enum(['OPD', 'EMERGENCY', 'WARD_INDOOR']).optional(),
-    department: z.string().optional(),
-    clinicId: z.string().optional(),
-    roomType: z.string().optional(),
-    roomId: z.string().optional(),
-    bedId: z.string().optional(),
-    ward: z.string().optional(),
-    bed: z.string().optional(),
-    attendingDoctorId: z.string().optional(),
-  })
-  // Require at least one of mobile number or date of birth
-  .refine((data) => !!data.mobile?.trim() || !!data.dob?.trim(), {
-    message: 'Provide either a mobile number or date of birth',
-    path: ['mobile'],
-  });
+const patientSchema = z.object({
+  // Only Full Name and CNIC are mandatory. CNIC is the identity key:
+  // a matching CNIC records a new visit against the existing MRN.
+  fullName: z.string().min(2, 'Full name is required'),
+  cnic: z
+    .string()
+    .min(1, 'CNIC is required')
+    .regex(/^\d{5}-\d{7}-\d$/, 'Enter a valid CNIC (XXXXX-XXXXXXX-X)'),
+  dob: z
+    .string()
+    .optional()
+    .refine((v) => !v || /^\d{2}\/\d{2}\/\d{4}$/.test(v), {
+      message: 'Use date format dd/mm/yyyy',
+    }),
+  mobile: z.string().optional(),
+  gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
+  address: z.string().optional(),
+  visitType: z.enum(['OPD', 'EMERGENCY', 'WARD_INDOOR']).optional(),
+  department: z.string().optional(),
+  clinicId: z.string().optional(),
+  roomType: z.string().optional(),
+  roomId: z.string().optional(),
+  bedId: z.string().optional(),
+  ward: z.string().optional(),
+  bed: z.string().optional(),
+  attendingDoctorId: z.string().optional(),
+});
 
 type PatientFormData = z.infer<typeof patientSchema>;
 
@@ -409,7 +408,9 @@ export default function RegisterPatientPage() {
         <CardHeader>
           <CardTitle>Patient Information</CardTitle>
           <CardDescription>
-            Full Name is required, along with either a Mobile Number or Date of Birth. All other fields are optional. MRN will be auto-generated.
+            Only Full Name and CNIC are required — all other fields are optional. If the CNIC
+            matches an existing patient, a new visit is recorded against their MRN; otherwise a
+            new patient is registered with a fresh MRN.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -499,7 +500,7 @@ export default function RegisterPatientPage() {
                     name="cnic"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>CNIC</FormLabel>
+                        <FormLabel>CNIC *</FormLabel>
                         <FormControl>
                           <Input
                             placeholder="XXXXX-XXXXXXX-X"
@@ -690,9 +691,16 @@ export default function RegisterPatientPage() {
                 </div>
 
                 {/* Show fee if selected */}
-                {selectedFee && (
+                {selectedFee && visitType !== 'EMERGENCY' && (
                   <p className="text-sm font-medium text-green-600">
                     💰 Consultation Fee: {selectedFee}
+                  </p>
+                )}
+
+                {/* Flat emergency registration fee */}
+                {visitType === 'EMERGENCY' && (
+                  <p className="text-sm font-medium text-red-600">
+                    🚨 Emergency Registration Fee: PKR 20 (collected at the counter; a slip is generated)
                   </p>
                 )}
 

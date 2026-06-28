@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsEnum, IsOptional, IsDateString, IsUUID, IsObject, ValidateNested } from 'class-validator';
+import { IsNotEmpty, IsString, IsEnum, IsOptional, IsDateString, IsUUID, IsObject, ValidateNested, Matches } from 'class-validator';
 
 export enum Gender {
   MALE = 'MALE',
@@ -28,8 +28,9 @@ export class CreatePatientDto {
   gender?: Gender;
 
   @IsString()
-  @IsOptional()
-  cnic?: string;
+  @IsNotEmpty({ message: 'CNIC is required' })
+  @Matches(/^\d{5}-\d{7}-\d$/, { message: 'Enter a valid CNIC (XXXXX-XXXXXXX-X)' })
+  cnic: string;
 
   @IsString()
   @IsOptional()

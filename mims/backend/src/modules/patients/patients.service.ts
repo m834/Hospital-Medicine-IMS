@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../../database/prisma.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
@@ -69,32 +70,39 @@ export class PatientsService {
   }
 
   /**
-   * Generate MRN in format: MRN-YYYYMMDD-XXXX
-   * Example: MRN-20251120-0001
+   * Random, non-sequential code (no ambiguous chars like 0/O/1/I).
    */
-  private async generateNRNumber(hospitalId: string): Promise<string> {
+  private randomCode(length: number): string {
+    const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    const bytes = randomBytes(length);
+    let out = '';
+    for (let i = 0; i < length; i++) {
+      out += alphabet[bytes[i] % alphabet.length];
+    }
+    return out;
+  }
+
+  /**
+   * Generate MRN in format: MRN-YYYYMMDD-XXXXXX
+   * The suffix is RANDOM (not sequential), so MRNs can't be guessed or
+   * reconstructed from outside the system. Uniqueness is guaranteed by
+   * checking the DB and retrying on the astronomically rare collision.
+   * Example: MRN-20260629-K7QP2M
+   */
+  private async generateNRNumber(_hospitalId: string): Promise<string> {
     const today = new Date();
     const year = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const day = String(today.getDate()).padStart(2, '0');
     const datePrefix = `${year}${month}${day}`;
 
-    // Get count of patients registered today for this hospital
-    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
-
-    const todayCount = await this.prisma.patient.count({
-      where: {
-        hospitalId,
-        registeredAt: {
-          gte: startOfDay,
-          lte: endOfDay,
-        },
-      },
-    });
-
-    const sequence = String(todayCount + 1).padStart(4, '0');
-    return `MRN-${datePrefix}-${sequence}`;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const nrNumber = `MRN-${datePrefix}-${this.randomCode(6)}`;
+      const existing = await this.prisma.patient.findUnique({ where: { nrNumber } });
+      if (!existing) return nrNumber;
+    }
+    // Fallback with a longer code — effectively impossible to reach
+    return `MRN-${datePrefix}-${this.randomCode(10)}`;
   }
 
   /**

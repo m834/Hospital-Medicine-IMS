@@ -7,6 +7,9 @@ import { PrismaService } from '@/database/prisma.service';
 import { CreateVisitDto, UpdateVisitDto, VisitQueryDto } from './dto';
 import { VisitStatus, PaymentStatus, TokenStatus, ReceiptType, PaymentMethod, VisitType } from '@prisma/client';
 
+// Flat fee (PKR) charged when an emergency patient is registered.
+const EMERGENCY_REGISTRATION_FEE = 20;
+
 @Injectable()
 export class VisitsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -103,6 +106,10 @@ export class VisitsService {
     // Create a simple visit (no clinic/token) for non-OPD visits, or for OPD
     // visits registered without a clinic since visit info is optional
     if (createVisitDto.visitType !== VisitType.OPD || !createVisitDto.clinicId) {
+      // Emergency visits carry a flat registration fee (slip the patient pays at the counter)
+      const isEmergency = createVisitDto.visitType === VisitType.EMERGENCY;
+      const consultationFee = isEmergency ? EMERGENCY_REGISTRATION_FEE : 0;
+
       const prisma = this.prisma as any;
       const visit = await prisma.visit.create({
         data: {
@@ -116,7 +123,7 @@ export class VisitsService {
           bedId: createVisitDto.bedId,
           attendingDoctorId: createVisitDto.attendingDoctorId,
           tokenNumber: 0,
-          consultationFee: 0,
+          consultationFee,
           chiefComplaint: createVisitDto.chiefComplaint,
           vitalSigns: createVisitDto.vitalSigns ? JSON.parse(JSON.stringify(createVisitDto.vitalSigns)) : {},
           notes: createVisitDto.notes,
@@ -131,6 +138,17 @@ export class VisitsService {
           attendingDoctor: { select: { id: true, fullName: true } },
         },
       });
+
+      // Generate the emergency fee receipt against the patient, by the logged-in registrar
+      if (isEmergency) {
+        await this.createFlatReceipt(
+          visit,
+          createVisitDto.registrarId,
+          EMERGENCY_REGISTRATION_FEE,
+          ReceiptType.OTHER,
+          'Emergency Registration Fee',
+        );
+      }
 
       return { visit };
     }
@@ -605,6 +623,54 @@ export class VisitsService {
       },
       orderBy: { visitDate: 'desc' },
       take: limit,
+    });
+  }
+
+  /**
+   * Generate the next REC-YYYYMMDD-NNNN receipt number.
+   */
+  private async nextReceiptNumber(): Promise<string> {
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const lastReceipt = await this.prisma.receipt.findFirst({
+      where: { receiptNumber: { startsWith: `REC-${dateStr}` } },
+      orderBy: { receiptNumber: 'desc' },
+    });
+    const sequence = lastReceipt ? parseInt(lastReceipt.receiptNumber.split('-')[2]) + 1 : 1;
+    return `REC-${dateStr}-${sequence.toString().padStart(4, '0')}`;
+  }
+
+  /**
+   * Create a flat-amount receipt for a visit (e.g. the emergency registration fee).
+   * Charged to the patient, recorded by the logged-in registrar.
+   */
+  private async createFlatReceipt(
+    visit: any,
+    generatedById: string,
+    amount: number,
+    receiptType: ReceiptType,
+    description: string,
+  ) {
+    const existing = await this.prisma.receipt.findFirst({ where: { visitId: visit.id } });
+    if (existing) return existing;
+
+    const receiptNumber = await this.nextReceiptNumber();
+    const prisma = this.prisma as any;
+    return prisma.receipt.create({
+      data: {
+        hospitalId: visit.hospitalId,
+        patientId: visit.patientId,
+        visitId: visit.id,
+        departmentId: visit.departmentId ?? null,
+        generatedById,
+        receiptNumber,
+        receiptType,
+        description,
+        amount,
+        totalAmount: amount,
+        paidAmount: 0,
+        paymentMethod: PaymentMethod.CASH,
+        paymentStatus: PaymentStatus.UNPAID,
+      },
     });
   }
 

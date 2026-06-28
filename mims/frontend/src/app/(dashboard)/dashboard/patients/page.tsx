@@ -121,6 +121,11 @@ export default function PatientsPage() {
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const pageSize = 50;
 
   const { user } = useAuthStore();
   const { selectedHospital } = useHospitalStore();
@@ -129,52 +134,49 @@ export default function PatientsPage() {
   const currentHospitalId = user?.hospitalId || selectedHospital?.id;
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
+  // Debounce the search box so we don't hit the server on every keystroke
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  // A new search always starts at page 1
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
+
+  // Fetch the current page whenever hospital, page, or search changes
   useEffect(() => {
     if (!user) return;
     if (currentHospitalId || isSuperAdmin) {
       fetchPatients();
     }
+  }, [currentHospitalId, user, page, debouncedSearch]);
+
+  useEffect(() => {
     if (currentHospitalId) {
       fetchTodayVisits();
     }
-  }, [currentHospitalId, user]);
-
-  useEffect(() => {
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      setFilteredPatients(
-        patients.filter(
-          (p) =>
-            p.nrNumber.toLowerCase().includes(query) ||
-            p.fullName.toLowerCase().includes(query) ||
-            p.mobile?.toLowerCase().includes(query),
-        ),
-      );
-    } else {
-      setFilteredPatients(patients);
-    }
-  }, [searchQuery, patients]);
+  }, [currentHospitalId]);
 
   const fetchPatients = async () => {
     setLoading(true);
     try {
-      const params: any = { limit: 100, page: 1 };
+      const params: any = { limit: pageSize, page };
       if (currentHospitalId) params.hospitalId = currentHospitalId;
+      if (debouncedSearch) params.search = debouncedSearch;
       if (!params.hospitalId) { setLoading(false); return; }
 
       const response = await api.get('/patients', { params });
       const patientList = response.data?.data || response.data || [];
+      const meta = response.data?.meta;
       setPatients(patientList);
       setFilteredPatients(patientList);
 
-      const total = patientList.length;
-      const today = new Date().toDateString();
-      setStats({
-        totalPatients: total,
-        todayRegistrations: patientList.filter((p: Patient) => new Date(p.registeredAt).toDateString() === today).length,
-        inPatients: patientList.filter((p: Patient) => p.visitType === 'WARD_INDOOR').length,
-        outPatients: patientList.filter((p: Patient) => p.visitType === 'OPD' || p.visitType === 'EMERGENCY').length,
-      });
+      const total = meta?.total ?? patientList.length;
+      setTotalCount(total);
+      setTotalPages(meta?.totalPages ?? 1);
+      setStats((prev) => ({ ...prev, totalPatients: total }));
     } catch (error) {
       console.error('Error fetching patients:', error);
     } finally {
@@ -369,7 +371,7 @@ export default function PatientsPage() {
             <TabsList className="mb-4 flex-wrap h-auto gap-1">
               <TabsTrigger value="all">
                 All Patients
-                <Badge variant="secondary" className="ml-2">{filteredPatients.length}</Badge>
+                <Badge variant="secondary" className="ml-2">{totalCount}</Badge>
               </TabsTrigger>
               <TabsTrigger value="opd">
                 OPD
@@ -406,6 +408,7 @@ export default function PatientsPage() {
                       </p>
                     </div>
                   ) : (
+                    <>
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -463,6 +466,32 @@ export default function PatientsPage() {
                         ))}
                       </TableBody>
                     </Table>
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-between mt-4">
+                        <span className="text-sm text-muted-foreground">
+                          Page {page} of {totalPages} · {totalCount} patients
+                        </span>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={page <= 1 || loading}
+                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                          >
+                            Previous
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={page >= totalPages || loading}
+                            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                          >
+                            Next
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    </>
                   )}
                 </TabsContent>
               );
