@@ -119,8 +119,7 @@ build/
 *.sqlite3
 
 # Prisma
-prisma/migrations/
-!prisma/migrations/.gitkeep
+# Migrations ARE tracked so deployments build the correct schema from source.
 
 # Logs
 logs
