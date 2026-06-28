@@ -250,10 +250,14 @@ export default function ReceiveStockPage() {
       
       const response = await api.get('/pharmacies', { params });
       const pharmacyList = response.data || [];
-      // Only show MAIN pharmacies for receiving stock
-      setPharmacies(pharmacyList.filter((p: Pharmacy) => p.type === 'MAIN' && p.status === 'ACTIVE'));
-      
-      console.log('Fetched pharmacies:', pharmacyList.length, 'for hospital:', currentHospitalId);
+      // Admins can receive stock into any pharmacy (main or sub).
+      // Other roles receive into the main pharmacy only.
+      const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'HOSPITAL_ADMIN';
+      setPharmacies(
+        pharmacyList.filter((p: Pharmacy) =>
+          p.status === 'ACTIVE' && (isAdmin || p.type === 'MAIN'),
+        ),
+      );
     } catch (error) {
       console.error('Error fetching pharmacies:', error);
     }
