@@ -174,6 +174,31 @@ export class InventoryController {
     return { medicineId, pharmacyId, ...stockByCategory };
   }
 
+  @Get('availability/:pharmacyId')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HOSPITAL_ADMIN,
+    UserRole.MAIN_PHARMACY_MANAGER,
+    UserRole.SUB_PHARMACY_MANAGER,
+    UserRole.PHARMACY_STAFF,
+    UserRole.DOCTOR,
+    UserRole.DOCTOR_ASSISTANT,
+  )
+  async getPharmacyAvailability(
+    @Param('pharmacyId') pharmacyId: string,
+    @Request() req,
+  ) {
+    let hospitalId = req.user.hospitalId;
+    if (!hospitalId) {
+      const pharmacy = await this.inventoryService['prisma'].pharmacy.findUnique({
+        where: { id: pharmacyId },
+        select: { hospitalId: true },
+      });
+      hospitalId = pharmacy?.hospitalId;
+    }
+    return this.inventoryService.getPharmacyAvailability(pharmacyId, hospitalId);
+  }
+
   @Get('alerts/low-stock')
   @Roles(
     UserRole.SUPER_ADMIN,

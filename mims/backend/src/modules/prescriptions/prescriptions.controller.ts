@@ -50,8 +50,8 @@ export class PrescriptionsController {
 
   @Get()
   @Roles(...ALL_PRESCRIPTION_ROLES)
-  findAll(@Query() searchDto: SearchPrescriptionsDto) {
-    return this.prescriptionsService.findAll(searchDto);
+  findAll(@Query() searchDto: SearchPrescriptionsDto, @Request() req) {
+    return this.prescriptionsService.findAll(searchDto, req.user);
   }
 
   @Get('patient/:nrNumber')

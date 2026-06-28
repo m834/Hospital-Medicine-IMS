@@ -20,6 +20,8 @@ interface PrescriptionSummary {
   createdAt: string;
   patient: { id: string; nrNumber: string; fullName: string; gender: string; mobile: string };
   doctor?: { id: string; fullName: string; email: string } | null;
+  creator?: { id: string; fullName: string; role: string } | null;
+  pharmacy?: { id: string; name: string; type: string } | null;
   medicines: { id: string }[];
   visit?: { id: string; visitDate: string; visitNumber: string } | null;
 }
@@ -268,6 +270,10 @@ function ExpandedPanel({
         <div>
           <span className="text-xs text-gray-500 block">Prescribed by</span>
           <span className="font-medium text-gray-800">{detail.doctor?.fullName || '—'}</span>
+        </div>
+        <div>
+          <span className="text-xs text-gray-500 block">Created by</span>
+          <span className="font-medium text-gray-800">{detail.creator?.fullName || '—'}</span>
         </div>
         <div>
           <span className="text-xs text-gray-500 block">Medicines</span>
@@ -713,6 +719,12 @@ export default function PrescriptionsPage() {
                         {rx.patient.mobile}
                         {rx.patient.gender && <span className="ml-2">{rx.patient.gender}</span>}
                       </div>
+                      {rx.creator && (
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          By {rx.creator.fullName}
+                          {rx.pharmacy ? ` · ${rx.pharmacy.name}` : ''}
+                        </div>
+                      )}
                     </div>
 
                     {/* Visit date */}

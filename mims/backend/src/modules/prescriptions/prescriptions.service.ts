@@ -45,50 +45,142 @@ export class PrescriptionsService {
       resolvedVisitId = latestVisit?.id ?? null;
     }
 
-    const prescription = await this.prisma.prescription.create({
-      data: {
-        hospitalId,
-        nrNumber: patient.nrNumber,
-        doctorId: doctorRecord?.id ?? user?.id ?? null,
-        visitId: resolvedVisitId,
-        prescriptionType: rest.prescriptionType ?? 'E_PRESCRIPTION',
-        scannedImageUrl: rest.scannedImageUrl,
-        notes: rest.notes,
-        status: PrescriptionStatus.ACTIVE,
-        medicines: {
-          create: prescriptionMedicines.map((m) => ({
+    // When a pharmacy user creates the prescription we dispense the first dose
+    // immediately (deducting stock). Non-pharmacy creators (e.g. a doctor with
+    // no pharmacyId) just record the prescription without touching inventory.
+    const pharmacyId = user?.pharmacyId ?? null;
+    const now = new Date();
+
+    const prescriptionId = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.prescription.create({
+        data: {
+          hospitalId,
+          pharmacyId,
+          nrNumber: patient.nrNumber,
+          doctorId: doctorRecord?.id ?? user?.id ?? null,
+          createdBy: user?.id ?? null,
+          visitId: resolvedVisitId,
+          prescriptionType: rest.prescriptionType ?? 'E_PRESCRIPTION',
+          scannedImageUrl: rest.scannedImageUrl,
+          notes: rest.notes,
+          status: PrescriptionStatus.ACTIVE,
+        },
+      });
+
+      let dispatchRecord: { id: string } | null = null;
+
+      for (const m of prescriptionMedicines) {
+        const category = m.category ?? 'NORMAL';
+        const pm = await tx.prescriptionMedicine.create({
+          data: {
+            prescriptionId: created.id,
             medicineId: m.medicineId,
             dosage: m.dosage,
             dosageFrequency: m.dosageFrequency ?? null,
+            quantity: m.quantity ?? null,
             instructions: m.instructions,
-            category: m.category ?? 'NORMAL',
+            category,
             addedBy: user?.id ?? '',
-          })),
-        },
-      },
-      include: {
-        patient: { select: { id: true, nrNumber: true, fullName: true, gender: true, mobile: true } },
-        doctor: { select: { id: true, fullName: true, email: true } },
-        visit: { select: { id: true, visitDate: true, visitNumber: true, visitType: true } },
-        medicines: {
-          include: {
-            medicine: { select: { id: true, name: true, genericName: true, strength: true, form: true } },
           },
-        },
-      },
+        });
+
+        // Dispense the first dose only when we have both a pharmacy context
+        // and a quantity to dispense.
+        const qty = m.quantity ?? 0;
+        if (!pharmacyId || qty <= 0) continue;
+
+        const batches = await tx.stockBatch.findMany({
+          where: {
+            hospitalId,
+            pharmacyId,
+            medicineId: m.medicineId,
+            status: 'AVAILABLE',
+            qtyAvailable: { gt: 0 },
+            expiryDate: { gt: now },
+            category,
+          },
+          orderBy: [{ expiryDate: 'asc' }, { receivedDate: 'asc' }],
+        });
+
+        const totalAvailable = batches.reduce((sum, b) => sum + b.qtyAvailable, 0);
+        if (totalAvailable < qty) {
+          const med = await tx.medicine.findUnique({ where: { id: m.medicineId }, select: { name: true } });
+          throw new BadRequestException(
+            `Insufficient ${category} stock for ${med?.name ?? 'medicine'}. Available: ${totalAvailable}, requested: ${qty}`,
+          );
+        }
+
+        if (!dispatchRecord) {
+          dispatchRecord = await tx.prescriptionDispatch.create({
+            data: {
+              prescriptionId: created.id,
+              visitId: resolvedVisitId,
+              dispatchedBy: user?.id ?? '',
+              notes: 'First dose dispensed at creation',
+            },
+          });
+        }
+
+        // FEFO deduction across batches
+        let remaining = qty;
+        for (const batch of batches) {
+          if (remaining <= 0) break;
+          const take = Math.min(batch.qtyAvailable, remaining);
+          await tx.stockBatch.update({
+            where: { id: batch.id },
+            data: {
+              qtyAvailable: { decrement: take },
+              status: batch.qtyAvailable - take === 0 ? 'DEPLETED' : batch.status,
+            },
+          });
+          remaining -= take;
+        }
+
+        await tx.prescriptionDispatchItem.create({
+          data: {
+            dispatchId: dispatchRecord.id,
+            prescriptionMedicineId: pm.id,
+            quantityDispatched: qty,
+          },
+        });
+      }
+
+      return created.id;
     });
 
-    return prescription;
+    if (pharmacyId) {
+      try {
+        await this.cacheService.deletePattern(`inventory:${hospitalId}:.*`);
+      } catch {}
+    }
+
+    return this.findOne(prescriptionId);
   }
 
-  async findAll(searchDto: SearchPrescriptionsDto) {
+  async findAll(
+    searchDto: SearchPrescriptionsDto,
+    user?: { hospitalId?: string; pharmacyId?: string; role?: string },
+  ) {
     const { hospitalId, nrNumber, doctorId, status, limit = 50, page = 1 } = searchDto;
 
     const where: any = {};
     if (hospitalId) where.hospitalId = hospitalId;
+    else if (user?.hospitalId) where.hospitalId = user.hospitalId;
     if (nrNumber) where.nrNumber = { contains: nrNumber, mode: 'insensitive' };
     if (doctorId) where.doctorId = doctorId;
     if (status) where.status = status as PrescriptionStatus;
+
+    // Pharmacy scoping: SUB pharmacies see only their own prescriptions.
+    // MAIN pharmacies (and admins with no pharmacy) see all in the hospital.
+    if (user?.pharmacyId) {
+      const pharmacy = await this.prisma.pharmacy.findUnique({
+        where: { id: user.pharmacyId },
+        select: { type: true },
+      });
+      if (pharmacy?.type === 'SUB') {
+        where.pharmacyId = user.pharmacyId;
+      }
+    }
 
     const [prescriptions, total] = await Promise.all([
       this.prisma.prescription.findMany({
@@ -96,6 +188,8 @@ export class PrescriptionsService {
         include: {
           patient: { select: { id: true, nrNumber: true, fullName: true, gender: true, mobile: true } },
           doctor: { select: { id: true, fullName: true, email: true } },
+          creator: { select: { id: true, fullName: true, role: true } },
+          pharmacy: { select: { id: true, name: true, type: true } },
           medicines: { select: { id: true } },
           visit: { select: { id: true, visitDate: true, visitNumber: true } },
         },
@@ -121,6 +215,8 @@ export class PrescriptionsService {
           },
         },
         doctor: { select: { id: true, fullName: true, email: true } },
+        creator: { select: { id: true, fullName: true, role: true } },
+        pharmacy: { select: { id: true, name: true, type: true } },
         medicines: {
           include: {
             medicine: { select: { id: true, name: true, genericName: true, strength: true, form: true } },

@@ -10,10 +10,15 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 
+type DosageFrequency = 'OD' | 'BID' | 'TDS' | 'SOS';
+
+// Frequency → default issue quantity. SOS is manual (null).
+const FREQ_QTY: Record<DosageFrequency, number | null> = { OD: 1, BID: 2, TDS: 3, SOS: null };
+
 const medicineRowSchema = z.object({
   medicineId: z.string().min(1, 'Required'),
-  dosage: z.string().optional(),
-  instructions: z.string().optional(),
+  dosageFrequency: z.enum(['OD', 'BID', 'TDS', 'SOS', '']).optional(),
+  quantity: z.coerce.number().int().min(1, 'Min 1'),
   category: z.enum(['NORMAL', 'LP']),
 });
 
@@ -44,18 +49,27 @@ interface Medicine {
   form: string;
 }
 
+interface Availability {
+  medicineId: string;
+  normalStock: number;
+  lpStock: number;
+  totalStock: number;
+}
+
 export default function CreatePrescriptionPage() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { selectedHospital } = useHospitalStore();
 
   const currentHospitalId = selectedHospital?.id || user?.hospitalId;
+  const pharmacyId = user?.pharmacyId;
 
   const [searchType, setSearchType] = useState<'MRN' | 'CNIC'>('MRN');
   const [searchNR, setSearchNR] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [searchingPatient, setSearchingPatient] = useState(false);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [availability, setAvailability] = useState<Record<string, Availability>>({});
   const [loadingMedicines, setLoadingMedicines] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +85,7 @@ export default function CreatePrescriptionPage() {
     resolver: zodResolver(prescriptionSchema),
     defaultValues: {
       prescriptionType: 'E_PRESCRIPTION',
-      medicines: [{ medicineId: '', dosage: '', instructions: '', category: 'NORMAL' }],
+      medicines: [{ medicineId: '', dosageFrequency: '', quantity: 1, category: 'NORMAL' }],
     },
   });
 
@@ -79,8 +93,8 @@ export default function CreatePrescriptionPage() {
   const prescriptionType = watch('prescriptionType');
 
   useEffect(() => {
-    fetchMedicines();
-  }, [currentHospitalId]);
+    loadMedicines();
+  }, [currentHospitalId, pharmacyId]);
 
   const formatCnic = (value: string) => {
     const digits = value.replace(/\D/g, '').slice(0, 13);
@@ -92,14 +106,23 @@ export default function CreatePrescriptionPage() {
     return p1;
   };
 
-  const fetchMedicines = async () => {
+  // Load medicine catalogue + live pharmacy stock, then keep only in-stock medicines.
+  const loadMedicines = async () => {
     if (!currentHospitalId) return;
     setLoadingMedicines(true);
     try {
-      const res = await api.get('/medicines', { params: { hospitalId: currentHospitalId, limit: 1000 } });
-      setMedicines(res.data.data ?? res.data ?? []);
+      const [medRes, availRes] = await Promise.all([
+        api.get('/medicines', { params: { hospitalId: currentHospitalId, limit: 1000 } }),
+        pharmacyId
+          ? api.get(`/inventory/availability/${pharmacyId}`)
+          : Promise.resolve({ data: [] as Availability[] }),
+      ]);
+      setMedicines(medRes.data.data ?? medRes.data ?? []);
+      const map: Record<string, Availability> = {};
+      (availRes.data ?? []).forEach((a: Availability) => { map[a.medicineId] = a; });
+      setAvailability(map);
     } catch {
-      setError('Failed to load medicines. Please refresh.');
+      setError('Failed to load medicines / stock. Please refresh.');
     } finally {
       setLoadingMedicines(false);
     }
@@ -130,8 +153,35 @@ export default function CreatePrescriptionPage() {
     }
   };
 
+  // Remaining stock for a given medicine + category (live from pharmacy inventory).
+  const remainingFor = (medicineId: string, category: 'NORMAL' | 'LP'): number | null => {
+    if (!medicineId) return null;
+    const a = availability[medicineId];
+    if (!a) return 0;
+    return category === 'LP' ? a.lpStock : a.normalStock;
+  };
+
+  const handleFreqChange = (index: number, freq: string) => {
+    setValue(`medicines.${index}.dosageFrequency`, freq as DosageFrequency | '');
+    const mapped = freq ? FREQ_QTY[freq as DosageFrequency] : undefined;
+    if (mapped != null) {
+      setValue(`medicines.${index}.quantity`, mapped, { shouldValidate: true });
+    }
+  };
+
   const onSubmit = async (data: PrescriptionFormData) => {
     if (!selectedPatient) { setError('Please select a patient first'); return; }
+    if (!pharmacyId) { setError('Your account has no pharmacy assigned — dispensing is unavailable.'); return; }
+
+    // Block rows that exceed live stock before hitting the server.
+    const overStock = data.medicines.find(
+      (m) => (remainingFor(m.medicineId, m.category) ?? 0) < m.quantity,
+    );
+    if (overStock) {
+      setError('One or more medicines exceed available stock. Adjust the quantity.');
+      return;
+    }
+
     setError(null);
     setSubmitting(true);
     try {
@@ -142,8 +192,8 @@ export default function CreatePrescriptionPage() {
         notes: data.notes || undefined,
         prescriptionMedicines: data.medicines.map((m) => ({
           medicineId: m.medicineId,
-          dosage: m.dosage || undefined,
-          instructions: m.instructions || undefined,
+          dosageFrequency: m.dosageFrequency || undefined,
+          quantity: m.quantity,
           category: m.category,
         })),
       };
@@ -161,20 +211,30 @@ export default function CreatePrescriptionPage() {
     }
   };
 
-  const medicineOptions = medicines.map((m) => ({
-    value: m.id,
-    label: m.name,
-    sub: [m.genericName, m.strength, m.form].filter(Boolean).join(' · '),
-  }));
+  // Only medicines that currently have stock in this pharmacy.
+  const medicineOptions = medicines
+    .filter((m) => (availability[m.id]?.totalStock ?? 0) > 0)
+    .map((m) => ({
+      value: m.id,
+      label: m.name,
+      sub: [m.genericName, m.strength, m.form].filter(Boolean).join(' · '),
+    }));
 
   return (
     <div className="container mx-auto py-6 px-4 max-w-4xl">
       <div className="mb-4">
         <h1 className="text-2xl font-bold text-gray-800">Create Prescription</h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Prescription is created as Active. Medicines are dispensed separately via the dispatch flow.
+          The first dose is dispensed and deducted from inventory when you create the prescription.
+          Further doses can be dispatched later from the prescriptions list.
         </p>
       </div>
+
+      {!pharmacyId && (
+        <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3 text-sm">
+          Your account has no pharmacy assigned, so live stock and dispensing are unavailable on this screen.
+        </div>
+      )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         {error && (
@@ -234,7 +294,7 @@ export default function CreatePrescriptionPage() {
             <h2 className="text-sm font-semibold text-gray-700">Medicines</h2>
             <button
               type="button"
-              onClick={() => append({ medicineId: '', dosage: '', instructions: '', category: 'NORMAL' })}
+              onClick={() => append({ medicineId: '', dosageFrequency: '', quantity: 1, category: 'NORMAL' })}
               className="px-3 py-1 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"
             >
               + Add Row
@@ -246,10 +306,11 @@ export default function CreatePrescriptionPage() {
           ) : (
             <div className="space-y-3">
               {/* Header */}
-              <div className="grid grid-cols-[1fr_120px_160px_90px_28px] gap-2 text-xs font-medium text-gray-500 px-1">
+              <div className="grid grid-cols-[1fr_120px_90px_90px_90px_28px] gap-2 text-xs font-medium text-gray-500 px-1">
                 <span>Medicine</span>
-                <span>Dosage</span>
-                <span>Instructions</span>
+                <span>Frequency</span>
+                <span className="text-center">Quantity</span>
+                <span className="text-center">Remaining</span>
                 <span className="text-center">Category</span>
                 <span />
               </div>
@@ -257,9 +318,14 @@ export default function CreatePrescriptionPage() {
               {fields.map((field, index) => {
                 const selectedMedId = watch(`medicines.${index}.medicineId`);
                 const category = watch(`medicines.${index}.category`) ?? 'NORMAL';
+                const freq = watch(`medicines.${index}.dosageFrequency`) ?? '';
+                const quantity = watch(`medicines.${index}.quantity`) ?? 1;
+                const remaining = remainingFor(selectedMedId, category);
+                const qtyDisabled = !!freq && freq !== 'SOS';
+                const overStock = remaining !== null && quantity > remaining;
 
                 return (
-                  <div key={field.id} className="grid grid-cols-[1fr_120px_160px_90px_28px] gap-2 items-start">
+                  <div key={field.id} className="grid grid-cols-[1fr_120px_90px_90px_90px_28px] gap-2 items-start">
                     {/* Medicine select */}
                     <div>
                       <SearchableSelect
@@ -278,24 +344,45 @@ export default function CreatePrescriptionPage() {
                       )}
                     </div>
 
-                    {/* Dosage */}
-                    <input
-                      type="text"
-                      {...register(`medicines.${index}.dosage`)}
-                      placeholder="e.g. 1 tablet"
+                    {/* Frequency */}
+                    <select
+                      value={freq}
+                      onChange={(e) => handleFreqChange(index, e.target.value)}
                       className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">—</option>
+                      <option value="OD">OD (×1/day)</option>
+                      <option value="BID">BID (×2/day)</option>
+                      <option value="TDS">TDS (×3/day)</option>
+                      <option value="SOS">SOS (if needed)</option>
+                    </select>
+
+                    {/* Quantity */}
+                    <input
+                      type="number"
+                      min={1}
+                      {...register(`medicines.${index}.quantity`, { valueAsNumber: true })}
+                      disabled={qtyDisabled}
+                      className={`w-full px-2 py-2 border rounded-lg text-sm text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed ${
+                        overStock ? 'border-red-400 text-red-600' : 'border-gray-300'
+                      }`}
                     />
 
-                    {/* Instructions */}
-                    <input
-                      type="text"
-                      {...register(`medicines.${index}.instructions`)}
-                      placeholder="e.g. after meals"
-                      className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-                    />
+                    {/* Remaining */}
+                    <div className="flex items-center justify-center pt-2">
+                      {selectedMedId ? (
+                        <span className={`text-sm font-semibold ${
+                          remaining && remaining > 0 ? 'text-green-600' : 'text-red-500'
+                        }`}>
+                          {remaining ?? '—'}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-gray-300">—</span>
+                      )}
+                    </div>
 
                     {/* Category toggle */}
-                    <div className="flex items-center justify-center gap-1 pt-1">
+                    <div className="flex items-center justify-center gap-1 pt-2">
                       <span className="text-xs text-gray-400">N</span>
                       <input
                         type="checkbox"
@@ -315,7 +402,7 @@ export default function CreatePrescriptionPage() {
                       type="button"
                       onClick={() => fields.length > 1 && remove(index)}
                       disabled={fields.length === 1}
-                      className="text-gray-400 hover:text-red-600 disabled:opacity-30 text-lg leading-none pt-1"
+                      className="text-gray-400 hover:text-red-600 disabled:opacity-30 text-lg leading-none pt-2"
                     >
                       ×
                     </button>
@@ -382,10 +469,10 @@ export default function CreatePrescriptionPage() {
           </button>
           <button
             type="submit"
-            disabled={submitting || !selectedPatient}
+            disabled={submitting || !selectedPatient || !pharmacyId}
             className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
           >
-            {submitting ? 'Creating...' : 'Create Prescription'}
+            {submitting ? 'Creating...' : 'Create & Dispense First Dose'}
           </button>
         </div>
       </form>

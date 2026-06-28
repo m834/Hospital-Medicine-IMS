@@ -50,6 +50,7 @@ export class TransfersController {
   @Get()
   @Roles(
     UserRole.SUPER_ADMIN,
+    UserRole.HOSPITAL_ADMIN,
     UserRole.MAIN_PHARMACY_MANAGER,
     UserRole.SUB_PHARMACY_MANAGER,
   )
@@ -77,6 +78,7 @@ export class TransfersController {
   @Get(':id')
   @Roles(
     UserRole.SUPER_ADMIN,
+    UserRole.HOSPITAL_ADMIN,
     UserRole.MAIN_PHARMACY_MANAGER,
     UserRole.SUB_PHARMACY_MANAGER,
   )
@@ -98,7 +100,9 @@ export class TransfersController {
   @Post(':id/approve')
   @Roles(
     UserRole.SUPER_ADMIN,
+    UserRole.HOSPITAL_ADMIN,
     UserRole.MAIN_PHARMACY_MANAGER,
+    UserRole.SUB_PHARMACY_MANAGER,
   )
   async approve(
     @Param('id') id: string,
@@ -111,7 +115,9 @@ export class TransfersController {
   @Post(':id/reject')
   @Roles(
     UserRole.SUPER_ADMIN,
+    UserRole.HOSPITAL_ADMIN,
     UserRole.MAIN_PHARMACY_MANAGER,
+    UserRole.SUB_PHARMACY_MANAGER,
   )
   async reject(
     @Param('id') id: string,
@@ -124,7 +130,9 @@ export class TransfersController {
   @Post(':id/dispatch')
   @Roles(
     UserRole.SUPER_ADMIN,
+    UserRole.HOSPITAL_ADMIN,
     UserRole.MAIN_PHARMACY_MANAGER,
+    UserRole.SUB_PHARMACY_MANAGER,
   )
   async dispatch(
     @Param('id') id: string,

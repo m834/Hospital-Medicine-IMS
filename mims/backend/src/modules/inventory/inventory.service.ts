@@ -586,6 +586,42 @@ export class InventoryService {
     return batches.reduce((total, batch) => total + batch.qtyAvailable, 0);
   }
 
+  /**
+   * Per-medicine available stock for a whole pharmacy, split by category.
+   * One query — used by the create-prescription screen to (a) list only
+   * in-stock medicines and (b) show live remaining quantity per category.
+   */
+  async getPharmacyAvailability(
+    pharmacyId: string,
+    hospitalId: string,
+  ): Promise<Array<{ medicineId: string; normalStock: number; lpStock: number; totalStock: number }>> {
+    const now = new Date();
+
+    const rows = await this.prisma.stockBatch.groupBy({
+      by: ['medicineId', 'category'],
+      where: {
+        hospitalId,
+        pharmacyId,
+        status: 'AVAILABLE',
+        qtyAvailable: { gt: 0 },
+        expiryDate: { gt: now },
+      },
+      _sum: { qtyAvailable: true },
+    });
+
+    const map = new Map<string, { medicineId: string; normalStock: number; lpStock: number; totalStock: number }>();
+    for (const row of rows) {
+      const qty = row._sum.qtyAvailable ?? 0;
+      const entry = map.get(row.medicineId) ?? { medicineId: row.medicineId, normalStock: 0, lpStock: 0, totalStock: 0 };
+      if (row.category === 'LP') entry.lpStock += qty;
+      else entry.normalStock += qty;
+      entry.totalStock += qty;
+      map.set(row.medicineId, entry);
+    }
+
+    return Array.from(map.values());
+  }
+
   async getStockByCategory(
     medicineId: string,
     pharmacyId: string,
