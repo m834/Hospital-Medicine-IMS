@@ -15,6 +15,7 @@ import { clearAuthTokens } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { HospitalSelector } from './hospital-selector';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { UserRole } from '@/lib/constants';
 
 // Compact relative time, e.g. "just now", "5m", "3h", "2d".
@@ -202,18 +203,17 @@ export function Header({ onToggleSidebar, isSidebarCollapsed }: HeaderProps) {
               {showCompose && (
                 <div className="space-y-2 border-b border-gray-200 bg-gray-50 p-3">
                   {composeError && <p className="text-xs text-red-600">{composeError}</p>}
-                  <select
+                  <SearchableSelect
+                    options={hospitalUsers.map((u) => ({
+                      value: u.id,
+                      label: u.fullName,
+                      sub: formatRoleName(u.role),
+                    }))}
                     value={recipientId}
-                    onChange={(e) => setRecipientId(e.target.value)}
-                    className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-                  >
-                    <option value="">Select recipient…</option>
-                    {hospitalUsers.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.fullName} · {formatRoleName(u.role)}
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={setRecipientId}
+                    placeholder="Select recipient…"
+                    searchPlaceholder="Search by name…"
+                  />
                   <input
                     value={composeTitle}
                     onChange={(e) => setComposeTitle(e.target.value)}
