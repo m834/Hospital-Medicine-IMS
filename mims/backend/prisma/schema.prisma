@@ -171,6 +171,8 @@ model User {
   prescriptions         Prescription[]      @relation("PrescriptionDoctor")
   prescriptionsCreated  Prescription[]      @relation("PrescriptionCreator")
   medicineTemplates     MedicineTemplate[]  @relation("MedicineTemplateCreator")
+  notificationsReceived Notification[]      @relation("NotificationRecipient")
+  notificationsSent     Notification[]      @relation("NotificationSender")
   issueTransactions     IssueTransaction[]
   transferRequestsMade  TransferRequest[]   @relation("TransferRequester")
   transfersApproved     TransferRequest[]   @relation("TransferApprover")
@@ -870,6 +872,31 @@ model Alert {
   @@map("alerts")
 }
 
+// Per-user notification. One row per recipient (fan-out), so a single event
+// (e.g. a transfer request) produces several rows — one for each user notified.
+model Notification {
+  id          String           @id @default(uuid())
+  hospitalId  String?          @map("hospital_id")
+  recipientId String           @map("recipient_id")
+  senderId    String?          @map("sender_id")
+  type        NotificationType @default(SYSTEM)
+  title       String
+  message     String
+  entityType  String?          @map("entity_type")
+  entityId    String?          @map("entity_id")
+  link        String? // Frontend path to open when the notification is clicked
+  isRead      Boolean          @default(false) @map("is_read")
+  readAt      DateTime?        @map("read_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  recipient User  @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  sender    User? @relation("NotificationSender", fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([recipientId, isRead])
+  @@index([recipientId, createdAt])
+  @@map("notifications")
+}
+
 // ============================================
 // AUDIT & SYNC
 // ============================================
@@ -1424,6 +1451,16 @@ enum VisitType {
 enum GuardianType {
   WIFE
   CHILD
+}
+
+enum NotificationType {
+  SYSTEM
+  DIRECT
+  TRANSFER_REQUESTED
+  TRANSFER_APPROVED
+  TRANSFER_REJECTED
+  TRANSFER_DISPATCHED
+  TRANSFER_RECEIVED
 }
 
 enum MedicineForm {

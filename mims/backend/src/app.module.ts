@@ -18,6 +18,7 @@ import { MedicinesModule } from './modules/medicines/medicines.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { PrescriptionsModule } from './modules/prescriptions/prescriptions.module';
 import { MedicineTemplatesModule } from './modules/medicine-templates/medicine-templates.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { IssuanceModule } from './modules/issuance/issuance.module';
 import { PharmaciesModule } from './modules/pharmacies/pharmacies.module';
 import { UsersModule } from './modules/users/users.module';
@@ -97,6 +98,7 @@ import appConfig from './config/app.config';
     InventoryModule,
     PrescriptionsModule,
     MedicineTemplatesModule,
+    NotificationsModule,
     IssuanceModule,
     HospitalsModule,
     PharmaciesModule,

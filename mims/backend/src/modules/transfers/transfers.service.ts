@@ -1,16 +1,35 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CacheService } from '../../common/services/cache.service';
 import { CreateTransferRequestDto } from './dto/create-transfer-request.dto';
 import { SearchTransferRequestDto } from './dto/search-transfer-request.dto';
-import { TransferStatus, BatchStatus } from '@prisma/client';
+import { TransferStatus, BatchStatus, UserRole } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
+
+// Roles notified on transfer activity: hospital admins + the main pharmacy manager.
+const OVERSIGHT_ROLES: UserRole[] = [UserRole.HOSPITAL_ADMIN, UserRole.MAIN_PHARMACY_MANAGER];
 
 @Injectable()
 export class TransfersService {
+  private readonly logger = new Logger(TransfersService.name);
+
   constructor(
     private prisma: PrismaService,
     private cacheService: CacheService,
+    private notifications: NotificationsService,
   ) {}
+
+  /**
+   * Fire notifications without ever letting a delivery failure break the
+   * underlying transfer operation.
+   */
+  private async safeNotify(fn: () => Promise<void>) {
+    try {
+      await fn();
+    } catch (e) {
+      this.logger.warn(`Transfer notification failed: ${(e as Error).message}`);
+    }
+  }
 
   async create(createDto: CreateTransferRequestDto, hospitalId: string) {
     // Validate pharmacies exist and belong to same hospital
@@ -99,6 +118,22 @@ export class TransfersService {
 
     // Invalidate cache
     await this.invalidateCache(hospitalId);
+
+    // Notify oversight (admins + main pharmacy) and the supplying pharmacy that a
+    // new transfer has been requested.
+    await this.safeNotify(async () => {
+      const payload = {
+        type: 'TRANSFER_REQUESTED' as const,
+        title: 'New transfer request',
+        message: `${transferRequest.fromPharmacy?.name ?? 'A pharmacy'} requested transfer ${requestNumber} from ${transferRequest.toPharmacy?.name ?? 'another pharmacy'}.`,
+        entityType: 'TransferRequest',
+        entityId: transferRequest.id,
+        link: '/dashboard/transfers',
+        senderId: createDto.requestedBy,
+      };
+      await this.notifications.notifyRoles(hospitalId, OVERSIGHT_ROLES, payload, createDto.requestedBy);
+      await this.notifications.notifyPharmacy(createDto.toPharmacyId, payload, { excludeUserId: createDto.requestedBy });
+    });
 
     return transferRequest;
   }
@@ -326,6 +361,20 @@ export class TransfersService {
     // Invalidate cache
     await this.invalidateCache(transfer.hospitalId);
 
+    // Let the requester know their transfer was approved.
+    await this.safeNotify(() =>
+      this.notifications.notifyUsers([transfer.requestedBy], {
+        hospitalId: transfer.hospitalId,
+        type: 'TRANSFER_APPROVED',
+        title: 'Transfer approved',
+        message: `Your transfer request ${transfer.requestNumber} was approved.`,
+        entityType: 'TransferRequest',
+        entityId: transfer.id,
+        link: '/dashboard/transfers',
+        senderId: userId,
+      }),
+    );
+
     return updatedTransfer;
   }
 
@@ -383,6 +432,20 @@ export class TransfersService {
 
     // Invalidate cache
     await this.invalidateCache(transfer.hospitalId);
+
+    // Let the requester know their transfer was rejected.
+    await this.safeNotify(() =>
+      this.notifications.notifyUsers([transfer.requestedBy], {
+        hospitalId: transfer.hospitalId,
+        type: 'TRANSFER_REJECTED',
+        title: 'Transfer rejected',
+        message: `Your transfer request ${transfer.requestNumber} was rejected${rejectionData.rejectionReason ? `: ${rejectionData.rejectionReason}` : ''}.`,
+        entityType: 'TransferRequest',
+        entityId: transfer.id,
+        link: '/dashboard/transfers',
+        senderId: userId,
+      }),
+    );
 
     return updatedTransfer;
   }
@@ -523,6 +586,25 @@ export class TransfersService {
 
     // Invalidate cache
     await this.invalidateCache(transfer.hospitalId);
+
+    // Notify the requesting pharmacy that stock is on the way. (This is also the
+    // "main pharmacy pushed to a sub-pharmacy" case → the sub-pharmacy is told.)
+    await this.safeNotify(() =>
+      this.notifications.notifyPharmacy(
+        transfer.fromPharmacyId,
+        {
+          hospitalId: transfer.hospitalId,
+          type: 'TRANSFER_DISPATCHED',
+          title: 'Transfer dispatched',
+          message: `Transfer ${transfer.requestNumber} from ${updatedTransfer.toPharmacy?.name ?? 'the supplying pharmacy'} has been dispatched and is on its way.`,
+          entityType: 'TransferRequest',
+          entityId: transfer.id,
+          link: '/dashboard/transfers',
+          senderId: userId,
+        },
+        { excludeUserId: userId },
+      ),
+    );
 
     return updatedTransfer;
   }
@@ -670,6 +752,21 @@ export class TransfersService {
 
     // Invalidate cache
     await this.invalidateCache(transfer.hospitalId);
+
+    // Confirm receipt to oversight and the supplying pharmacy.
+    await this.safeNotify(async () => {
+      const payload = {
+        type: 'TRANSFER_RECEIVED' as const,
+        title: 'Transfer received',
+        message: `${transfer.fromPharmacy?.name ?? 'The requesting pharmacy'} received transfer ${transfer.requestNumber}.`,
+        entityType: 'TransferRequest',
+        entityId: transfer.id,
+        link: '/dashboard/transfers',
+        senderId: userId,
+      };
+      await this.notifications.notifyRoles(transfer.hospitalId, OVERSIGHT_ROLES, payload, userId);
+      await this.notifications.notifyPharmacy(transfer.toPharmacyId, payload, { excludeUserId: userId });
+    });
 
     return updatedTransfer;
   }
