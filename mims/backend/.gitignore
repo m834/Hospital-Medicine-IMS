@@ -130,6 +130,7 @@ logs
 *.seed
 *.pid.lock
 
+
 # Coverage reports
 coverage/
 .nyc_output/
@@ -142,6 +143,7 @@ junit.xml
 .vscode/
 .idea/
 *.swp
+
 *.swo
 *~
 
