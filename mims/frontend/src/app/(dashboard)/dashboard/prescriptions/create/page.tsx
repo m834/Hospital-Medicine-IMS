@@ -9,6 +9,14 @@ import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { ChevronDown, ChevronRight, ClipboardList } from 'lucide-react';
 
 type DosageFrequency = 'OD' | 'BID' | 'TDS' | 'SOS';
 
@@ -89,7 +97,8 @@ export default function CreatePrescriptionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
   const [templateNotice, setTemplateNotice] = useState<string | null>(null);
 
   const {
@@ -128,10 +137,17 @@ export default function CreatePrescriptionPage() {
     }
   };
 
-  // Drop every medicine in the chosen template into the rows in one go.
+  // Total stock this pharmacy holds for a medicine (across NORMAL + LP).
+  const stockFor = (medicineId: string): number => availability[medicineId]?.totalStock ?? 0;
+
+  // Drop a template's medicines into the rows in one go. Only medicines that are
+  // actually in this pharmacy's inventory are added — the prescription screen
+  // only lets you dispense in-stock items — and any skipped ones are reported.
   const applyTemplate = (template: Template) => {
-    setTemplateMenuOpen(false);
-    const rows = template.items.map((it) => {
+    const inStock = template.items.filter((it) => stockFor(it.medicine.id) > 0);
+    const skipped = template.items.filter((it) => stockFor(it.medicine.id) <= 0);
+
+    const rows = inStock.map((it) => {
       const freq = (it.dosageFrequency ?? '') as DosageFrequency | '';
       const qty = it.quantity ?? (freq && freq !== 'SOS' ? FREQ_QTY[freq] ?? 1 : 1);
       return {
@@ -141,13 +157,24 @@ export default function CreatePrescriptionPage() {
         category: (it.category ?? 'NORMAL') as 'NORMAL' | 'LP',
       };
     });
-    if (rows.length === 0) return;
 
-    // Replace the lone blank starter row; otherwise append to what's there.
-    const current = getValues('medicines');
-    const isBlankStart = current.length === 1 && !current[0]?.medicineId;
-    replace(isBlankStart ? rows : [...current, ...rows]);
-    setTemplateNotice(`Added ${rows.length} medicine${rows.length > 1 ? 's' : ''} from "${template.name}"`);
+    setTemplateDialogOpen(false);
+    setExpandedTemplateId(null);
+
+    if (rows.length > 0) {
+      // Replace the lone blank starter row; otherwise append to what's there.
+      const current = getValues('medicines');
+      const isBlankStart = current.length === 1 && !current[0]?.medicineId;
+      replace(isBlankStart ? rows : [...current, ...rows]);
+    }
+
+    let notice = rows.length > 0
+      ? `Added ${rows.length} medicine${rows.length > 1 ? 's' : ''} from "${template.name}"`
+      : `No medicines added from "${template.name}"`;
+    if (skipped.length > 0) {
+      notice += ` — ${skipped.length} skipped (out of stock: ${skipped.map((s) => s.medicine.name).join(', ')})`;
+    }
+    setTemplateNotice(notice);
   };
 
   const formatCnic = (value: string) => {
@@ -347,36 +374,16 @@ export default function CreatePrescriptionPage() {
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-sm font-semibold text-gray-700">Medicines</h2>
             <div className="flex items-center gap-2">
-              {/* Select Template — fills all its medicines in one click */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setTemplateMenuOpen((o) => !o)}
-                  disabled={templates.length === 0}
-                  className="px-3 py-1 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                  title={templates.length === 0 ? 'No templates available' : 'Load medicines from a template'}
-                >
-                  Select Template ▾
-                </button>
-                {templateMenuOpen && templates.length > 0 && (
-                  <div className="absolute right-0 z-20 mt-1 w-72 max-h-72 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg py-1">
-                    {templates.map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => applyTemplate(t)}
-                        className="w-full text-left px-3 py-2 hover:bg-indigo-50 transition-colors"
-                      >
-                        <span className="block text-sm font-medium text-gray-800">{t.name}</span>
-                        <span className="block text-xs text-gray-500">
-                          {t.items.length} medicine{t.items.length === 1 ? '' : 's'}
-                          {t.pharmacy?.name ? ` · ${t.pharmacy.name}` : ''}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {/* Select Template — opens a dialog to browse templates + their medicines */}
+              <button
+                type="button"
+                onClick={() => { setExpandedTemplateId(null); setTemplateDialogOpen(true); }}
+                disabled={templates.length === 0}
+                className="flex items-center gap-1 px-3 py-1 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                title={templates.length === 0 ? 'No templates available' : 'Load medicines from a template'}
+              >
+                <ClipboardList className="h-3.5 w-3.5" /> Select Template
+              </button>
               <button
                 type="button"
                 onClick={() => append({ medicineId: '', dosageFrequency: '', quantity: 1, category: 'NORMAL' })}
@@ -569,6 +576,94 @@ export default function CreatePrescriptionPage() {
           </button>
         </div>
       </form>
+
+      {/* Template picker dialog: browse templates, expand to see their medicines,
+          then add them to the prescription in one click. */}
+      <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Select a Template</DialogTitle>
+            <DialogDescription>
+              Click a template to see its medicines, then add them all to the prescription.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="-mx-2 overflow-y-auto">
+            {templates.length === 0 ? (
+              <p className="text-sm text-gray-400 py-8 text-center">No templates available.</p>
+            ) : (
+              <ul className="divide-y divide-gray-100">
+                {templates.map((t) => {
+                  const expanded = expandedTemplateId === t.id;
+                  return (
+                    <li key={t.id} className="px-2">
+                      {/* Master row */}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedTemplateId(expanded ? null : t.id)}
+                        className="w-full flex items-center gap-2 py-3 text-left hover:bg-gray-50 rounded-md px-2"
+                      >
+                        {expanded ? (
+                          <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-gray-400 shrink-0" />
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium text-gray-800 truncate">{t.name}</span>
+                          <span className="block text-xs text-gray-500">
+                            {t.items.length} medicine{t.items.length === 1 ? '' : 's'}
+                            {t.pharmacy?.name ? ` · ${t.pharmacy.name}` : ''}
+                          </span>
+                        </span>
+                      </button>
+
+                      {/* Detail: the template's medicines with live stock status */}
+                      {expanded && (
+                        <div className="ml-6 mb-3 border border-gray-100 rounded-lg overflow-hidden">
+                          <div className="divide-y divide-gray-100">
+                            {t.items.map((it, i) => {
+                              const stock = stockFor(it.medicine.id);
+                              const out = stock <= 0;
+                              return (
+                                <div key={i} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                                  <div className="min-w-0">
+                                    <span className="block text-gray-800 truncate">{it.medicine.name}</span>
+                                    <span className="block text-xs text-gray-500">
+                                      {it.dosageFrequency || '—'}
+                                      {it.quantity ? ` · Qty ${it.quantity}` : ''}
+                                      {it.category === 'LP' ? ' · LP' : ''}
+                                    </span>
+                                  </div>
+                                  <span
+                                    className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
+                                      out ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'
+                                    }`}
+                                  >
+                                    {out ? 'Out of stock' : `In stock: ${stock}`}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="bg-gray-50 px-3 py-2 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => applyTemplate(t)}
+                              className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700"
+                            >
+                              Add to prescription
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
