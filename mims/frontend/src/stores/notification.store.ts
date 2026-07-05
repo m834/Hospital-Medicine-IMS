@@ -26,14 +26,22 @@ interface NotificationState {
   connected: boolean;
   loaded: boolean;
   init: () => Promise<void>;
+  refresh: () => Promise<void>;
   teardown: () => void;
   markRead: (id: string) => Promise<void>;
   markAllRead: () => Promise<void>;
   sendDirect: (payload: { recipientId: string; title: string; message: string }) => Promise<void>;
 }
 
-// Kept outside the store so it survives re-renders and stays a singleton.
+// Kept outside the store so they survive re-renders and stay singletons.
 let socket: Socket | null = null;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+let onFocus: (() => void) | null = null;
+
+// How often to re-check over plain HTTP. This is the fallback that keeps the
+// bell fresh when WebSockets can't traverse the proxy (e.g. cPanel/Apache); if
+// the socket connects, updates still arrive instantly on top of this.
+const POLL_MS = 30000;
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
   items: [],
@@ -43,14 +51,23 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
   init: async () => {
     // Load the initial list via the shared api client (fresh auth token).
-    try {
-      const res = await api.get('/notifications', { params: { limit: 30 } });
-      set({ items: res.data.items ?? [], unreadCount: res.data.unreadCount ?? 0, loaded: true });
-    } catch {
-      set({ loaded: true });
+    await get().refresh();
+    set({ loaded: true });
+
+    // Polling fallback: re-check on an interval and whenever the tab regains focus.
+    if (!pollTimer) {
+      pollTimer = setInterval(() => {
+        if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+          void get().refresh();
+        }
+      }, POLL_MS);
+    }
+    if (!onFocus && typeof window !== 'undefined') {
+      onFocus = () => void get().refresh();
+      window.addEventListener('focus', onFocus);
     }
 
-    // Open the realtime channel once.
+    // Open the realtime channel once (instant updates when the proxy allows it).
     if (socket) return;
     const token = getAccessToken();
     if (!token) return;
@@ -75,10 +92,28 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     });
   },
 
+  // Pull the latest list + unread count over REST (works without WebSockets).
+  refresh: async () => {
+    try {
+      const res = await api.get('/notifications', { params: { limit: 30 } });
+      set({ items: res.data.items ?? [], unreadCount: res.data.unreadCount ?? 0 });
+    } catch {
+      /* transient — next tick retries */
+    }
+  },
+
   teardown: () => {
     if (socket) {
       socket.disconnect();
       socket = null;
+    }
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+    if (onFocus && typeof window !== 'undefined') {
+      window.removeEventListener('focus', onFocus);
+      onFocus = null;
     }
     set({ connected: false });
   },
