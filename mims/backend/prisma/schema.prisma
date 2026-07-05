@@ -37,6 +37,7 @@ model Hospital {
   purchaseOrders     PurchaseOrder[]
   grns               GRN[]
   prescriptions      Prescription[]
+  medicineTemplates  MedicineTemplate[]
   issueTransactions  IssueTransaction[]
   transferRequests   TransferRequest[]   @relation("HospitalTransfers")
   returnTransactions ReturnTransaction[]
@@ -169,6 +170,7 @@ model User {
   attendingPatients     Patient[]           @relation("AttendingDoctor")
   prescriptions         Prescription[]      @relation("PrescriptionDoctor")
   prescriptionsCreated  Prescription[]      @relation("PrescriptionCreator")
+  medicineTemplates     MedicineTemplate[]  @relation("MedicineTemplateCreator")
   issueTransactions     IssueTransaction[]
   transferRequestsMade  TransferRequest[]   @relation("TransferRequester")
   transfersApproved     TransferRequest[]   @relation("TransferApprover")
@@ -241,6 +243,7 @@ model Pharmacy {
   purchaseOrders     PurchaseOrder[]
   grns               GRN[]
   prescriptions      Prescription[]
+  medicineTemplates  MedicineTemplate[]
   issueTransactions  IssueTransaction[]
   transfersFrom      TransferRequest[]   @relation("FromPharmacy")
   transfersTo        TransferRequest[]   @relation("ToPharmacy")
@@ -328,6 +331,7 @@ model Medicine {
   grnItems          GRNItem[]
   prescriptionItems     PrescriptionItem[]
   prescriptionMedicines PrescriptionMedicine[]
+  templateItems         MedicineTemplateItem[]
   issueItems            IssueItem[]
   transferItems     TransferItem[]
   returnItems       ReturnItem[]
@@ -587,6 +591,48 @@ model PrescriptionMedicine {
 
   @@index([prescriptionId])
   @@map("prescription_medicines")
+}
+
+// A reusable, pharmacy-owned set of medicines. Standalone entity: tied only to
+// a pharmacy + inventory (medicine) items, NOT to any prescription. Applying a
+// template on the create-prescription screen fills in all its medicines at once.
+model MedicineTemplate {
+  id          String   @id @default(uuid())
+  hospitalId  String   @map("hospital_id")
+  pharmacyId  String   @map("pharmacy_id")
+  name        String
+  description String?
+  createdBy   String   @map("created_by")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  hospital Hospital               @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  pharmacy Pharmacy               @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  creator  User                   @relation("MedicineTemplateCreator", fields: [createdBy], references: [id])
+  items    MedicineTemplateItem[]
+
+  @@unique([pharmacyId, name])
+  @@index([hospitalId])
+  @@index([pharmacyId])
+  @@map("medicine_templates")
+}
+
+model MedicineTemplateItem {
+  id              String           @id @default(uuid())
+  templateId      String           @map("template_id")
+  medicineId      String           @map("medicine_id")
+  dosageFrequency DosageFrequency? @map("dosage_frequency")
+  quantity        Int?
+  category        BatchCategory    @default(NORMAL)
+  instructions    String?
+  sortOrder       Int              @default(0) @map("sort_order")
+
+  template MedicineTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  medicine Medicine         @relation(fields: [medicineId], references: [id])
+
+  @@index([templateId])
+  @@map("medicine_template_items")
 }
 
 model PrescriptionDispatch {

@@ -148,11 +148,17 @@ const menuItems: MenuItem[] = [
     icon: PackagePlus, 
     roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER,UserRole.HOSPITAL_ADMIN,UserRole.SUPER_ADMIN, UserRole.SUB_PHARMACY_MANAGER, UserRole.PHARMACY_STAFF, UserRole.AUDITOR] 
   },
-  { 
-    label: 'Stock Alerts', 
-    href: '/dashboard/inventory/alerts', 
-    icon: AlertCircle, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.HOSPITAL_ADMIN] 
+  {
+    label: 'Stock Alerts',
+    href: '/dashboard/inventory/alerts',
+    icon: AlertCircle,
+    roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.HOSPITAL_ADMIN]
+  },
+  {
+    label: 'Rx Templates',
+    href: '/dashboard/medicine-templates',
+    icon: ClipboardList,
+    roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.PHARMACY_STAFF]
   },
   
   // Patient Management - SUPER_ADMIN has full access

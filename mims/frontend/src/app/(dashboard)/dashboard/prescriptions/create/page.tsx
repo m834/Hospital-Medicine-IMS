@@ -56,6 +56,21 @@ interface Availability {
   totalStock: number;
 }
 
+interface TemplateItem {
+  medicine: { id: string; name: string };
+  dosageFrequency: DosageFrequency | null;
+  quantity: number | null;
+  category: 'NORMAL' | 'LP';
+}
+
+interface Template {
+  id: string;
+  name: string;
+  description?: string | null;
+  pharmacy?: { id: string; name: string };
+  items: TemplateItem[];
+}
+
 export default function CreatePrescriptionPage() {
   const router = useRouter();
   const { user } = useAuthStore();
@@ -73,12 +88,16 @@ export default function CreatePrescriptionPage() {
   const [loadingMedicines, setLoadingMedicines] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
+  const [templateNotice, setTemplateNotice] = useState<string | null>(null);
 
   const {
     register,
     control,
     handleSubmit,
     setValue,
+    getValues,
     watch,
     formState: { errors },
   } = useForm<PrescriptionFormData>({
@@ -89,12 +108,47 @@ export default function CreatePrescriptionPage() {
     },
   });
 
-  const { fields, append, remove } = useFieldArray({ control, name: 'medicines' });
+  const { fields, append, remove, replace } = useFieldArray({ control, name: 'medicines' });
   const prescriptionType = watch('prescriptionType');
 
   useEffect(() => {
     loadMedicines();
+    loadTemplates();
   }, [currentHospitalId, pharmacyId]);
+
+  // Load pharmacy-owned prescription templates the user is allowed to see.
+  const loadTemplates = async () => {
+    if (!currentHospitalId) return;
+    try {
+      const res = await api.get('/medicine-templates', { params: { hospitalId: currentHospitalId } });
+      setTemplates(res.data ?? []);
+    } catch {
+      // Templates are optional — a failure here should not block prescribing.
+      setTemplates([]);
+    }
+  };
+
+  // Drop every medicine in the chosen template into the rows in one go.
+  const applyTemplate = (template: Template) => {
+    setTemplateMenuOpen(false);
+    const rows = template.items.map((it) => {
+      const freq = (it.dosageFrequency ?? '') as DosageFrequency | '';
+      const qty = it.quantity ?? (freq && freq !== 'SOS' ? FREQ_QTY[freq] ?? 1 : 1);
+      return {
+        medicineId: it.medicine.id,
+        dosageFrequency: freq,
+        quantity: qty ?? 1,
+        category: (it.category ?? 'NORMAL') as 'NORMAL' | 'LP',
+      };
+    });
+    if (rows.length === 0) return;
+
+    // Replace the lone blank starter row; otherwise append to what's there.
+    const current = getValues('medicines');
+    const isBlankStart = current.length === 1 && !current[0]?.medicineId;
+    replace(isBlankStart ? rows : [...current, ...rows]);
+    setTemplateNotice(`Added ${rows.length} medicine${rows.length > 1 ? 's' : ''} from "${template.name}"`);
+  };
 
   const formatCnic = (value: string) => {
     const digits = value.replace(/\D/g, '').slice(0, 13);
@@ -292,14 +346,53 @@ export default function CreatePrescriptionPage() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-sm font-semibold text-gray-700">Medicines</h2>
-            <button
-              type="button"
-              onClick={() => append({ medicineId: '', dosageFrequency: '', quantity: 1, category: 'NORMAL' })}
-              className="px-3 py-1 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"
-            >
-              + Add Row
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Select Template — fills all its medicines in one click */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setTemplateMenuOpen((o) => !o)}
+                  disabled={templates.length === 0}
+                  className="px-3 py-1 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                  title={templates.length === 0 ? 'No templates available' : 'Load medicines from a template'}
+                >
+                  Select Template ▾
+                </button>
+                {templateMenuOpen && templates.length > 0 && (
+                  <div className="absolute right-0 z-20 mt-1 w-72 max-h-72 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg py-1">
+                    {templates.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => applyTemplate(t)}
+                        className="w-full text-left px-3 py-2 hover:bg-indigo-50 transition-colors"
+                      >
+                        <span className="block text-sm font-medium text-gray-800">{t.name}</span>
+                        <span className="block text-xs text-gray-500">
+                          {t.items.length} medicine{t.items.length === 1 ? '' : 's'}
+                          {t.pharmacy?.name ? ` · ${t.pharmacy.name}` : ''}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => append({ medicineId: '', dosageFrequency: '', quantity: 1, category: 'NORMAL' })}
+                className="px-3 py-1 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"
+              >
+                + Add Row
+              </button>
+            </div>
           </div>
+
+          {templateNotice && (
+            <div className="mb-3 flex items-center justify-between bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-md px-3 py-2 text-xs">
+              <span>{templateNotice}</span>
+              <button type="button" onClick={() => setTemplateNotice(null)} className="text-indigo-500 hover:text-indigo-700">×</button>
+            </div>
+          )}
 
           {loadingMedicines ? (
             <p className="text-sm text-gray-400 py-4 text-center">Loading medicines...</p>

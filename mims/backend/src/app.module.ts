@@ -17,6 +17,7 @@ import { SyncModule } from './modules/sync/sync.module';
 import { MedicinesModule } from './modules/medicines/medicines.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { PrescriptionsModule } from './modules/prescriptions/prescriptions.module';
+import { MedicineTemplatesModule } from './modules/medicine-templates/medicine-templates.module';
 import { IssuanceModule } from './modules/issuance/issuance.module';
 import { PharmaciesModule } from './modules/pharmacies/pharmacies.module';
 import { UsersModule } from './modules/users/users.module';
@@ -95,6 +96,7 @@ import appConfig from './config/app.config';
     MedicinesModule,
     InventoryModule,
     PrescriptionsModule,
+    MedicineTemplatesModule,
     IssuanceModule,
     HospitalsModule,
     PharmaciesModule,
