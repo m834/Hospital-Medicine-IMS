@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, Loader2, UserPlus, CheckCircle, Printer } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -44,15 +45,16 @@ const patientSchema = z.object({
     .string()
     .min(1, 'CNIC is required')
     .regex(/^\d{5}-\d{7}-\d$/, 'Enter a valid CNIC (XXXXX-XXXXXXX-X)'),
-  dob: z
+  age: z
     .string()
     .optional()
-    .refine((v) => !v || /^\d{2}\/\d{2}\/\d{4}$/.test(v), {
-      message: 'Use date format dd/mm/yyyy',
+    .refine((v) => !v || (/^\d{1,3}$/.test(v) && Number(v) <= 150), {
+      message: 'Enter a valid age',
     }),
   mobile: z.string().optional(),
   gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
-  address: z.string().optional(),
+  isGuardian: z.boolean().optional(),
+  guardianType: z.enum(['WIFE', 'CHILD']).optional(),
   visitType: z.enum(['OPD', 'EMERGENCY', 'WARD_INDOOR']).optional(),
   department: z.string().optional(),
   clinicId: z.string().optional(),
@@ -76,25 +78,8 @@ const formatCnic = (value: string) => {
   return `${part1}-${part2}-${part3}`;
 };
 
-// Mask free text into dd/mm/yyyy, capping the year at 4 digits
-const formatDob = (value: string) => {
-  const digits = value.replace(/\D/g, '').slice(0, 8);
-  const day = digits.slice(0, 2);
-  const month = digits.slice(2, 4);
-  const year = digits.slice(4, 8);
-  if (digits.length <= 2) return day;
-  if (digits.length <= 4) return `${day}/${month}`;
-  return `${day}/${month}/${year}`;
-};
-
-// Convert dd/mm/yyyy to ISO (yyyy-mm-dd) for the backend
-const dobToIso = (value?: string) => {
-  if (!value) return undefined;
-  const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!match) return undefined;
-  const [, day, month, year] = match;
-  return `${year}-${month}-${day}`;
-};
+// Keep age to at most 3 digits
+const formatAge = (value: string) => value.replace(/\D/g, '').slice(0, 3);
 
 interface Doctor {
   id: string;
@@ -187,11 +172,12 @@ export default function RegisterPatientPage() {
     resolver: zodResolver(patientSchema),
     defaultValues: {
       fullName: '',
-      dob: '',
+      age: '',
       mobile: '',
       cnic: '',
       gender: 'MALE' as const,
-      address: '',
+      isGuardian: false,
+      guardianType: 'WIFE' as const,
       visitType: 'OPD' as const,
       department: '',
       clinicId: '',
@@ -205,6 +191,7 @@ export default function RegisterPatientPage() {
   });
 
   const visitType = form.watch('visitType');
+  const guardianType = form.watch('guardianType');
   const selectedDepartmentId = form.watch('department');
   const selectedRoomType = form.watch('roomType');
   const selectedRoomId = form.watch('roomId');
@@ -358,10 +345,10 @@ export default function RegisterPatientPage() {
       const patientPayload = {
         fullName: data.fullName,
         gender: data.gender,
-        dob: dobToIso(data.dob),
+        age: data.age ? Number(data.age) : undefined,
         mobile: data.mobile || undefined,
         cnic: data.cnic || undefined,
-        address: data.address || undefined,
+        guardianType: data.isGuardian ? data.guardianType : undefined,
         visitType: data.visitType,
         clinicId: data.clinicId || undefined,
         department: data.department || undefined,
@@ -408,9 +395,10 @@ export default function RegisterPatientPage() {
         <CardHeader>
           <CardTitle>Patient Information</CardTitle>
           <CardDescription>
-            Only Full Name and CNIC are required — all other fields are optional. If the CNIC
-            matches an existing patient, a new visit is recorded against their MRN; otherwise a
-            new patient is registered with a fresh MRN.
+            Only Full Name and CNIC are required — all other fields are optional. A matching CNIC
+            records a new visit against the existing MRN. To register a wife or child under the
+            same CNIC holder, turn on <span className="font-medium">Guardian</span> and pick
+            Wife or Children — they each get their own MRN.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -460,17 +448,17 @@ export default function RegisterPatientPage() {
 
                   <FormField
                     control={form.control}
-                    name="dob"
+                    name="age"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Date of Birth</FormLabel>
+                        <FormLabel>Age</FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="dd/mm/yyyy"
+                            placeholder="e.g. 24"
                             inputMode="numeric"
                             value={field.value || ''}
                             onChange={(event) => {
-                              field.onChange(formatDob(event.target.value));
+                              field.onChange(formatAge(event.target.value));
                             }}
                           />
                         </FormControl>
@@ -517,13 +505,47 @@ export default function RegisterPatientPage() {
 
                   <FormField
                     control={form.control}
-                    name="address"
+                    name="isGuardian"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Address</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter address" {...field} />
-                        </FormControl>
+                        <FormLabel>Guardian</FormLabel>
+                        <div className="flex h-10 flex-col justify-center gap-2">
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              id="isGuardian"
+                              checked={!!field.value}
+                              onCheckedChange={(checked) => {
+                                field.onChange(checked);
+                                if (checked && !form.getValues('guardianType')) {
+                                  form.setValue('guardianType', 'WIFE');
+                                }
+                              }}
+                            />
+                            <label htmlFor="isGuardian" className="text-sm text-muted-foreground">
+                              Register under this CNIC holder
+                            </label>
+                          </div>
+                          {field.value && (
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`text-sm ${guardianType !== 'CHILD' ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}
+                              >
+                                Wife
+                              </span>
+                              <Switch
+                                checked={guardianType === 'CHILD'}
+                                onCheckedChange={(checked) =>
+                                  form.setValue('guardianType', checked ? 'CHILD' : 'WIFE')
+                                }
+                              />
+                              <span
+                                className={`text-sm ${guardianType === 'CHILD' ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}
+                              >
+                                Children
+                              </span>
+                            </div>
+                          )}
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}

@@ -1,4 +1,5 @@
-import { IsOptional, IsString, IsEnum, IsDateString, Matches } from 'class-validator';
+import { IsOptional, IsString, IsEnum, IsDateString, Matches, IsInt, Min, Max } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export enum Gender {
   MALE = 'MALE',
@@ -12,6 +13,11 @@ export enum VisitType {
   WARD_INDOOR = 'WARD_INDOOR',
 }
 
+export enum GuardianType {
+  WIFE = 'WIFE',
+  CHILD = 'CHILD',
+}
+
 export class UpdatePatientDto {
   @IsString()
   @IsOptional()
@@ -20,6 +26,17 @@ export class UpdatePatientDto {
   @IsDateString({}, { message: 'Invalid date of birth format' })
   @IsOptional()
   dob?: string;
+
+  @Type(() => Number)
+  @IsInt({ message: 'Age must be a whole number' })
+  @Min(0, { message: 'Age must be 0 or greater' })
+  @Max(150, { message: 'Enter a valid age' })
+  @IsOptional()
+  age?: number;
+
+  @IsEnum(GuardianType, { message: 'Invalid guardian type' })
+  @IsOptional()
+  guardianType?: GuardianType;
 
   @IsEnum(Gender, { message: 'Invalid gender' })
   @IsOptional()

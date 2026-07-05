@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsEnum, IsOptional, IsDateString, IsUUID, IsObject, ValidateNested, Matches } from 'class-validator';
+import { IsNotEmpty, IsString, IsEnum, IsOptional, IsDateString, IsUUID, IsObject, ValidateNested, Matches, IsInt, Min, Max } from 'class-validator';
 
 export enum Gender {
   MALE = 'MALE',
@@ -11,6 +11,11 @@ export enum VisitType {
   EMERGENCY = 'EMERGENCY',
   WARD_INDOOR = 'WARD_INDOOR',
 }
+
+export enum GuardianType {
+  WIFE = 'WIFE',
+  CHILD = 'CHILD',
+}
 import { Type } from 'class-transformer';
 import { VitalSignsDto } from '../../visits/dto';
 
@@ -22,6 +27,17 @@ export class CreatePatientDto {
   @IsDateString({}, { message: 'Invalid date of birth format' })
   @IsOptional()
   dob?: string;
+
+  @Type(() => Number)
+  @IsInt({ message: 'Age must be a whole number' })
+  @Min(0, { message: 'Age must be 0 or greater' })
+  @Max(150, { message: 'Enter a valid age' })
+  @IsOptional()
+  age?: number;
+
+  @IsEnum(GuardianType, { message: 'Invalid guardian type' })
+  @IsOptional()
+  guardianType?: GuardianType;
 
   @IsEnum(Gender, { message: 'Invalid gender' })
   @IsOptional()

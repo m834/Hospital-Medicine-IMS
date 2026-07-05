@@ -266,6 +266,8 @@ model Patient {
   mobile            String?
   cnic              String? // Encrypted
   dob               DateTime?
+  age               Int?
+  guardianType      GuardianType? @map("guardian_type") // WIFE/CHILD registered under the CNIC holder; null = the CNIC holder themselves
   gender            Gender
   address           String?
   visitType         VisitType @map("visit_type")
@@ -1371,6 +1373,11 @@ enum VisitType {
   OPD
   EMERGENCY
   WARD_INDOOR
+}
+
+enum GuardianType {
+  WIFE
+  CHILD
 }
 
 enum MedicineForm {

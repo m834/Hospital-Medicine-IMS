@@ -70,6 +70,20 @@ export class PatientsService {
   }
 
   /**
+   * Normalize a name for guardian de-duplication: lowercase, strip anything
+   * that isn't a letter/number, and collapse runs of whitespace. This makes
+   * "Wajiha  Moiz", "wajiha moiz." and "WAJIHA MOIZ" compare equal. It does NOT
+   * reconcile genuinely different spellings (e.g. "Wajiha" vs "Wajeeha").
+   */
+  private normalizeName(name: string): string {
+    return (name || '')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /**
    * Random, non-sequential code (no ambiguous chars like 0/O/1/I).
    */
   private randomCode(length: number): string {
@@ -124,50 +138,63 @@ export class PatientsService {
       }
     }
 
-    const identifierFilters = [];
-    if (createPatientDto.cnic) {
-      identifierFilters.push({ cnic: createPatientDto.cnic });
-    }
-    if (createPatientDto.nrNumber) {
-      identifierFilters.push({ nrNumber: createPatientDto.nrNumber });
-    }
+    // Decide whether this registration is a returning patient (record a new
+    // visit against their MRN) or a brand-new patient.
+    //
+    // A CNIC is a family key: the CNIC holder plus any WIFE/CHILD registered
+    // under it. Each family member gets their own MRN, so we never collapse a
+    // guardian onto the CNIC holder. Matching therefore:
+    //   - self (no guardianType): match the CNIC/MRN whose guardianType is null
+    //   - guardian (WIFE/CHILD):  match the same CNIC + guardianType, then match
+    //     the name auto-normalized (case/spacing/punctuation-insensitive) so
+    //     "Wajiha  Moiz" and "wajiha moiz." resolve to the same person. Genuinely
+    //     different spellings ("Wajiha" vs "Wajeeha") still yield a new MRN.
+    const patientInclude = {
+      attendingDoctor: { select: { id: true, fullName: true, email: true } },
+      registeredByUser: { select: { id: true, fullName: true, email: true } },
+    };
 
-    if (identifierFilters.length > 0) {
-      const existingPatient = await this.prisma.patient.findFirst({
-        where: {
-          hospitalId,
-          OR: identifierFilters,
-        },
-        include: {
-          attendingDoctor: {
-            select: {
-              id: true,
-              fullName: true,
-              email: true,
-            },
+    let existingPatient: any = null;
+    if (createPatientDto.guardianType) {
+      if (createPatientDto.cnic) {
+        const candidates = await this.prisma.patient.findMany({
+          where: {
+            hospitalId,
+            cnic: createPatientDto.cnic,
+            guardianType: createPatientDto.guardianType,
           },
-          registeredByUser: {
-            select: {
-              id: true,
-              fullName: true,
-              email: true,
-            },
-          },
-        },
-      });
-
-      if (existingPatient) {
-        // Create visit for all types
-        const visitResult = await this.createVisitForRegistration(existingPatient.id, createPatientDto, userId, hospitalId);
-        const visitId = visitResult?.visit?.id;
-        
-        // Create admission for WARD_INDOOR
-        if (createPatientDto.visitType === VisitType.WARD_INDOOR && visitId) {
-          await this.createAdmissionForRegistration(existingPatient.id, visitId, createPatientDto, userId, hospitalId);
-        }
-        
-        return existingPatient;
+          include: patientInclude,
+        });
+        const target = this.normalizeName(createPatientDto.fullName);
+        existingPatient = candidates.find((c) => this.normalizeName(c.fullName) === target) ?? null;
       }
+    } else {
+      const identifierFilters = [];
+      if (createPatientDto.cnic) {
+        identifierFilters.push({ cnic: createPatientDto.cnic });
+      }
+      if (createPatientDto.nrNumber) {
+        identifierFilters.push({ nrNumber: createPatientDto.nrNumber });
+      }
+      if (identifierFilters.length > 0) {
+        existingPatient = await this.prisma.patient.findFirst({
+          where: { hospitalId, guardianType: null, OR: identifierFilters },
+          include: patientInclude,
+        });
+      }
+    }
+
+    if (existingPatient) {
+      // Create visit for all types
+      const visitResult = await this.createVisitForRegistration(existingPatient.id, createPatientDto, userId, hospitalId);
+      const visitId = visitResult?.visit?.id;
+
+      // Create admission for WARD_INDOOR
+      if (createPatientDto.visitType === VisitType.WARD_INDOOR && visitId) {
+        await this.createAdmissionForRegistration(existingPatient.id, visitId, createPatientDto, userId, hospitalId);
+      }
+
+      return existingPatient;
     }
 
     // Generate MRN
@@ -182,6 +209,8 @@ export class PatientsService {
         mobile: createPatientDto.mobile ?? null,
         cnic: createPatientDto.cnic,
         dob: createPatientDto.dob ? new Date(createPatientDto.dob) : null,
+        age: createPatientDto.age ?? null,
+        guardianType: createPatientDto.guardianType ?? null,
         gender: createPatientDto.gender ?? 'MALE',
         address: createPatientDto.address,
         visitType: createPatientDto.visitType ?? 'OPD',
@@ -567,6 +596,8 @@ export class PatientsService {
         mobile: updatePatientDto.mobile,
         cnic: updatePatientDto.cnic,
         dob: updatePatientDto.dob ? new Date(updatePatientDto.dob) : undefined,
+        age: updatePatientDto.age,
+        guardianType: updatePatientDto.guardianType,
         gender: updatePatientDto.gender,
         address: updatePatientDto.address,
         visitType: updatePatientDto.visitType,
