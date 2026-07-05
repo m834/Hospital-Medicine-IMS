@@ -111,14 +111,19 @@ export class NotificationsService {
   }
 
   /**
-   * Users the caller may send a direct notification to: everyone active in their
-   * hospital (minus themselves). Open to any authenticated user — direct
+   * Users the caller may send a direct notification to: everyone active in the
+   * SAME hospital (minus themselves). Open to any authenticated user — direct
    * messaging is hospital-wide by design.
+   *
+   * Hospital-scoped users are always locked to their own hospital (the param is
+   * ignored for them, so they can never target another hospital). Super admins,
+   * who have no hospital of their own, may pass the hospital they're working in.
    */
-  async listRecipients(user: AuthUser) {
-    if (!user.hospitalId) return [];
+  async listRecipients(user: AuthUser, hospitalIdParam?: string) {
+    const hospitalId = user.hospitalId || hospitalIdParam;
+    if (!hospitalId) return [];
     return this.prisma.user.findMany({
-      where: { hospitalId: user.hospitalId, status: 'ACTIVE', id: { not: user.id } },
+      where: { hospitalId, status: 'ACTIVE', id: { not: user.id } },
       select: { id: true, fullName: true, role: true },
       orderBy: { fullName: 'asc' },
     });

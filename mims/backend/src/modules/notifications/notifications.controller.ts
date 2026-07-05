@@ -31,9 +31,11 @@ export class NotificationsController {
   }
 
   // Hospital users the caller can send a direct notification to (any role).
+  // hospitalId is honoured only for super admins; everyone else is locked to
+  // their own hospital server-side.
   @Get('recipients')
-  recipients(@Request() req) {
-    return this.service.listRecipients(req.user);
+  recipients(@Request() req, @Query('hospitalId') hospitalId?: string) {
+    return this.service.listRecipients(req.user, hospitalId);
   }
 
   // Any logged-in user can send a direct notification to a specific user.

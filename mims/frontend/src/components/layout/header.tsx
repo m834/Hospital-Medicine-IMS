@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import { Bell, ChevronDown, LogOut, User, Menu, X, Send, CheckCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth.store';
+import { useHospitalStore } from '@/stores/hospital.store';
 import { useNotificationStore } from '@/stores/notification.store';
 import { clearAuthTokens } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -43,6 +44,7 @@ interface HeaderProps {
 export function Header({ onToggleSidebar, isSidebarCollapsed }: HeaderProps) {
   const router = useRouter();
   const { user, clearUser } = useAuthStore();
+  const { selectedHospital } = useHospitalStore();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -72,7 +74,12 @@ export function Header({ onToggleSidebar, isSidebarCollapsed }: HeaderProps) {
     if (hospitalUsers.length > 0) return;
     try {
       // Open to any authenticated hospital user (unlike the admin-only users list).
-      const res = await api.get('/notifications/recipients');
+      // Pass the working hospital so super admins get the selected hospital's users;
+      // for hospital-scoped users the server ignores this and uses their own hospital.
+      const hospitalId = user?.hospitalId || selectedHospital?.id;
+      const res = await api.get('/notifications/recipients', {
+        params: hospitalId ? { hospitalId } : {},
+      });
       setHospitalUsers(res.data || []);
     } catch {
       setHospitalUsers([]);
