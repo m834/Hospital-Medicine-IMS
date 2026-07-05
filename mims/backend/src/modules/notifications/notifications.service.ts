@@ -129,6 +129,43 @@ export class NotificationsService {
     });
   }
 
+  /**
+   * Admin view: every notification in a hospital (all recipients), paginated.
+   * Hospital admins are locked to their own hospital; super/master admins pass
+   * the hospital they've selected.
+   */
+  async listForHospital(
+    user: AuthUser,
+    opts: { hospitalId?: string; limit?: number; page?: number } = {},
+  ) {
+    const hospitalScoped = user.role === UserRole.HOSPITAL_ADMIN;
+    const hospitalId = hospitalScoped ? user.hospitalId : opts.hospitalId || user.hospitalId;
+
+    const limit = Math.min(opts.limit ?? 50, 200);
+    const page = Math.max(opts.page ?? 1, 1);
+
+    if (!hospitalId) {
+      return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
+    }
+
+    const where: Prisma.NotificationWhereInput = { hospitalId };
+    const [items, total] = await Promise.all([
+      this.prisma.notification.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          recipient: { select: { id: true, fullName: true, role: true } },
+          sender: { select: { id: true, fullName: true } },
+        },
+      }),
+      this.prisma.notification.count({ where }),
+    ]);
+
+    return { data: items, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+  }
+
   // ---- Reads for the current user ----
 
   async list(userId: string, opts: { limit?: number; unreadOnly?: boolean } = {}) {

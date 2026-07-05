@@ -11,11 +11,31 @@ import {
 import { NotificationsService } from './notifications.service';
 import { CreateDirectNotificationDto } from './dto/create-direct-notification.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '@prisma/client';
 
 @Controller('notifications')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class NotificationsController {
   constructor(private readonly service: NotificationsService) {}
+
+  // Admin log: all notifications in a hospital (super/master admin pass a
+  // hospitalId; hospital admins are locked to their own hospital).
+  @Get('admin')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.MASTER_ADMIN, UserRole.HOSPITAL_ADMIN)
+  adminList(
+    @Request() req,
+    @Query('hospitalId') hospitalId?: string,
+    @Query('limit') limit?: string,
+    @Query('page') page?: string,
+  ) {
+    return this.service.listForHospital(req.user, {
+      hospitalId,
+      limit: limit ? Number(limit) : undefined,
+      page: page ? Number(page) : undefined,
+    });
+  }
 
   @Get()
   list(@Request() req, @Query('unreadOnly') unreadOnly?: string, @Query('limit') limit?: string) {

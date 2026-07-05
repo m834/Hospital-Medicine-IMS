@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { UserRole } from '@/lib/constants';
 import {
-  LayoutDashboard, Hospital, Users, Pill, FileText, BarChart3,
+  LayoutDashboard, Hospital, Users, Pill, FileText, BarChart3, Bell,
   Settings, UserCog, Building2, PackagePlus, ArrowLeftRight,
   AlertCircle, Syringe, HeartPulse, Activity, ChevronLeft, ChevronRight,
   Store, Flag, Shield, Stethoscope, ClipboardList, Clock, UserPlus, Receipt,
@@ -35,11 +35,17 @@ const menuItems: MenuItem[] = [
     icon: Hospital, 
     roles: [UserRole.SUPER_ADMIN, UserRole.MASTER_ADMIN] 
   },
-  { 
-    label: 'System Users', 
-    href: '/dashboard/users', 
-    icon: UserCog, 
-    roles: [UserRole.SUPER_ADMIN, UserRole.MASTER_ADMIN, UserRole.HOSPITAL_ADMIN] 
+  {
+    label: 'System Users',
+    href: '/dashboard/users',
+    icon: UserCog,
+    roles: [UserRole.SUPER_ADMIN, UserRole.MASTER_ADMIN, UserRole.HOSPITAL_ADMIN]
+  },
+  {
+    label: 'Notifications',
+    href: '/dashboard/notifications',
+    icon: Bell,
+    roles: [UserRole.SUPER_ADMIN, UserRole.MASTER_ADMIN, UserRole.HOSPITAL_ADMIN]
   },
   {
     label: 'Departments',
