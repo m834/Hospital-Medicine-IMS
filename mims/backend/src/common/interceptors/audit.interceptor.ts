@@ -48,6 +48,48 @@ const METHOD_ACTION: Record<string, string> = {
   DELETE: 'DELETE',
 };
 
+// Custom action endpoints (e.g. POST /transfers/:id/dispatch) should be logged
+// with the REAL action the user performed, not the generic HTTP-method action.
+// Only whitelisted trailing path segments are treated as sub-actions so normal
+// REST routes like /inventory/batches or /batches/bulk are never misread.
+const SUB_ACTION_VERB: Record<string, string> = {
+  approve:         'APPROVE',
+  reject:          'REJECT',
+  dispatch:        'DISPATCH',
+  receive:         'RECEIVE',
+  cancel:          'CANCEL',
+  dispense:        'DISPENSE',
+  verify:          'VERIFY',
+  return:          'RETURN',
+  activate:        'ACTIVATE',
+  deactivate:      'DEACTIVATE',
+  restore:         'RESTORE',
+  complete:        'COMPLETE',
+  'fix-received':  'FIX',
+  'reset-password':'RESET_PASSWORD',
+};
+
+// Human-readable past tense for building the audit description line.
+const ACTION_PAST_TENSE: Record<string, string> = {
+  CREATE:         'Created',
+  UPDATE:         'Updated',
+  DELETE:         'Deleted',
+  APPROVE:        'Approved',
+  REJECT:         'Rejected',
+  DISPATCH:       'Dispatched',
+  RECEIVE:        'Received',
+  CANCEL:         'Cancelled',
+  DISPENSE:       'Dispensed',
+  VERIFY:         'Verified',
+  RETURN:         'Returned',
+  ACTIVATE:       'Activated',
+  DEACTIVATE:     'Deactivated',
+  RESTORE:        'Restored',
+  COMPLETE:       'Completed',
+  FIX:            'Fixed',
+  RESET_PASSWORD: 'Reset password for',
+};
+
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
   constructor(private auditService: AuditService) {}
@@ -97,9 +139,16 @@ export class AuditInterceptor implements NestInterceptor {
         entity: this.toPascalCase(resource),
       };
 
+      // Detect a custom action endpoint: the trailing path segment is a known
+      // verb (e.g. /transfers/:id/dispatch → DISPATCH). Falls back to the plain
+      // HTTP-method action for standard REST routes.
+      const lastSegment = resourceParts[resourceParts.length - 1]?.toLowerCase();
+      const subAction = lastSegment ? SUB_ACTION_VERB[lastSegment] : undefined;
+      const baseAction = subAction ?? METHOD_ACTION[method];
+
       const action = status === 'FAILED'
-        ? `${METHOD_ACTION[method]}_FAILED`
-        : METHOD_ACTION[method];
+        ? `${baseAction}_FAILED`
+        : baseAction;
 
       const entityId = params?.id || responseData?.id || requestBody?.id || 'unknown';
 
@@ -128,6 +177,7 @@ export class AuditInterceptor implements NestInterceptor {
     body: any, response: any, errorMessage?: string,
   ): string {
     const name =
+      response?.requestNumber || body?.requestNumber ||
       response?.name || body?.name ||
       response?.nrNumber || body?.nrNumber ||
       response?.email || body?.email ||
@@ -135,14 +185,20 @@ export class AuditInterceptor implements NestInterceptor {
       entityId;
 
     if (action.endsWith('_FAILED')) {
-      return `Failed to ${action.replace('_FAILED', '').toLowerCase()} ${entity.toLowerCase()} — ${errorMessage || 'unknown error'}`;
+      const attempted = action.replace('_FAILED', '');
+      const verb = (ACTION_PAST_TENSE[attempted] || attempted).toLowerCase();
+      return `Failed to ${verb} ${entity.toLowerCase()} ${name} — ${errorMessage || 'unknown error'}`;
     }
-    switch (action) {
-      case 'CREATE': return `Created new ${entity}: ${name}`;
-      case 'UPDATE': return `Updated ${entity}: ${name}`;
-      case 'DELETE': return `Deleted ${entity}: ${name}`;
-      default:       return `${action} on ${entity}: ${name}`;
+
+    // Prefer the readable past tense (covers CREATE/UPDATE/DELETE and every
+    // custom verb like DISPATCH/APPROVE/RECEIVE); fall back gracefully.
+    const pastTense = ACTION_PAST_TENSE[action];
+    if (pastTense) {
+      return action === 'CREATE'
+        ? `Created new ${entity}: ${name}`
+        : `${pastTense} ${entity}: ${name}`;
     }
+    return `${action} on ${entity}: ${name}`;
   }
 
   private toPascalCase(str: string): string {

@@ -663,28 +663,63 @@ export class TransfersService {
       for (const mapping of item.batchMappings) {
         const sourceBatch = mapping.sourceBatch;
 
-        // Create new stock batch in requester pharmacy (FROM pharmacy)
-        // FROM = requester asking for medicines
-        // TO = provider being asked to supply medicines
-        const destinationBatch = await this.prisma.stockBatch.create({
-          data: {
+        // Stock goes to the requester (FROM pharmacy).
+        // Same batch number → accumulate into the existing batch entry rather
+        // than creating a duplicate row. A batch is considered "the same" when
+        // the medicine, batch number, expiry date and category all match.
+        // Different batch number (or expiry/category) → create a new entry.
+        const existingBatch = await this.prisma.stockBatch.findFirst({
+          where: {
             hospitalId: transfer.hospitalId,
+            pharmacyId: transfer.fromPharmacyId,
             medicineId: item.medicineId,
-            pharmacyId: transfer.fromPharmacyId, // Stock goes to the requester (FROM pharmacy)
             batchNo: sourceBatch.batchNo,
             expiryDate: sourceBatch.expiryDate,
-            manufacturer: sourceBatch.manufacturer,
-            storageType: sourceBatch.storageType,
-            qtyReceived: mapping.qty,
-            qtyAvailable: mapping.qty,
-            purchasePrice: sourceBatch.purchasePrice,
-            governmentPrice: sourceBatch.governmentPrice,
-            retailPrice: sourceBatch.retailPrice,
-            receivedDate: new Date(),
-            status: BatchStatus.AVAILABLE,
-            category: sourceBatch.category, // Preserve category (NORMAL/LP) on transfer
+            category: sourceBatch.category,
           },
+          orderBy: { receivedDate: 'asc' },
         });
+
+        let destinationBatch;
+        if (existingBatch) {
+          // Merge: add the received quantity onto the existing batch. Preserve
+          // the original receivedDate so FIFO ordering is unaffected. Revive the
+          // batch to AVAILABLE if it had been depleted.
+          destinationBatch = await this.prisma.stockBatch.update({
+            where: { id: existingBatch.id },
+            data: {
+              qtyReceived: { increment: mapping.qty },
+              qtyAvailable: { increment: mapping.qty },
+              ...(existingBatch.qtyAvailableDispensing != null
+                ? { qtyAvailableDispensing: { increment: mapping.qty } }
+                : {}),
+              ...(existingBatch.status === BatchStatus.DEPLETED
+                ? { status: BatchStatus.AVAILABLE }
+                : {}),
+            },
+          });
+        } else {
+          // New batch number → create a new, separate stock batch entry.
+          destinationBatch = await this.prisma.stockBatch.create({
+            data: {
+              hospitalId: transfer.hospitalId,
+              medicineId: item.medicineId,
+              pharmacyId: transfer.fromPharmacyId, // Stock goes to the requester (FROM pharmacy)
+              batchNo: sourceBatch.batchNo,
+              expiryDate: sourceBatch.expiryDate,
+              manufacturer: sourceBatch.manufacturer,
+              storageType: sourceBatch.storageType,
+              qtyReceived: mapping.qty,
+              qtyAvailable: mapping.qty,
+              purchasePrice: sourceBatch.purchasePrice,
+              governmentPrice: sourceBatch.governmentPrice,
+              retailPrice: sourceBatch.retailPrice,
+              receivedDate: new Date(),
+              status: BatchStatus.AVAILABLE,
+              category: sourceBatch.category, // Preserve category (NORMAL/LP) on transfer
+            },
+          });
+        }
 
         // Update the batch mapping with destination batch ID
         await this.prisma.transferBatchMapping.update({
@@ -880,10 +915,22 @@ export class TransfersService {
   }
 
   /**
-   * Invalidate transfer caches for a hospital
+   * Invalidate transfer caches for a hospital.
+   *
+   * Transfers physically move stock between pharmacies (dispatch deducts from
+   * the source batch, receive creates batches in the destination), so the
+   * inventory listings/stats for this hospital must be refreshed too — otherwise
+   * the inventory screens keep serving stale cached quantities after a
+   * dispatch/receive.
    */
   private async invalidateCache(hospitalId: string): Promise<void> {
-    await this.cacheService.deletePattern(`transfers:${hospitalId}:.*`);
-    await this.cacheService.deletePattern(`transfers:all:.*`);
+    await Promise.all([
+      this.cacheService.deletePattern(`transfers:${hospitalId}:.*`),
+      this.cacheService.deletePattern(`transfers:all:.*`),
+      this.cacheService.deletePattern(`inventory:${hospitalId}:.*`),
+      this.cacheService.deletePattern(`inventory:all:.*`),
+      this.cacheService.deletePattern(`inventory:low-stock:${hospitalId}:.*`),
+      this.cacheService.deletePattern(`inventory:stats:${hospitalId}:.*`),
+    ]);
   }
 }
