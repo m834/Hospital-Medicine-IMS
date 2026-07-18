@@ -55,6 +55,7 @@ import {
 } from 'lucide-react';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import api from '@/lib/api';
+import { buildSheetRows, EXPORT_COLUMNS } from '@/lib/inventory-export';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { useRouter } from 'next/navigation';
@@ -130,17 +131,6 @@ const STORAGE_TYPES = [
   { value: 'REFRIGERATED', label: 'Refrigerated' },
 ];
 
-const EXPORT_COLUMNS = [
-  { key: 'medicineName',   label: 'Medicine Name' },
-  { key: 'batchNo',        label: 'Batch Number' },
-  { key: 'quantity',       label: 'Quantity' },
-  { key: 'pricePerUnit',   label: 'Price per Unit' },
-  { key: 'totalPrice',     label: 'Total Price' },
-  { key: 'expiryDate',     label: 'Expiry Date' },
-  { key: 'category',       label: 'Category (Normal / LP)' },
-  { key: 'manufacturer',   label: 'Supplier / Manufacturer' },
-];
-
 export default function InventoryDashboardPage() {
   const [stockBatches, setStockBatches] = useState<StockBatch[]>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
@@ -151,6 +141,10 @@ export default function InventoryDashboardPage() {
     lowStock: 0,
     expiringSoon: 0,
   });
+  // Value amounts by category, computed across ALL batches (independent of the
+  // active tab) so the cards stay stable when switching tabs. Total = normal + lp
+  // (excludes expired stock).
+  const [valueBreakdown, setValueBreakdown] = useState({ normal: 0, lp: 0, expired: 0 });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'normal' | 'lp' | 'expired'>('normal');
   const [searchQuery, setSearchQuery] = useState('');
@@ -212,6 +206,11 @@ export default function InventoryDashboardPage() {
     fetchData();
   }, [currentHospitalId, activeTab, selectedMedicine, selectedPharmacy, selectedStatus, selectedStorage, searchQuery]);
 
+  useEffect(() => {
+    fetchValueBreakdown();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentHospitalId, selectedPharmacy]);
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -268,6 +267,32 @@ export default function InventoryDashboardPage() {
       setPharmacies(response.data || []);
     } catch (error) {
       console.error('Error fetching pharmacies:', error);
+    }
+  };
+
+  // Value amounts by category across all batches for the hospital / selected
+  // pharmacy (ignores the active tab, category and search filters).
+  const fetchValueBreakdown = async () => {
+    try {
+      const params: any = { limit: 2000 };
+      if (currentHospitalId) params.hospitalId = currentHospitalId;
+      if (!isSuperAdmin && !isHospitalAdmin && !isMainManager && userPharmacyId) {
+        params.pharmacyId = userPharmacyId;
+      } else if (selectedPharmacy !== 'all') {
+        params.pharmacyId = selectedPharmacy;
+      }
+      if (!params.hospitalId) return;
+      const res = await api.get('/inventory/batches', { params });
+      const all: StockBatch[] = res.data?.data || res.data || [];
+      let normal = 0, lp = 0, expired = 0;
+      for (const b of all) {
+        const value = b.qtyAvailable * Number(b.purchasePrice);
+        if (isExpired(b.expiryDate) || b.status === 'EXPIRED') { expired += value; continue; }
+        if (b.category === 'LP') lp += value; else normal += value;
+      }
+      setValueBreakdown({ normal, lp, expired });
+    } catch (error) {
+      console.error('Error fetching value breakdown:', error);
     }
   };
 
@@ -383,43 +408,6 @@ export default function InventoryDashboardPage() {
     } catch {
       return [];
     }
-  };
-
-  // Build XLSX rows from a batch list and a sheet label
-  const buildSheetRows = (
-    batches: StockBatch[],
-    cols: typeof EXPORT_COLUMNS,
-    mode: 'active' | 'expired' = 'active',
-  ): any[][] => {
-    const scoped = mode === 'expired'
-      ? batches.filter(b => isExpired(b.expiryDate) || b.status === 'EXPIRED')
-      : batches.filter(b => !isExpired(b.expiryDate) && b.status !== 'EXPIRED');
-    const groups = groupBatches(scoped);
-    const rows: any[][] = [cols.map(c => c.label)];
-    for (const group of groups) {
-      rows.push(cols.map(c => {
-        if (c.key === 'medicineName') return `${group.medicineName}${group.medicineStrength ? ' ' + group.medicineStrength : ''} (${group.medicineForm})`;
-        if (c.key === 'quantity') return group.totalQtyAvailable;
-        if (c.key === 'totalPrice') return group.totalValue;
-        if (c.key === 'expiryDate') return formatDate(group.nearestExpiry) + ' (nearest)';
-        if (c.key === 'category') return group.batches[0]?.category === 'LP' ? 'LP' : 'Normal';
-        return '';
-      }));
-      for (const batch of group.batches) {
-        rows.push(cols.map(c => {
-          if (c.key === 'medicineName') return '';
-          if (c.key === 'batchNo') return batch.batchNo;
-          if (c.key === 'quantity') return batch.qtyAvailable;
-          if (c.key === 'pricePerUnit') return Number(batch.purchasePrice);
-          if (c.key === 'totalPrice') return batch.qtyAvailable * Number(batch.purchasePrice);
-          if (c.key === 'expiryDate') return formatDate(batch.expiryDate);
-          if (c.key === 'category') return batch.category === 'LP' ? 'LP' : 'Normal';
-          if (c.key === 'manufacturer') return batch.manufacturer || '';
-          return '';
-        }));
-      }
-    }
-    return rows;
   };
 
   // Excel export
@@ -539,8 +527,10 @@ export default function InventoryDashboardPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">PKR {stats.totalValue.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Based on purchase price</p>
+            <div className="text-2xl font-bold">
+              PKR {(valueBreakdown.normal + valueBreakdown.lp).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-xs text-muted-foreground">Normal + LP (excludes expired)</p>
           </CardContent>
         </Card>
         <Card
@@ -567,6 +557,46 @@ export default function InventoryDashboardPage() {
           <CardContent>
             <div className="text-2xl font-bold text-red-600">{stats.expiringSoon}</div>
             <p className="text-xs text-muted-foreground">Within 7 days</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Value breakdown by category */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Normal Stock Value</CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              PKR {valueBreakdown.normal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-xs text-muted-foreground">Active Normal items</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">LP Stock Value</CardTitle>
+            <Package className="h-4 w-4 text-orange-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-orange-600">
+              PKR {valueBreakdown.lp.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-xs text-muted-foreground">Active LP (Local Purchase) items</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Expired Stock Value</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-red-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-600">
+              PKR {valueBreakdown.expired.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-xs text-muted-foreground">Excluded from total value</p>
           </CardContent>
         </Card>
       </div>
