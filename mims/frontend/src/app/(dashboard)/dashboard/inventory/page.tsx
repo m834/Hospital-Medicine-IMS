@@ -528,9 +528,9 @@ export default function InventoryDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              PKR {(valueBreakdown.normal + valueBreakdown.lp).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              PKR {(valueBreakdown.normal + valueBreakdown.lp + valueBreakdown.expired).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <p className="text-xs text-muted-foreground">Normal + LP (excludes expired)</p>
+            <p className="text-xs text-muted-foreground">Normal + LP + expired</p>
           </CardContent>
         </Card>
         <Card
@@ -596,7 +596,7 @@ export default function InventoryDashboardPage() {
             <div className="text-2xl font-bold text-red-600">
               PKR {valueBreakdown.expired.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <p className="text-xs text-muted-foreground">Excluded from total value</p>
+            <p className="text-xs text-muted-foreground">Included in total value</p>
           </CardContent>
         </Card>
       </div>
