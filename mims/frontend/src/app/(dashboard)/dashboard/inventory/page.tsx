@@ -172,7 +172,7 @@ export default function InventoryDashboardPage() {
   const [selectedColumns, setSelectedColumns] = useState<Record<string, boolean>>(
     Object.fromEntries(EXPORT_COLUMNS.map(c => [c.key, true]))
   );
-  const [exportScope, setExportScope] = useState<'current' | 'normal' | 'lp' | 'both'>('current');
+  const [exportScope, setExportScope] = useState<'current' | 'normal' | 'lp' | 'both' | 'expired'>('current');
   const [exportLoading, setExportLoading] = useState(false);
 
   const { user } = useAuthStore();
@@ -386,9 +386,15 @@ export default function InventoryDashboardPage() {
   };
 
   // Build XLSX rows from a batch list and a sheet label
-  const buildSheetRows = (batches: StockBatch[], cols: typeof EXPORT_COLUMNS): any[][] => {
-    const activeBatches = batches.filter(b => !isExpired(b.expiryDate) && b.status !== 'EXPIRED');
-    const groups = groupBatches(activeBatches);
+  const buildSheetRows = (
+    batches: StockBatch[],
+    cols: typeof EXPORT_COLUMNS,
+    mode: 'active' | 'expired' = 'active',
+  ): any[][] => {
+    const scoped = mode === 'expired'
+      ? batches.filter(b => isExpired(b.expiryDate) || b.status === 'EXPIRED')
+      : batches.filter(b => !isExpired(b.expiryDate) && b.status !== 'EXPIRED');
+    const groups = groupBatches(scoped);
     const rows: any[][] = [cols.map(c => c.label)];
     for (const group of groups) {
       rows.push(cols.map(c => {
@@ -425,12 +431,14 @@ export default function InventoryDashboardPage() {
       const date = new Date().toISOString().slice(0, 10);
 
       if (exportScope === 'current') {
-        const currentBatches = activeTab === 'expired'
-          ? stockBatches.filter(b => isExpired(b.expiryDate) || b.status === 'EXPIRED')
-          : stockBatches.filter(b => !isExpired(b.expiryDate) && b.status !== 'EXPIRED');
+        const mode = activeTab === 'expired' ? 'expired' : 'active';
         const label = activeTab === 'normal' ? 'Normal' : activeTab === 'lp' ? 'LP' : 'Expiry';
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildSheetRows(currentBatches, cols)), `Inventory - ${label}`);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildSheetRows(stockBatches, cols, mode)), `Inventory - ${label}`);
         XLSX.writeFile(wb, `inventory_${label.toLowerCase()}_${date}.xlsx`);
+      } else if (exportScope === 'expired') {
+        const batches = await fetchBatchesForScope();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildSheetRows(batches, cols, 'expired')), 'Inventory - Expiry');
+        XLSX.writeFile(wb, `inventory_expiry_${date}.xlsx`);
       } else if (exportScope === 'normal') {
         const batches = await fetchBatchesForScope('NORMAL');
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildSheetRows(batches, cols)), 'Inventory - Normal');
@@ -473,6 +481,8 @@ export default function InventoryDashboardPage() {
     : stockBatches.filter(b => !isExpired(b.expiryDate) && b.status !== 'EXPIRED');
 
   const groups = groupBatches(displayBatches);
+  const grandTotalValue = groups.reduce((sum, g) => sum + g.totalValue, 0);
+  const grandTotalQty = groups.reduce((sum, g) => sum + g.totalQtyAvailable, 0);
   const isActiveTab = activeTab === 'normal' || activeTab === 'lp';
   // total columns: Stock Alert + Medicine + Batches + Total Qty + Nearest Expiry + Total Value + Actions
   const colSpan = isActiveTab ? 7 : 6;
@@ -866,6 +876,23 @@ export default function InventoryDashboardPage() {
                     );
                   })
                 )}
+                {groups.length > 0 && (
+                  <TableRow className="bg-muted/40 border-t-2 font-semibold hover:bg-muted/40">
+                    {isActiveTab && <TableCell />}
+                    <TableCell className="font-bold">
+                      {activeTab === 'expired' ? 'Total Expired' : 'Total'}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant="outline">{displayBatches.length}</Badge>
+                    </TableCell>
+                    <TableCell className="font-bold">{grandTotalQty.toLocaleString()}</TableCell>
+                    <TableCell />
+                    <TableCell className={`font-bold ${activeTab === 'expired' ? 'text-red-600' : ''}`}>
+                      PKR {grandTotalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </TableCell>
+                    <TableCell />
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           )}
@@ -940,6 +967,7 @@ export default function InventoryDashboardPage() {
                   { value: 'normal', label: 'Normal Items only' },
                   { value: 'lp', label: 'LP Items only' },
                   { value: 'both', label: 'Normal + LP (2 sheets)' },
+                  { value: 'expired', label: 'Expiry Items only' },
                 ] as const).map(opt => (
                   <button
                     key={opt.value}
