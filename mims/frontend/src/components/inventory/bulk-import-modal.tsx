@@ -175,15 +175,14 @@ export function BulkImportModal({ open, onOpenChange, pharmacies, hospitalId, on
       // Parse Excel file
       const excelData = await parseExcelFile(file);
 
-      // Generate a unique suffix per import run so batch numbers never collide
-      const importSuffix = `-${Date.now()}`;
-
       // Transform Excel data to API format
       const batches = excelData.map((row: any) => {
+        // Use the batch number exactly as provided in the Excel file.
+        // Only generate a fallback when the cell is genuinely empty.
         const rawBatchNo = row['Batch Number'] ? String(row['Batch Number']).trim() : '';
         const batchNo = rawBatchNo
-          ? `${rawBatchNo}${importSuffix}`
-          : `BATCH${importSuffix}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+          ? rawBatchNo
+          : `BATCH-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
         return {
           medicineName: row['Medicine Name'],
