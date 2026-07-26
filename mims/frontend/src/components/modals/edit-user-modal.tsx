@@ -62,6 +62,9 @@ interface User {
   status: string;
   hospitalId: string;
   pharmacyId?: string;
+  departmentId?: string;
+  subDepartmentId?: string;
+  managedDepartmentId?: string;
   hospital?: Hospital;
   pharmacy?: Pharmacy;
   createdAt: string;

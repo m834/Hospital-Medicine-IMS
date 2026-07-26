@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import api, { getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { AddUserModal } from './add-user-modal';
+import { EditUserModal } from './edit-user-modal';
 
 interface User {
   id: string;
@@ -22,6 +23,12 @@ interface User {
   status: string;
   lastLogin: string | null;
   createdAt: string;
+  // Assignment fields returned by GET /hospitals/:id/users — needed so the
+  // edit form prefills them instead of clearing them on save.
+  pharmacyId?: string | null;
+  departmentId?: string | null;
+  subDepartmentId?: string | null;
+  managedDepartmentId?: string | null;
 }
 
 interface Hospital {
@@ -42,6 +49,7 @@ export function HospitalUsersModal({ isOpen, hospital, onClose }: HospitalUsersM
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [editUser, setEditUser] = useState<User | null>(null);
 
   useEffect(() => {
     if (isOpen && hospital) {
@@ -265,11 +273,16 @@ export function HospitalUsersModal({ isOpen, hospital, onClose }: HospitalUsersM
                       </div>
 
                       {/* Actions */}
-                      <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
-                        <Button variant="ghost" size="sm">
+                      <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Edit user"
+                          onClick={() => setEditUser(user)}
+                        >
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm">
+                        <Button variant="ghost" size="sm" title="Delete user">
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -302,6 +315,31 @@ export function HospitalUsersModal({ isOpen, hospital, onClose }: HospitalUsersM
         onUserAdded={() => {
           fetchUsers(); // Refresh user list
           setIsAddUserModalOpen(false);
+        }}
+      />
+
+      {/* Edit User Modal */}
+      <EditUserModal
+        user={
+          editUser
+            ? {
+                ...editUser,
+                phone: editUser.phone ?? undefined,
+                // Not returned by /hospitals/:id/users — the modal needs it to
+                // load the pharmacy and department options for this hospital.
+                hospitalId: hospital.id,
+                hospital,
+                pharmacyId: editUser.pharmacyId ?? undefined,
+                departmentId: editUser.departmentId ?? undefined,
+                subDepartmentId: editUser.subDepartmentId ?? undefined,
+                managedDepartmentId: editUser.managedDepartmentId ?? undefined,
+              }
+            : null
+        }
+        onClose={() => setEditUser(null)}
+        onUserUpdated={() => {
+          fetchUsers(); // Refresh user list
+          setEditUser(null);
         }}
       />
     </>
