@@ -103,6 +103,7 @@ const MEDICINE_FORMS = [
   { value: 'OINTMENT', label: 'Ointment' },
   { value: 'POWDER', label: 'Powder' },
   { value: 'SUSPENSION', label: 'Suspension' },
+  { value: 'DISPOSABLE', label: 'Disposable' },
 ];
 
 // Validation schema

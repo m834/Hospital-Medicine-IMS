@@ -26,4 +26,16 @@ export class UpdateUserDto {
   @IsOptional()
   @IsUUID()
   pharmacyId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  departmentId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  subDepartmentId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  managedDepartmentId?: string | null;
 }

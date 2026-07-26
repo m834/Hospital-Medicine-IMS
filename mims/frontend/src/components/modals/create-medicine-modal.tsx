@@ -63,6 +63,7 @@ const MEDICINE_FORMS = [
   { value: 'SUSPENSION', label: 'Suspension' },
   { value: 'LIQUID', label: 'Liquid' },
   { value: 'SUPPOSITORY', label: 'Suppository' },
+  { value: 'DISPOSABLE', label: 'Disposable' }
 ];
 
 // Validation schema
@@ -81,6 +82,7 @@ const createMedicineSchema = z.object({
     'SUSPENSION',
     'LIQUID',
     'SUPPOSITORY',
+    'DISPOSABLE'
   ], { required_error: 'Medicine form is required' }),
   strength: z.string().optional(),
   manufacturer: z.string().optional(),

@@ -259,14 +259,30 @@ export class HospitalsService {
         status: true,
         lastLogin: true,
         createdAt: true,
+        pharmacyId: true,
         departmentId: true,
         subDepartmentId: true,
+        managedDepartmentId: true,
         pharmacy: {
           select: {
             id: true,
             name: true,
             code: true,
             type: true,
+          },
+        },
+        department: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+        subDepartment: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
           },
         },
       },

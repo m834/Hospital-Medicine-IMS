@@ -68,6 +68,7 @@ const MEDICINE_FORMS = [
   { value: 'SUSPENSION', label: 'Suspension' },
   { value: 'LIQUID', label: 'Liquid' },
   { value: 'SUPPOSITORY', label: 'Suppository' },
+  { value: 'DISPOSABLE', label: 'Disposable' },
 ];
 
 const MEDICINE_STATUS = [
@@ -91,6 +92,7 @@ const editMedicineSchema = z.object({
     'SUSPENSION',
     'LIQUID',
     'SUPPOSITORY',
+    'DISPOSABLE'
   ], { required_error: 'Medicine form is required' }),
   strength: z.string().optional(),
   manufacturer: z.string().optional(),

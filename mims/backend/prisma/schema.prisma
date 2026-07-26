@@ -1475,6 +1475,7 @@ enum MedicineForm {
   SUSPENSION
   LIQUID
   SUPPOSITORY
+  DISPOSABLE
 }
 
 enum MedicineStatus {
