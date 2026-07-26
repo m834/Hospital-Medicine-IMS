@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsUUID, ValidateIf } from 'class-validator';
 import { PharmacyType, PharmacyStatus } from '@prisma/client';
 
 export class UpdatePharmacyDto {
@@ -21,4 +21,11 @@ export class UpdatePharmacyDto {
   @IsEnum(PharmacyStatus)
   @IsOptional()
   status?: PharmacyStatus;
+
+  // Move under a main pharmacy (forces type SUB), or pass null to detach it
+  // back to top level. Omit to leave the current parent untouched.
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID()
+  @IsOptional()
+  parentPharmacyId?: string | null;
 }

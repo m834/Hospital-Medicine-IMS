@@ -34,7 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Plus, Eye, Edit, Trash2, RefreshCw, Building2, Store } from 'lucide-react';
+import { Search, Plus, Eye, Edit, Trash2, RefreshCw, Building2, Store, CornerDownRight } from 'lucide-react';
 import api from '@/lib/api';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { useAuthStore } from '@/stores/auth.store';
@@ -42,12 +42,14 @@ import { UserRole } from '@/lib/constants';
 import { canModifyResources } from '@/lib/permissions';
 import { CreatePharmacyModal } from '@/components/modals/create-pharmacy-modal';
 import { EditPharmacyModal } from '@/components/modals/edit-pharmacy-modal';
+import { ManageSubPharmaciesModal } from '@/components/modals/manage-sub-pharmacies-modal';
 
 interface Pharmacy {
   id: string;
   name: string;
   code: string;
   type: 'MAIN' | 'SUB';
+  parentPharmacyId?: string | null;
   locationWard?: string;
   status: string;
   hospitalId: string;
@@ -58,8 +60,15 @@ interface Pharmacy {
   };
   _count?: {
     stockBatches: number;
+    subPharmacies?: number;
   };
   createdAt: string;
+}
+
+/** A pharmacy plus its nesting depth: 0 = main (or ungrouped), 1 = sub under a main. */
+interface PharmacyRow {
+  pharmacy: Pharmacy;
+  depth: number;
 }
 
 interface PharmacyStats {
@@ -86,6 +95,7 @@ export default function PharmaciesPage() {
 
   // Modal states
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [manageSubsForPharmacy, setManageSubsForPharmacy] = useState<Pharmacy | null>(null);
   const [viewPharmacyModal, setViewPharmacyModal] = useState<Pharmacy | null>(null);
   const [editPharmacyModal, setEditPharmacyModal] = useState<Pharmacy | null>(null);
   const [deletePharmacyModal, setDeletePharmacyModal] = useState<Pharmacy | null>(null);
@@ -98,6 +108,11 @@ export default function PharmaciesPage() {
   const canModify = user?.role ? canModifyResources(user.role as UserRole) : false;
   const canAddPharmacy = user?.role === UserRole.SUPER_ADMIN ||
     user?.role === UserRole.MASTER_ADMIN ||
+    user?.role === UserRole.HOSPITAL_ADMIN;
+  // Mirrors the backend guard on PATCH /pharmacies/:id, which allows
+  // SUPER_ADMIN and HOSPITAL_ADMIN in addition to MASTER_ADMIN.
+  const canEditPharmacy = canModify ||
+    user?.role === UserRole.SUPER_ADMIN ||
     user?.role === UserRole.HOSPITAL_ADMIN;
 
   // Determine current hospital for create modal
@@ -180,6 +195,37 @@ export default function PharmaciesPage() {
 
     return matchesSearch && matchesType && matchesStatus;
   });
+
+  // Group the surviving rows: each main followed by its own subs, then anything
+  // left over (parentless subs, or subs whose main was filtered out).
+  const pharmacyRows: PharmacyRow[] = (() => {
+    const rows: PharmacyRow[] = [];
+    const emitted = new Set<string>();
+
+    const mains = filteredPharmacies.filter(
+      (p) => !p.parentPharmacyId && p.type === 'MAIN'
+    );
+
+    for (const main of mains) {
+      rows.push({ pharmacy: main, depth: 0 });
+      emitted.add(main.id);
+
+      for (const sub of filteredPharmacies) {
+        if (sub.parentPharmacyId === main.id) {
+          rows.push({ pharmacy: sub, depth: 1 });
+          emitted.add(sub.id);
+        }
+      }
+    }
+
+    for (const pharmacy of filteredPharmacies) {
+      if (!emitted.has(pharmacy.id)) {
+        rows.push({ pharmacy, depth: 0 });
+      }
+    }
+
+    return rows;
+  })();
 
   const getTypeBadgeColor = (type: string) => {
     return type === 'MAIN' ? 'bg-blue-500' : 'bg-green-500';
@@ -329,7 +375,7 @@ export default function PharmaciesPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredPharmacies.length === 0 ? (
+            {pharmacyRows.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={isSuperAdmin ? 8 : 7}
@@ -341,18 +387,39 @@ export default function PharmaciesPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredPharmacies.map((pharmacy) => (
-                <TableRow key={pharmacy.id}>
-                  <TableCell className="font-medium">{pharmacy.name}</TableCell>
+              pharmacyRows.map(({ pharmacy, depth }) => (
+                <TableRow
+                  key={pharmacy.id}
+                  className={depth > 0 ? 'bg-muted/30' : undefined}
+                >
+                  <TableCell className="font-medium">
+                    <div
+                      className="flex items-center gap-2"
+                      style={{ paddingLeft: depth * 24 }}
+                    >
+                      {depth > 0 && (
+                        <CornerDownRight className="w-4 h-4 shrink-0 text-muted-foreground" />
+                      )}
+                      {pharmacy.name}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <code className="text-xs bg-muted px-2 py-1 rounded">
                       {pharmacy.code}
                     </code>
                   </TableCell>
                   <TableCell>
-                    <Badge className={getTypeBadgeColor(pharmacy.type)}>
-                      {pharmacy.type}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge className={getTypeBadgeColor(pharmacy.type)}>
+                        {pharmacy.type}
+                      </Badge>
+                      {pharmacy.type === 'MAIN' && (
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {pharmacy._count?.subPharmacies ?? 0} sub
+                          {(pharmacy._count?.subPharmacies ?? 0) === 1 ? '' : 's'}
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     {pharmacy.locationWard || (
@@ -374,30 +441,40 @@ export default function PharmaciesPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-2">
-                      <Button 
-                        variant="ghost" 
+                      {canAddPharmacy && pharmacy.type === 'MAIN' && !pharmacy.parentPharmacyId && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setManageSubsForPharmacy(pharmacy)}
+                        >
+                          <Plus className="w-4 h-4 mr-1" />
+                          Add sub-pharmacy
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
                         size="sm"
                         onClick={() => setViewPharmacyModal(pharmacy)}
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
+                      {canEditPharmacy && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditPharmacyModal(pharmacy)}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                      )}
                       {canModify && (
-                        <>
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => setEditPharmacyModal(pharmacy)}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => setDeletePharmacyModal(pharmacy)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDeletePharmacyModal(pharmacy)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       )}
                     </div>
                   </TableCell>
@@ -410,7 +487,7 @@ export default function PharmaciesPage() {
 
       {/* Pagination info */}
       <div className="text-sm text-muted-foreground">
-        Showing {filteredPharmacies.length} of {pharmacies.length} pharmacies
+        Showing {pharmacyRows.length} of {pharmacies.length} pharmacies
       </div>
 
       {/* Create Pharmacy Modal */}
@@ -422,9 +499,20 @@ export default function PharmaciesPage() {
         existingCodes={pharmacies.map((pharmacy) => pharmacy.code)}
       />
 
+      {/* Sub-Pharmacy Bundle Modal (tick existing pharmacies to nest them) */}
+      <ManageSubPharmaciesModal
+        mainPharmacy={manageSubsForPharmacy}
+        allPharmacies={pharmacies}
+        onClose={() => setManageSubsForPharmacy(null)}
+        onSaved={fetchPharmacies}
+      />
+
       {/* Edit Pharmacy Modal */}
       <EditPharmacyModal
         pharmacy={editPharmacyModal}
+        mainPharmacies={pharmacies.filter(
+          (p) => p.type === 'MAIN' && !p.parentPharmacyId
+        )}
         onClose={() => setEditPharmacyModal(null)}
         onPharmacyUpdated={fetchPharmacies}
       />

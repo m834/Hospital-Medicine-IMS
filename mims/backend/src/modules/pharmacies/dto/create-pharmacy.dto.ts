@@ -10,9 +10,10 @@ export class CreatePharmacyDto {
   @IsNotEmpty()
   code: string;
 
+  // Optional: when parentPharmacyId is supplied the type is forced to SUB.
   @IsEnum(PharmacyType)
-  @IsNotEmpty()
-  type: PharmacyType;
+  @IsOptional()
+  type?: PharmacyType;
 
   @IsString()
   @IsOptional()
@@ -21,4 +22,9 @@ export class CreatePharmacyDto {
   @IsUUID()
   @IsNotEmpty()
   hospitalId: string;
+
+  // Present = create a sub pharmacy under this main pharmacy.
+  @IsUUID()
+  @IsOptional()
+  parentPharmacyId?: string;
 }

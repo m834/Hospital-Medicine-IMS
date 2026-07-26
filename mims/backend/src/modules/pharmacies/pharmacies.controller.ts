@@ -12,7 +12,11 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PharmaciesService } from './pharmacies.service';
-import { CreatePharmacyDto, UpdatePharmacyDto } from './dto';
+import {
+  CreatePharmacyDto,
+  UpdatePharmacyDto,
+  SetSubPharmaciesDto,
+} from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -111,6 +115,31 @@ export class PharmaciesController {
     return this.pharmaciesService.update(
       id,
       updatePharmacyDto,
+      req.user.id,
+      auditHospitalId,
+    );
+  }
+
+  /**
+   * PATCH /pharmacies/:id/sub-pharmacies
+   * Replace the set of sub-pharmacies bundled under this main pharmacy.
+   */
+  @Patch(':id/sub-pharmacies')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN)
+  async setSubPharmacies(
+    @Param('id') id: string,
+    @Body() setSubPharmaciesDto: SetSubPharmaciesDto,
+    @Request() req,
+  ) {
+    const userHospitalId =
+      req.user.role === UserRole.SUPER_ADMIN ? undefined : req.user.hospitalId;
+
+    const pharmacy = await this.pharmaciesService.findOne(id, userHospitalId);
+    const auditHospitalId = req.user.hospitalId || pharmacy.hospitalId;
+
+    return this.pharmaciesService.setSubPharmacies(
+      id,
+      setSubPharmaciesDto.subPharmacyIds,
       req.user.id,
       auditHospitalId,
     );

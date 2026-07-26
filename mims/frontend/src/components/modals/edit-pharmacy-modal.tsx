@@ -43,6 +43,7 @@ interface Pharmacy {
   name: string;
   code: string;
   type: 'MAIN' | 'SUB';
+  parentPharmacyId?: string | null;
   locationWard?: string;
   status: string;
   hospitalId: string;
@@ -51,13 +52,21 @@ interface Pharmacy {
     name: string;
     code: string;
   };
+  _count?: {
+    subPharmacies?: number;
+  };
 }
 
 interface EditPharmacyModalProps {
   pharmacy: Pharmacy | null;
   onClose: () => void;
   onPharmacyUpdated: () => void;
+  /** Candidate main pharmacies in the same hospital, for re-parenting. */
+  mainPharmacies?: Pharmacy[];
 }
+
+/** Sentinel for "not under any main pharmacy" (Select cannot hold an empty value). */
+const NO_PARENT = '__none__';
 
 const PHARMACY_TYPES = [
   { value: 'MAIN', label: 'Main Pharmacy' },
@@ -76,6 +85,7 @@ const editPharmacySchema = z.object({
   type: z.enum(['MAIN', 'SUB'], { required_error: 'Pharmacy type is required' }),
   locationWard: z.string().optional(),
   status: z.string().min(1, 'Status is required'),
+  parentPharmacyId: z.string().optional(),
 });
 
 type EditPharmacyFormData = z.infer<typeof editPharmacySchema>;
@@ -84,8 +94,20 @@ export function EditPharmacyModal({
   pharmacy,
   onClose,
   onPharmacyUpdated,
+  mainPharmacies = [],
 }: EditPharmacyModalProps) {
   const [loading, setLoading] = useState(false);
+
+  // A pharmacy that already owns subs cannot itself be moved under a main
+  const ownsSubs = (pharmacy?._count?.subPharmacies ?? 0) > 0;
+  const parentOptions = mainPharmacies.filter(
+    (candidate) =>
+      candidate.id !== pharmacy?.id &&
+      candidate.hospitalId === pharmacy?.hospitalId &&
+      candidate.type === 'MAIN' &&
+      !candidate.parentPharmacyId
+  );
+  const canReparent = !!pharmacy && !ownsSubs && parentOptions.length > 0;
 
   const form = useForm<EditPharmacyFormData>({
     resolver: zodResolver(editPharmacySchema),
@@ -106,6 +128,7 @@ export function EditPharmacyModal({
         type: pharmacy.type,
         locationWard: pharmacy.locationWard || '',
         status: pharmacy.status,
+        parentPharmacyId: pharmacy.parentPharmacyId || NO_PARENT,
       });
     }
   }, [pharmacy]);
@@ -115,12 +138,21 @@ export function EditPharmacyModal({
 
     setLoading(true);
     try {
+      const nextParentId =
+        data.parentPharmacyId === NO_PARENT ? null : data.parentPharmacyId ?? null;
+      const currentParentId = pharmacy.parentPharmacyId ?? null;
+
       await api.patch(`/pharmacies/${pharmacy.id}`, {
         name: data.name,
         code: data.code,
-        type: data.type,
+        // The backend forces SUB when a parent is attached
+        type: nextParentId ? 'SUB' : data.type,
         locationWard: data.locationWard || undefined,
         status: data.status,
+        // Only send when it actually changed, so unrelated edits never re-parent
+        ...(canReparent && nextParentId !== currentParentId
+          ? { parentPharmacyId: nextParentId }
+          : {}),
       });
 
       onPharmacyUpdated();
@@ -213,6 +245,52 @@ export function EditPharmacyModal({
                 </FormItem>
               )}
             />
+
+            {/* Parent main pharmacy (re-parenting) */}
+            {canReparent && (
+              <FormField
+                control={form.control}
+                name="parentPharmacyId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Parent Main Pharmacy</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Not under any main pharmacy" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value={NO_PARENT}>
+                          Not under any main pharmacy
+                        </SelectItem>
+                        {parentOptions.map((main) => (
+                          <SelectItem key={main.id} value={main.id}>
+                            {main.name} ({main.code})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Selecting a main pharmacy nests this one underneath it as a
+                      sub-pharmacy.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {ownsSubs && (
+              <div className="rounded-lg border p-3 bg-muted/50">
+                <p className="text-sm font-medium">Parent Main Pharmacy</p>
+                <p className="text-sm text-muted-foreground">
+                  This pharmacy has {pharmacy?._count?.subPharmacies} sub-pharmac
+                  {pharmacy?._count?.subPharmacies === 1 ? 'y' : 'ies'} of its own,
+                  so it cannot be nested under another pharmacy.
+                </p>
+              </div>
+            )}
 
             {/* Location/Ward */}
             <FormField

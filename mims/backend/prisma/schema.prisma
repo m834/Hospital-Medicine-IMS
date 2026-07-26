@@ -227,19 +227,23 @@ model User {
 }
 
 model Pharmacy {
-  id           String         @id @default(uuid())
-  hospitalId   String         @map("hospital_id")
-  name         String
-  code         String
-  type         PharmacyType
-  locationWard String?        @map("location_ward")
-  status       PharmacyStatus @default(ACTIVE)
-  version      Int            @default(1)
-  createdAt    DateTime       @default(now()) @map("created_at")
-  updatedAt    DateTime       @updatedAt @map("updated_at")
+  id                String         @id @default(uuid())
+  hospitalId        String         @map("hospital_id")
+  // Null = main pharmacy. Set = sub pharmacy owned by that main (max depth 2).
+  parentPharmacyId  String?        @map("parent_pharmacy_id")
+  name              String
+  code              String
+  type              PharmacyType
+  locationWard      String?        @map("location_ward")
+  status            PharmacyStatus @default(ACTIVE)
+  version           Int            @default(1)
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
 
   // Relations
   hospital           Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  parentPharmacy     Pharmacy?           @relation("PharmacyHierarchy", fields: [parentPharmacyId], references: [id], onDelete: Restrict)
+  subPharmacies      Pharmacy[]          @relation("PharmacyHierarchy")
   users              User[]
   stockBatches       StockBatch[]
   purchaseOrders     PurchaseOrder[]
@@ -256,6 +260,7 @@ model Pharmacy {
   @@unique([hospitalId, code])
   @@index([hospitalId])
   @@index([type])
+  @@index([parentPharmacyId])
   @@map("pharmacies")
 }
 

@@ -45,12 +45,20 @@ interface Hospital {
   code: string;
 }
 
+interface ParentPharmacy {
+  id: string;
+  name: string;
+  code: string;
+}
+
 interface CreatePharmacyModalProps {
   isOpen: boolean;
   hospital: Hospital | null;
   onClose: () => void;
   onPharmacyCreated: () => void;
   existingCodes?: string[];
+  /** When set, creates a sub-pharmacy under this main pharmacy (type is locked to SUB). */
+  parentPharmacy?: ParentPharmacy | null;
 }
 
 const PHARMACY_TYPES = [
@@ -74,8 +82,10 @@ export function CreatePharmacyModal({
   onClose,
   onPharmacyCreated,
   existingCodes = [],
+  parentPharmacy = null,
 }: CreatePharmacyModalProps) {
   const [loading, setLoading] = useState(false);
+  const isSubPharmacy = !!parentPharmacy;
 
   const nextPharmacyCode = useMemo(
     () => generateNextCode(existingCodes, 'PHAR'),
@@ -95,8 +105,12 @@ export function CreatePharmacyModal({
     if (isOpen) {
       form.reset();
       form.setValue('code', nextPharmacyCode, { shouldValidate: true });
+      // Sub-pharmacies always inherit their type from the parent link
+      if (isSubPharmacy) {
+        form.setValue('type', 'SUB', { shouldValidate: true });
+      }
     }
-  }, [isOpen, nextPharmacyCode, form]);
+  }, [isOpen, nextPharmacyCode, isSubPharmacy, form]);
 
   const onSubmit = async (data: CreatePharmacyFormData) => {
     if (!hospital) return;
@@ -107,8 +121,9 @@ export function CreatePharmacyModal({
         hospitalId: hospital.id,
         name: data.name,
         code: data.code,
-        type: data.type,
+        type: isSubPharmacy ? 'SUB' : data.type,
         locationWard: data.locationWard || undefined,
+        parentPharmacyId: parentPharmacy?.id,
       });
 
       onPharmacyCreated();
@@ -136,9 +151,15 @@ export function CreatePharmacyModal({
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Create Pharmacy</DialogTitle>
+          <DialogTitle>
+            {isSubPharmacy ? 'Add Sub-Pharmacy' : 'Create Pharmacy'}
+          </DialogTitle>
           <DialogDescription>
-            {hospital ? `Add a new pharmacy to ${hospital.name}` : 'Add a new pharmacy'}
+            {isSubPharmacy
+              ? `Add a sub-pharmacy under ${parentPharmacy?.name}`
+              : hospital
+                ? `Add a new pharmacy to ${hospital.name}`
+                : 'Add a new pharmacy'}
           </DialogDescription>
         </DialogHeader>
 
@@ -177,31 +198,40 @@ export function CreatePharmacyModal({
               )}
             />
 
-            {/* Type */}
-            <FormField
-              control={form.control}
-              name="type"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Pharmacy Type</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select pharmacy type" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {PHARMACY_TYPES.map((type) => (
-                        <SelectItem key={type.value} value={type.value}>
-                          {type.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* Type - locked to SUB when creating under a main pharmacy */}
+            {isSubPharmacy ? (
+              <div className="rounded-lg border p-3 bg-muted/50">
+                <p className="text-sm font-medium">Pharmacy Type</p>
+                <p className="text-sm text-muted-foreground">
+                  Sub Pharmacy (under {parentPharmacy?.name})
+                </p>
+              </div>
+            ) : (
+              <FormField
+                control={form.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Pharmacy Type</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select pharmacy type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {PHARMACY_TYPES.map((type) => (
+                          <SelectItem key={type.value} value={type.value}>
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             {/* Location/Ward */}
             <FormField
