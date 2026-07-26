@@ -64,6 +64,9 @@ export class PatientVisitsController {
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
     UserRole.NURSE,
+    // Needed by the patient detail page shown right after registration
+    UserRole.MAIN_PHARMACY_MANAGER,
+    UserRole.SUB_PHARMACY_MANAGER,
   )
   @ApiOperation({ summary: 'List patient visits with filters' })
   @ApiResponse({ status: 200, description: 'List of visits' })

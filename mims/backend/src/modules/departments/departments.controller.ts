@@ -59,6 +59,9 @@ export class DepartmentsController {
     UserRole.HOSPITAL_ADMIN,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    // Needed by the patient registration form
+    UserRole.MAIN_PHARMACY_MANAGER,
+    UserRole.SUB_PHARMACY_MANAGER,
   )
   findByHospital(@Param('hospitalId') hospitalId: string, @Request() req: any) {
     return this.departmentsService.findByHospital(hospitalId, req.user);

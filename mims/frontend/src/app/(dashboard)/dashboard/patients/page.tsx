@@ -289,6 +289,8 @@ export default function PatientsPage() {
   const todayIndoor = filterTodayVisits('WARD_INDOOR');
   const todayEmergency = filterTodayVisits('EMERGENCY');
 
+  // Mirrors the backend guard on POST /patients, which also allows the
+  // pharmacy manager roles.
   const canRegisterPatient = [
     'MASTER_ADMIN',
     'SUPER_ADMIN',
@@ -296,6 +298,8 @@ export default function PatientsPage() {
     'REGISTRATION_STAFF',
     'REGISTRATION_STAFF_MANAGER',
     'RECEPTIONIST',
+    'MAIN_PHARMACY_MANAGER',
+    'SUB_PHARMACY_MANAGER',
   ].includes(user?.role || '');
 
   return (

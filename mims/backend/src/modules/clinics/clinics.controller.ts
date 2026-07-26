@@ -66,6 +66,9 @@ export class ClinicsController {
     UserRole.DOCTOR,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    // Needed by the patient registration form
+    UserRole.MAIN_PHARMACY_MANAGER,
+    UserRole.SUB_PHARMACY_MANAGER,
   )
   @ApiOperation({ summary: 'Get all clinics with filters' })
   @ApiResponse({ status: 200, description: 'List of clinics' })

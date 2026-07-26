@@ -91,7 +91,15 @@ export class HospitalsController {
    * Get all users for a specific hospital
    */
   @Get(':id/users')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.RECEPTIONIST, UserRole.REGISTRATION_STAFF)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HOSPITAL_ADMIN,
+    UserRole.RECEPTIONIST,
+    UserRole.REGISTRATION_STAFF,
+    // Needed to populate the attending-doctor list on patient registration
+    UserRole.MAIN_PHARMACY_MANAGER,
+    UserRole.SUB_PHARMACY_MANAGER,
+  )
   async findHospitalUsers(
     @Param('id') id: string,
     @Query('role') role?: UserRole,
