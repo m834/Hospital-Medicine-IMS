@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
+import { fetchAllMedicines } from '@/lib/medicines';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -78,13 +79,13 @@ export default function MedicineTemplatesPage() {
     if (!currentHospitalId) return;
     setLoading(true);
     try {
-      const [tplRes, medRes, phRes] = await Promise.all([
+      const [tplRes, allMedicines, phRes] = await Promise.all([
         api.get('/medicine-templates', { params: { hospitalId: currentHospitalId } }),
-        api.get('/medicines', { params: { hospitalId: currentHospitalId, limit: 1000 } }),
+        fetchAllMedicines<Medicine>(currentHospitalId),
         api.get('/pharmacies', { params: { hospitalId: currentHospitalId } }),
       ]);
       setTemplates(tplRes.data ?? []);
-      setMedicines(medRes.data?.data ?? medRes.data ?? []);
+      setMedicines(allMedicines);
       setPharmacies(phRes.data ?? []);
     } catch {
       setError('Failed to load templates. Please refresh.');

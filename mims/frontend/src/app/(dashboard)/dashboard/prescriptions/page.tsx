@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
+import { fetchAllMedicines } from '@/lib/medicines';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { format } from 'date-fns';
@@ -142,8 +143,8 @@ function ExpandedPanel({
 
   useEffect(() => {
     if (!hospitalId) return;
-    api.get('/medicines', { params: { hospitalId, limit: 1000 } })
-      .then((res) => setMedicines(res.data.data ?? res.data ?? []))
+    fetchAllMedicines<MedicineInfo>(hospitalId)
+      .then(setMedicines)
       .catch(() => {});
   }, [hospitalId]);
 

@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { ArrowLeft, ChevronDown, ChevronRight, Loader2, Plus } from 'lucide-react';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import api from '@/lib/api';
+import { fetchAllMedicines } from '@/lib/medicines';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
@@ -121,8 +122,8 @@ export default function PrescriptionDetailPage() {
 
   useEffect(() => {
     if (!currentHospitalId) return;
-    api.get('/medicines', { params: { hospitalId: currentHospitalId, limit: 1000 } })
-      .then((res) => setAllMedicines(res.data.data ?? res.data ?? []))
+    fetchAllMedicines<MedicineInfo>(currentHospitalId)
+      .then(setAllMedicines)
       .catch(() => {});
   }, [currentHospitalId]);
 
