@@ -46,6 +46,21 @@ export class TransfersService {
       throw new BadRequestException('Pharmacies must belong to the same hospital');
     }
 
+    // A sub-pharmacy only ever transfers with the main pharmacy that owns it,
+    // in either direction. Checked here as well as in the UI so the hierarchy
+    // holds for any caller. Legacy subs with no parent are exempt — they
+    // predate the hierarchy and would otherwise be unable to transfer at all.
+    const [sub, main] =
+      fromPharmacy.type === 'SUB' ? [fromPharmacy, toPharmacy] : [toPharmacy, fromPharmacy];
+
+    if (sub.type === 'SUB' && main.type === 'MAIN' && sub.parentPharmacyId) {
+      if (sub.parentPharmacyId !== main.id) {
+        throw new BadRequestException(
+          `${sub.name} can only transfer with its own parent main pharmacy`,
+        );
+      }
+    }
+
     // Generate request number: TR-YYYYMMDD-XXXX
     const today = new Date();
     const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
@@ -729,14 +744,17 @@ export class TransfersService {
           },
         });
 
-        // Update item quantity received
-        await this.prisma.transferItem.update({
-          where: { id: item.id },
-          data: {
-            qtyReceived: { increment: mapping.qty },
-          },
-        });
       }
+
+      // Record what was received on the item. Written as an absolute total,
+      // not an increment: qtyReceived starts NULL and `NULL + n` is NULL in
+      // SQL, so incrementing left the column empty and the transfer looked
+      // unreceived even though the stock had landed. Mirrors dispatch.
+      const totalReceived = item.batchMappings.reduce((sum, m) => sum + m.qty, 0);
+      await this.prisma.transferItem.update({
+        where: { id: item.id },
+        data: { qtyReceived: (item.qtyReceived ?? 0) + totalReceived },
+      });
     }
 
     // Update transfer status to RECEIVED
