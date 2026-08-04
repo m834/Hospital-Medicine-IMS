@@ -17,6 +17,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { ChevronDown, ChevronRight, ClipboardList } from 'lucide-react';
+import { formatMRN } from '@/lib/mrn';
 
 type DosageFrequency = 'OD' | 'BID' | 'TDS' | 'SOS';
 
@@ -339,7 +340,7 @@ export default function CreatePrescriptionPage() {
               </select>
               <input
                 type="text"
-                placeholder={searchType === 'MRN' ? 'MRN-YYYYMMDD-XXXX' : '12345-1234567-1'}
+                placeholder={searchType === 'MRN' ? 'Enter MRN (e.g. 482913)' : '12345-1234567-1'}
                 value={searchNR}
                 onChange={(e) => setSearchNR(searchType === 'CNIC' ? formatCnic(e.target.value) : e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), searchPatient())}
@@ -359,7 +360,7 @@ export default function CreatePrescriptionPage() {
           {selectedPatient && (
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
               <span className="font-semibold text-blue-900">{selectedPatient.fullName}</span>
-              <span className="text-blue-700">{selectedPatient.nrNumber}</span>
+              <span className="text-blue-700">{formatMRN(selectedPatient.nrNumber)}</span>
               <span className="text-blue-600">{selectedPatient.gender}</span>
               <span className="text-blue-600">{selectedPatient.mobile}</span>
               {selectedPatient.department && (

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth.store';
 import { UserRole } from '@/lib/constants';
 import api from '@/lib/api';
+import { formatMRN } from '@/lib/mrn';
 import {
   Users, Store, Activity, UserPlus, Building2, TrendingUp, ClipboardList,
   AlertCircle, ArrowLeftRight, Syringe, BedDouble, DoorOpen, FlaskConical,
@@ -519,7 +520,7 @@ export default function HospitalAdminDashboard() {
                 {activeAdmissions.slice(0, 5).map((a: any) => (
                   <tr key={a.id} className="hover:bg-gray-50">
                     <td className="px-4 py-2 font-medium text-gray-800">{a.patient?.fullName ?? a.patientName ?? '—'}</td>
-                    <td className="px-4 py-2 text-gray-500">{a.patient?.nrNumber ?? a.nrNumber ?? '—'}</td>
+                    <td className="px-4 py-2 text-gray-500">{formatMRN(a.patient?.nrNumber ?? a.nrNumber) || '—'}</td>
                     <td className="px-4 py-2 text-gray-500">{a.room?.name ?? a.bed?.room?.name ?? '—'} / {a.bed?.bedNumber ?? a.bedNumber ?? '—'}</td>
                     <td className="px-4 py-2 text-gray-500">{a.admissionDate ? new Date(a.admissionDate).toLocaleDateString() : '—'}</td>
                     <td className="px-4 py-2">

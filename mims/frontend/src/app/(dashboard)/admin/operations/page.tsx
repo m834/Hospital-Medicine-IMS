@@ -30,6 +30,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, CalendarClock, ClipboardList } from "lucide-react";
+import { formatMRN } from '@/lib/mrn';
 
 const STATUS_OPTIONS: OperationStatus[] = [
   "SCHEDULED",
@@ -638,7 +639,7 @@ export default function OperationsPage() {
               {patientResult && (
                 <div className="rounded-md border border-border bg-muted/30 p-2 text-xs text-gray-600">
                   <div className="font-medium text-gray-800">{patientResult.fullName}</div>
-                  <div>NR#: {patientResult.nrNumber} · {patientResult.gender || "-"}</div>
+                  <div>NR#: {formatMRN(patientResult.nrNumber)} · {patientResult.gender || "-"}</div>
                   <div>Mobile: {patientResult.mobile || "-"}</div>
                 </div>
               )}

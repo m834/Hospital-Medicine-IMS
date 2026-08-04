@@ -12,6 +12,7 @@ import AlertsWidget, { Alert } from '@/components/dashboard/AlertsWidget';
 import RecentActivityWidget, { ActivityItem } from '@/components/dashboard/RecentActivityWidget';
 import { Card, CardContent } from '@/components/ui/card';
 import api from '@/lib/api';
+import { formatMRN } from '@/lib/mrn';
 import {
   UserPlus,
   Users,
@@ -143,7 +144,7 @@ export default function ReceptionistDashboard() {
       const nextActivities: ActivityItem[] = recentVisits.map((visit: any) => ({
         id: visit.id,
         title: 'Patient Visit',
-        description: `${visit.patient?.nrNumber || 'N/A'} - ${visit.patient?.fullName || 'Patient'}`,
+        description: `${formatMRN(visit.patient?.nrNumber) || 'N/A'} - ${visit.patient?.fullName || 'Patient'}`,
         timestamp: new Date(visit.registeredAt || visit.visitDate || Date.now()),
         user: 'Reception',
         type: visit.visitType === 'EMERGENCY' ? 'warning' : 'success',

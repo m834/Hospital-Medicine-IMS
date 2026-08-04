@@ -11,6 +11,7 @@ import RecentActivityWidget, { ActivityItem } from '@/components/dashboard/Recen
 import { UserPlus, Users, ClipboardCheck, Activity, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
+import { formatMRN } from '@/lib/mrn';
 
 interface PatientStats {
   total: number;
@@ -65,7 +66,7 @@ export default function RegistrationDashboard() {
         const activityItems: ActivityItem[] = patients.slice(0, 8).map((p) => ({
           id: p.id,
           title: 'Patient Registered',
-          description: `${p.nrNumber} — ${p.fullName} (${p.visitType || 'OPD'})`,
+          description: `${formatMRN(p.nrNumber)} — ${p.fullName} (${p.visitType || 'OPD'})`,
           timestamp: new Date(p.registeredAt),
           user: 'Registration Staff',
           type: (p.visitType === 'EMERGENCY' ? 'warning' : 'success') as 'warning' | 'success',

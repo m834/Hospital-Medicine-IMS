@@ -10,6 +10,7 @@ import { CreateIssuanceDto } from './dto/create-issuance.dto';
 import { SearchIssuanceDto } from './dto/search-issuance.dto';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PaymentMethod, PaymentStatus, Prisma, ReceiptType } from '@prisma/client';
+import { mrnFilter } from '../../common/utils/mrn.util';
 
 @Injectable()
 export class IssuanceService {
@@ -23,16 +24,19 @@ export class IssuanceService {
    * Atomic transaction ensures data consistency
    */
   async create(createIssuanceDto: CreateIssuanceDto, hospitalId: string, userId: string) {
-    const { nrNumber, pharmacyId, prescriptionId, priceType, items } = createIssuanceDto;
+    const { nrNumber: mrnInput, pharmacyId, prescriptionId, priceType, items } = createIssuanceDto;
 
-    // Verify patient exists
+    // Verify patient exists — the caller may send the short MRN code
     const patient = await this.prisma.patient.findFirst({
-      where: { nrNumber, hospitalId },
+      where: { nrNumber: mrnFilter(mrnInput), hospitalId },
     });
 
     if (!patient) {
-      throw new NotFoundException(`Patient with MRN ${nrNumber} not found`);
+      throw new NotFoundException(`Patient with MRN ${mrnInput} not found`);
     }
+
+    // Always store/query the full MRN, whichever form was sent
+    const nrNumber = patient.nrNumber;
 
     // Verify pharmacy exists
     const pharmacy = await this.prisma.pharmacy.findFirst({
@@ -281,7 +285,7 @@ export class IssuanceService {
 
     const where: any = { hospitalId };
 
-    if (nrNumber) where.nrNumber = nrNumber;
+    if (nrNumber) where.nrNumber = mrnFilter(nrNumber);
     if (pharmacyId) where.pharmacyId = pharmacyId;
     if (prescriptionId) where.prescriptionId = prescriptionId;
     if (status) where.status = status;

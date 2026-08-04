@@ -2,6 +2,8 @@
  * Export utilities for generating Excel and PDF reports
  */
 
+import { formatMRN } from './mrn';
+
 export interface ExportData {
   pharmacy: {
     name: string;
@@ -79,7 +81,7 @@ export function exportToExcel(data: ExportData) {
       csv += `\nPatient Issuances\n`;
       csv += `MRN,Patient Name,Age,Gender,Visit Type,Issued At,Total Items,Total Amount\n`;
       data.detailedIssues.forEach((issue) => {
-        csv += `${issue.nrNumber},"${issue.patientName}",${issue.age || ''},${issue.gender},${issue.visitType},${new Date(issue.issueDate).toLocaleDateString()},${issue.totalItems},${issue.totalAmount}\n`;
+        csv += `${formatMRN(issue.nrNumber)},"${issue.patientName}",${issue.age || ''},${issue.gender},${issue.visitType},${new Date(issue.issueDate).toLocaleDateString()},${issue.totalItems},${issue.totalAmount}\n`;
       });
       csv += `\n`;
     }

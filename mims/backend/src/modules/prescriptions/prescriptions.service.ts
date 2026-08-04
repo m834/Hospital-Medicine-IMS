@@ -7,6 +7,7 @@ import { AddPrescriptionMedicineDto } from './dto/add-prescription-medicine.dto'
 import { CreatePrescriptionDispatchDto } from './dto/create-prescription-dispatch.dto';
 import { PrescriptionStatus } from '@prisma/client';
 import { Prisma } from '@prisma/client';
+import { mrnFilter } from '../../common/utils/mrn.util';
 
 @Injectable()
 export class PrescriptionsService {
@@ -23,7 +24,7 @@ export class PrescriptionsService {
   ) {
     const { nrNumber, doctorId, visitId: dtoVisitId, prescriptionMedicines, ...rest } = createPrescriptionDto;
 
-    const patient = await this.prisma.patient.findFirst({ where: { nrNumber } });
+    const patient = await this.prisma.patient.findFirst({ where: { nrNumber: mrnFilter(nrNumber) } });
     if (!patient) throw new NotFoundException(`Patient with MRN ${nrNumber} not found`);
 
     let doctorRecord = null;
@@ -277,7 +278,7 @@ export class PrescriptionsService {
   }
 
   async getByPatient(nrNumber: string) {
-    const patient = await this.prisma.patient.findFirst({ where: { nrNumber } });
+    const patient = await this.prisma.patient.findFirst({ where: { nrNumber: mrnFilter(nrNumber) } });
     if (!patient) throw new NotFoundException(`Patient with MRN ${nrNumber} not found`);
 
     return this.prisma.prescription.findMany({
@@ -295,7 +296,7 @@ export class PrescriptionsService {
   }
 
   async getActivePrescriptions(nrNumber: string) {
-    const patient = await this.prisma.patient.findFirst({ where: { nrNumber } });
+    const patient = await this.prisma.patient.findFirst({ where: { nrNumber: mrnFilter(nrNumber) } });
     if (!patient) throw new NotFoundException(`Patient with MRN ${nrNumber} not found`);
 
     return this.prisma.prescription.findMany({

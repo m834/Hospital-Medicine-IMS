@@ -7,6 +7,7 @@ import { SearchPatientsDto } from './dto/search-patients.dto';
 import { VisitsService } from '../visits/visits.service';
 import { AdmissionsService } from '../admissions/admissions.service';
 import { AdmissionType, VisitType } from '@prisma/client';
+import { mrnFilter } from '../../common/utils/mrn.util';
 
 @Injectable()
 export class PatientsService {
@@ -84,10 +85,11 @@ export class PatientsService {
   }
 
   /**
-   * Random, non-sequential code (no ambiguous chars like 0/O/1/I).
+   * Random, non-sequential numeric code. Staff read this code out and type it
+   * on its own, so it is digits only — no letters to spell out or mishear.
    */
   private randomCode(length: number): string {
-    const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    const alphabet = '0123456789';
     const bytes = randomBytes(length);
     let out = '';
     for (let i = 0; i < length; i++) {
@@ -99,9 +101,11 @@ export class PatientsService {
   /**
    * Generate MRN in format: MRN-YYYYMMDD-XXXXXX
    * The suffix is RANDOM (not sequential), so MRNs can't be guessed or
-   * reconstructed from outside the system. Uniqueness is guaranteed by
-   * checking the DB and retrying on the astronomically rare collision.
-   * Example: MRN-20260629-K7QP2M
+   * reconstructed from outside the system. Example: MRN-20260629-482913
+   *
+   * Only the suffix is shown to users, so the suffix itself — not just the
+   * full MRN — must be unique; we check it against every existing MRN and
+   * retry on collision.
    */
   private async generateNRNumber(_hospitalId: string): Promise<string> {
     const today = new Date();
@@ -111,9 +115,12 @@ export class PatientsService {
     const datePrefix = `${year}${month}${day}`;
 
     for (let attempt = 0; attempt < 10; attempt++) {
-      const nrNumber = `MRN-${datePrefix}-${this.randomCode(6)}`;
-      const existing = await this.prisma.patient.findUnique({ where: { nrNumber } });
-      if (!existing) return nrNumber;
+      const code = this.randomCode(6);
+      const existing = await this.prisma.patient.findFirst({
+        where: { nrNumber: { endsWith: `-${code}` } },
+        select: { id: true },
+      });
+      if (!existing) return `MRN-${datePrefix}-${code}`;
     }
     // Fallback with a longer code — effectively impossible to reach
     return `MRN-${datePrefix}-${this.randomCode(10)}`;
@@ -174,7 +181,7 @@ export class PatientsService {
         identifierFilters.push({ cnic: createPatientDto.cnic });
       }
       if (createPatientDto.nrNumber) {
-        identifierFilters.push({ nrNumber: createPatientDto.nrNumber });
+        identifierFilters.push({ nrNumber: mrnFilter(createPatientDto.nrNumber) });
       }
       if (identifierFilters.length > 0) {
         existingPatient = await this.prisma.patient.findFirst({
@@ -536,7 +543,7 @@ export class PatientsService {
   async findByNRNumber(nrNumber: string, hospitalId: string) {
     const patient = await this.prisma.patient.findFirst({
       where: {
-        nrNumber,
+        nrNumber: mrnFilter(nrNumber),
         hospitalId,
       },
       include: {

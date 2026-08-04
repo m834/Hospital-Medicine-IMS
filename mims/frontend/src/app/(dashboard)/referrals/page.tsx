@@ -7,6 +7,7 @@ import { UserRole } from '@/lib/constants';
 import { useGetReferrals, Referral } from '@/hooks/use-referrals';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { formatMRN } from '@/lib/mrn';
 import {
   Table,
   TableBody,
@@ -89,7 +90,7 @@ export default function ReferralsPage() {
                       <TableCell>
                         <div className="space-y-1">
                           <p className="font-medium">{patientName}</p>
-                          <p className="text-xs text-muted-foreground">MRN: {referral.visit?.patient?.nrNumber || 'N/A'}</p>
+                          <p className="text-xs text-muted-foreground">MRN: {formatMRN(referral.visit?.patient?.nrNumber) || 'N/A'}</p>
                         </div>
                       </TableCell>
                       <TableCell>{referral.fromDepartment?.name || 'N/A'}</TableCell>

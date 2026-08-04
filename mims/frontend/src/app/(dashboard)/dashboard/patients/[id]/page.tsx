@@ -34,6 +34,7 @@ import { useHospitalStore } from '@/stores/hospital.store';
 import api from '@/lib/api';
 import { printPatientReceipt } from '@/lib/print-receipt';
 import { DateInput } from '@/components/ui/date-input';
+import { formatMRN } from '@/lib/mrn';
 
 interface Patient {
   id: string;
@@ -305,7 +306,7 @@ export default function PatientDetailPage() {
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>{patient.fullName}</CardTitle>
-          <CardDescription>MRN: {patient.nrNumber}</CardDescription>
+          <CardDescription>MRN: {formatMRN(patient.nrNumber)}</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>

@@ -20,6 +20,7 @@ import {
 import { useAuthStore } from '@/stores/auth.store';
 import api from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
+import { formatMRN } from '@/lib/mrn';
 
 interface VisitSummary {
   visit: {
@@ -246,7 +247,7 @@ export default function VisitPaymentsPage() {
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>Visit Details</CardTitle>
-          <CardDescription>MRN: {summary.visit.patient.nrNumber}</CardDescription>
+          <CardDescription>MRN: {formatMRN(summary.visit.patient.nrNumber)}</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>

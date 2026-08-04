@@ -12,6 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronRight, User, Calendar, Package } from 'lucide-react';
+import { formatMRN } from '@/lib/mrn';
 
 interface DetailedIssueItem {
   medicineId: string;
@@ -173,7 +174,7 @@ export function DetailedIssuanceTable({ data }: DetailedIssuanceTableProps) {
                     </div>
                   </div>
                 </TableCell>
-                <TableCell className="font-mono text-sm">{issue.nrNumber}</TableCell>
+                <TableCell className="font-mono text-sm">{formatMRN(issue.nrNumber)}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <User className="h-4 w-4 text-gray-400" />

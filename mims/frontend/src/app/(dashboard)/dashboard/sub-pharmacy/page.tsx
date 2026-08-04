@@ -16,6 +16,7 @@ import {
   Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell,
 } from 'recharts';
 import Link from 'next/link';
+import { formatMRN } from '@/lib/mrn';
 
 const PIE_COLORS = ['#3b82f6', '#ef4444', '#6b7280'];
 const BAR_COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#84cc16'];
@@ -504,7 +505,7 @@ export default function SubPharmacyDashboard() {
                     {recentIssuances.map((tx: any) => (
                       <tr key={tx.id} className="hover:bg-gray-50 transition-colors">
                         <td className="py-2.5">
-                          <span className="font-mono text-xs text-purple-600">{tx.nrNumber || tx.id?.slice(0, 8)}</span>
+                          <span className="font-mono text-xs text-purple-600">{formatMRN(tx.nrNumber) || tx.id?.slice(0, 8)}</span>
                         </td>
                         <td className="py-2.5 font-medium text-gray-800">{tx.patient?.fullName || '—'}</td>
                         <td className="py-2.5 text-gray-500 text-xs">{tx.pharmacy?.name || '—'}</td>

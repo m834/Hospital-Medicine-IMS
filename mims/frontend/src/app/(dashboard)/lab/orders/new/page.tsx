@@ -34,6 +34,7 @@ import api from "@/lib/api";
 import { printLabReceipt } from "@/lib/print-receipt";
 import type { LabTest } from "@/hooks/use-lab-tests";
 import type { LabOrder } from "@/hooks/use-lab-orders";
+import { formatMRN } from '@/lib/mrn';
 
 interface Patient {
   id: string;
@@ -79,7 +80,7 @@ function LabSlip({
 
       {/* Patient Info */}
       <div className="grid grid-cols-2 gap-2 border border-gray-400 rounded p-3 mb-4 text-xs">
-        <div><span className="font-semibold">Patient MRN:</span> {patient?.nrNumber || patientId}</div>
+        <div><span className="font-semibold">Patient MRN:</span> {formatMRN(patient?.nrNumber) || patientId}</div>
         <div><span className="font-semibold">Patient Name:</span> {patient?.fullName || "—"}</div>
         <div><span className="font-semibold">Gender:</span> {patient?.gender || "—"}</div>
         <div><span className="font-semibold">Mobile:</span> {patient?.mobile || "—"}</div>
@@ -477,7 +478,7 @@ export default function NewLabOrderPageComponent() {
                 <Input
                   placeholder={
                     searchType === "mrn"
-                      ? "Enter MRN (e.g. MRN-2024-001)"
+                      ? "Enter MRN (e.g. 482913)"
                       : "Enter CNIC (e.g. 12345-1234567-1)"
                   }
                   value={patientSearchQuery}
@@ -519,7 +520,7 @@ export default function NewLabOrderPageComponent() {
                   </div>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
                     <div><span className="text-muted-foreground">Full Name:</span> <span className="font-medium">{foundPatient.fullName}</span></div>
-                    <div><span className="text-muted-foreground">MRN:</span> <span className="font-medium">{foundPatient.nrNumber}</span></div>
+                    <div><span className="text-muted-foreground">MRN:</span> <span className="font-medium">{formatMRN(foundPatient.nrNumber)}</span></div>
                     {foundPatient.gender && <div><span className="text-muted-foreground">Gender:</span> {foundPatient.gender}</div>}
                     {foundPatient.dob && <div><span className="text-muted-foreground">DOB:</span> {new Date(foundPatient.dob).toLocaleDateString()}</div>}
                     {foundPatient.mobile && <div><span className="text-muted-foreground">Mobile:</span> {foundPatient.mobile}</div>}

@@ -9,6 +9,7 @@ import api from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
+import { formatMRN } from '@/lib/mrn';
 
 interface MedicineInfo {
   id: string;
@@ -284,7 +285,7 @@ export default function PrescriptionDetailPage() {
           <StatusBadge status={prescription.status} />
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500 mt-1">
-          <span>MRN: {prescription.nrNumber}</span>
+          <span>MRN: {formatMRN(prescription.nrNumber)}</span>
           {prescription.visit?.visitDate && (
             <span>Visit: {format(new Date(prescription.visit.visitDate), 'dd MMM yyyy')}</span>
           )}

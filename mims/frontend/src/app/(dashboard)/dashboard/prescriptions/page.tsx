@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import { ChevronDown, ChevronRight, Info, Loader2, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { formatMRN } from '@/lib/mrn';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -713,7 +714,7 @@ export default function PrescriptionsPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium text-gray-900 text-sm">{rx.patient.fullName}</span>
-                        <span className="text-xs text-gray-400">{rx.nrNumber}</span>
+                        <span className="text-xs text-gray-400">{formatMRN(rx.nrNumber)}</span>
                       </div>
                       <div className="text-xs text-gray-500 mt-0.5">
                         {rx.patient.mobile}

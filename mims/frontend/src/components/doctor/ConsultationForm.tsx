@@ -47,6 +47,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useGetVisit, useUpdateVisit, useCompleteVisit, VitalSigns } from '@/hooks/use-visits';
 import { useCreateReferral } from '@/hooks/use-referrals';
 import api from '@/lib/api';
+import { formatMRN } from '@/lib/mrn';
 
 interface Department {
   id: string;
@@ -338,7 +339,7 @@ export function ConsultationForm({ visitId }: ConsultationFormProps) {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">MRN</p>
-                <p className="font-semibold">{visit.patient?.nrNumber}</p>
+                <p className="font-semibold">{formatMRN(visit.patient?.nrNumber)}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Age / Gender</p>

@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { TestTube, Clock, User, AlertCircle, CheckCircle2, Syringe, DollarSign } from "lucide-react";
 import type { LabOrder } from "@/hooks/use-lab-orders";
+import { formatMRN } from '@/lib/mrn';
 
 export default function LabQueuePage() {
   const { selectedHospital } = useHospitalStore();
@@ -229,7 +230,7 @@ export default function LabQueuePage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm font-medium">MRN:</span>
-                  <span className="text-sm font-mono">{selectedOrder.patient?.nrNumber}</span>
+                  <span className="text-sm font-mono">{formatMRN(selectedOrder.patient?.nrNumber)}</span>
                 </div>
               </div>
 
@@ -286,7 +287,7 @@ function OrderCard({ order, onCollect }: { order: LabOrder; onCollect: (order: L
             </div>
             <CardTitle className="text-base">{order.patient?.fullName}</CardTitle>
             <CardDescription className="font-mono text-xs mt-1">
-              {order.patient?.nrNumber}
+              {formatMRN(order.patient?.nrNumber)}
             </CardDescription>
           </div>
         </div>

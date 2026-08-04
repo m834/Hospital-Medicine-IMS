@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Save, TestTube, User, Clock, Plus, Trash2 } from "lucide-react";
+import { formatMRN } from '@/lib/mrn';
 
 interface ResultField {
   parameter: string;
@@ -117,7 +118,7 @@ export default function ResultEntryPage({ params }: { params: Promise<{ orderId:
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">MRN</Label>
-              <p className="font-mono text-sm">{order.patient?.nrNumber}</p>
+              <p className="font-mono text-sm">{formatMRN(order.patient?.nrNumber)}</p>
             </div>
             {order.patient?.gender && (
               <div>

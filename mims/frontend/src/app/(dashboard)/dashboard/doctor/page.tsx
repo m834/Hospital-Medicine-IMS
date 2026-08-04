@@ -10,6 +10,7 @@ import QuickActionsWidget from '@/components/dashboard/QuickActionsWidget';
 import AlertsWidget, { Alert } from '@/components/dashboard/AlertsWidget';
 import RecentActivityWidget, { ActivityItem } from '@/components/dashboard/RecentActivityWidget';
 import api from '@/lib/api';
+import { formatMRN } from '@/lib/mrn';
 import {
   Users,
   FileText,
@@ -146,7 +147,7 @@ export default function DoctorDashboard() {
       const nextActivities: ActivityItem[] = recentVisits.map((visit: any) => ({
         id: visit.id,
         title: 'OPD Visit',
-        description: `${visit.patient?.nrNumber || 'N/A'} - ${visit.patient?.fullName || 'Patient'}`,
+        description: `${formatMRN(visit.patient?.nrNumber) || 'N/A'} - ${visit.patient?.fullName || 'Patient'}`,
         timestamp: new Date(visit.registeredAt || visit.visitDate || Date.now()),
         user: 'You',
         type: visit.status === 'COMPLETED' ? 'success' : 'info',
@@ -161,7 +162,7 @@ export default function DoctorDashboard() {
           hour: '2-digit',
           minute: '2-digit',
         }),
-        patient: visit.patient?.nrNumber || 'N/A',
+        patient: formatMRN(visit.patient?.nrNumber) || 'N/A',
         type: visit.visitType || 'OPD',
         status: visit.status || 'Scheduled',
       }));

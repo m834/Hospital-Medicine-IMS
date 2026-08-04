@@ -6,6 +6,7 @@ import { CollectSampleDto } from './dto/collect-sample.dto';
 import { EnterResultDto } from './dto/enter-result.dto';
 import { ApproveResultDto } from './dto/approve-result.dto';
 import { LabOrderStatus, TestPriority, ReceiptType, PaymentStatus, PaymentMethod, Prisma } from '@prisma/client';
+import { isUuid, mrnFilter } from '../../common/utils/mrn.util';
 
 @Injectable()
 export class LabOrdersService {
@@ -15,12 +16,13 @@ export class LabOrdersService {
     // Resolve patient ID - can be UUID or MRN
     let patientId = createLabOrderDto.patientId;
     
-    // If patientId looks like an MRN (starts with "MRN-"), resolve it to UUID
-    if (patientId.startsWith('MRN-') || patientId.startsWith('NR-')) {
-      const patient = await this.prisma.patient.findUnique({
-        where: { nrNumber: patientId },
+    // Anything that isn't a UUID is an MRN — either the full "MRN-YYYYMMDD-482913"
+    // or the short code "482913" staff actually see. Resolve it to a UUID.
+    if (!isUuid(patientId)) {
+      const patient = await this.prisma.patient.findFirst({
+        where: { nrNumber: mrnFilter(patientId) },
       });
-      
+
       if (!patient) {
         throw new NotFoundException(`Patient with MRN ${patientId} not found`);
       }

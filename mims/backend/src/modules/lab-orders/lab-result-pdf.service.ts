@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import * as PDFDocument from 'pdfkit';
 import { Readable } from 'stream';
+import { shortMrn } from '../../common/utils/mrn.util';
 
 @Injectable()
 export class LabResultPdfService {
@@ -64,7 +65,7 @@ export class LabResultPdfService {
           .text('Patient Information:', leftColumn, yPosition)
           .font('Helvetica')
           .moveDown(0.3)
-          .text(`MRN: ${labOrder.patient.nrNumber}`, leftColumn)
+          .text(`MRN: ${shortMrn(labOrder.patient.nrNumber)}`, leftColumn)
           .text(`Name: ${labOrder.patient.fullName}`, leftColumn)
           .text(`Gender: ${labOrder.patient.gender}`, leftColumn)
           .text(

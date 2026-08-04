@@ -33,6 +33,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/auth.store';
 import { useGetDoctorClinics, Clinic } from '@/hooks/use-clinics';
 import { useGetClinicQueue, useCallNextPatient, Visit } from '@/hooks/use-visits';
+import { formatMRN } from '@/lib/mrn';
 
 const STATUS_COLORS = {
   WAITING: 'bg-yellow-100 text-yellow-800 border-yellow-300',
@@ -244,7 +245,7 @@ export function QueueDashboard() {
                     {currentPatient.patient?.firstName} {currentPatient.patient?.lastName}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    MRN: {currentPatient.patient?.nrNumber}
+                    MRN: {formatMRN(currentPatient.patient?.nrNumber)}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {currentPatient.patient?.gender} •{' '}
@@ -324,7 +325,7 @@ export function QueueDashboard() {
                           )}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          MRN: {visit.patient?.nrNumber} •{' '}
+                          MRN: {formatMRN(visit.patient?.nrNumber)} •{' '}
                           {visit.patient?.gender} •{' '}
                           {calculateAge(visit.patient?.dateOfBirth || '')}y
                         </p>

@@ -44,6 +44,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { formatDistanceStrict, differenceInDays } from 'date-fns';
+import { formatMRN, matchesMRN } from '@/lib/mrn';
 
 export default function DischargeFormPage() {
   const router = useRouter();
@@ -225,7 +226,7 @@ export default function DischargeFormPage() {
           <h2>Patient Information</h2>
           <div class="grid">
             <div><div class="label">Name</div><div class="value">${selectedAdmission.patient?.fullName || '-'}</div></div>
-            <div><div class="label">MRN</div><div class="value">${selectedAdmission.patient?.nrNumber || '-'}</div></div>
+            <div><div class="label">MRN</div><div class="value">${formatMRN(selectedAdmission.patient?.nrNumber) || '-'}</div></div>
             <div><div class="label">Gender</div><div class="value">${selectedAdmission.patient?.gender || '-'}</div></div>
             <div><div class="label">Mobile</div><div class="value">${selectedAdmission.patient?.mobile || '-'}</div></div>
           </div>
@@ -272,7 +273,7 @@ export default function DischargeFormPage() {
     return (
       admission.admissionNumber.toLowerCase().includes(query) ||
       admission.patient?.fullName.toLowerCase().includes(query) ||
-      admission.patient?.nrNumber.toLowerCase().includes(query)
+      matchesMRN(admission.patient?.nrNumber, query)
     );
   });
 
@@ -381,7 +382,7 @@ export default function DischargeFormPage() {
                               {admission.admissionNumber}
                             </div>
                             <div className="text-sm text-muted-foreground">
-                              {admission.patient?.nrNumber}
+                              {formatMRN(admission.patient?.nrNumber)}
                             </div>
                             <div className="flex items-center gap-2 mt-2 text-xs">
                               <Badge variant="outline">
@@ -446,7 +447,7 @@ export default function DischargeFormPage() {
                     <div>
                       <p className="text-muted-foreground">MRN</p>
                       <p className="font-semibold">
-                        {selectedAdmission.patient?.nrNumber}
+                        {formatMRN(selectedAdmission.patient?.nrNumber)}
                       </p>
                     </div>
                     <div>

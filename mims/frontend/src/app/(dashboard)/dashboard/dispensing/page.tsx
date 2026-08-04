@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { format } from 'date-fns';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { formatMRN } from '@/lib/mrn';
 
 interface Patient {
   id: string;
@@ -292,7 +293,7 @@ export default function DispensingPage() {
         <div className="flex gap-2">
           <input
             type="text"
-            placeholder="Enter MRN (e.g., MRN-20251128-0001)"
+            placeholder="Enter MRN (e.g., 482913)"
             value={searchNR}
             onChange={(e) => setSearchNR(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && searchPatient()}
@@ -316,7 +317,7 @@ export default function DispensingPage() {
               </div>
               <div>
                 <p className="text-sm text-gray-600">MRN</p>
-                <p className="font-semibold">{selectedPatient.nrNumber}</p>
+                <p className="font-semibold">{formatMRN(selectedPatient.nrNumber)}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Gender</p>

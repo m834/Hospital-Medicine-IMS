@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuthStore } from '@/stores/auth.store';
 import api from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
+import { formatMRN } from '@/lib/mrn';
 
 interface PatientSummary {
   patient: {
@@ -249,7 +250,7 @@ export default function PatientPaymentsPage() {
           </Button>
           <h1 className="text-3xl font-bold text-foreground">Patient Payment Summary</h1>
           <p className="text-muted-foreground mt-1">
-            {summary.patient.fullName} ({summary.patient.nrNumber})
+            {summary.patient.fullName} ({formatMRN(summary.patient.nrNumber)})
           </p>
         </div>
         <Button onClick={handlePayOutstanding}>

@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
 import { Search, Download, FileText, Calendar, User, TestTube } from "lucide-react";
+import { formatMRN, matchesMRN } from '@/lib/mrn';
 
 export default function LabReportsPage() {
   const { selectedHospital } = useHospitalStore();
@@ -33,7 +34,7 @@ export default function LabReportsPage() {
   const filteredOrders = approvedOrders?.filter((order) =>
     order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
     order.patient?.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    order.patient?.nrNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    matchesMRN(order.patient?.nrNumber, searchQuery) ||
     order.labTest?.testName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -157,7 +158,7 @@ export default function LabReportsPage() {
                     <div>
                       <Label className="text-xs text-muted-foreground">Patient</Label>
                       <p className="font-medium">{order.patient?.fullName}</p>
-                      <p className="text-xs text-muted-foreground font-mono">{order.patient?.nrNumber}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{formatMRN(order.patient?.nrNumber)}</p>
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground">Test</Label>

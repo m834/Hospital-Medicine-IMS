@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Search, FileText, Clock, TestTube } from "lucide-react";
+import { matchesMRN } from '@/lib/mrn';
 
 export default function LabResultsPage() {
   const { selectedHospital } = useHospitalStore();
@@ -31,7 +32,7 @@ export default function LabResultsPage() {
   const filteredOrders = orders?.filter((order) =>
     order.orderNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     order.patient?.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    order.patient?.nrNumber?.toLowerCase().includes(searchQuery.toLowerCase())
+    matchesMRN(order.patient?.nrNumber, searchQuery)
   ) || [];
 
   if (isMasterOrSuper && !selectedHospital) {
