@@ -45,6 +45,7 @@ import { useHospitalStore } from '@/stores/hospital.store';
 import api from '@/lib/api';
 import { printPatientReceipt } from '@/lib/print-receipt';
 import { format } from 'date-fns';
+import { formatMRN, matchesMRN } from '@/lib/mrn';
 
 interface Patient {
   id: string;
@@ -121,7 +122,10 @@ export default function PatientsPage() {
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  // What the user has actually submitted — typing alone must never search
+  const [activeSearch, setActiveSearch] = useState('');
+  // Bumped on every submit so re-running the same term still refetches
+  const [searchNonce, setSearchNonce] = useState(0);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -134,24 +138,21 @@ export default function PatientsPage() {
   const currentHospitalId = user?.hospitalId || selectedHospital?.id;
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
-  // Debounce the search box so we don't hit the server on every keystroke
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 350);
-    return () => clearTimeout(t);
-  }, [searchQuery]);
-
-  // A new search always starts at page 1
-  useEffect(() => {
+  // Search runs only when the user submits it — the Search button or Enter.
+  // A new search always starts at page 1.
+  const handleSearch = () => {
+    setActiveSearch(searchQuery.trim());
     setPage(1);
-  }, [debouncedSearch]);
+    setSearchNonce((n) => n + 1);
+  };
 
-  // Fetch the current page whenever hospital, page, or search changes
+  // Fetch the current page whenever hospital, page, or a submitted search changes
   useEffect(() => {
     if (!user) return;
     if (currentHospitalId || isSuperAdmin) {
       fetchPatients();
     }
-  }, [currentHospitalId, user, page, debouncedSearch]);
+  }, [currentHospitalId, user, page, activeSearch, searchNonce]);
 
   useEffect(() => {
     if (currentHospitalId) {
@@ -164,7 +165,7 @@ export default function PatientsPage() {
     try {
       const params: any = { limit: pageSize, page };
       if (currentHospitalId) params.hospitalId = currentHospitalId;
-      if (debouncedSearch) params.search = debouncedSearch;
+      if (activeSearch) params.search = activeSearch;
       if (!params.hospitalId) { setLoading(false); return; }
 
       const response = await api.get('/patients', { params });
@@ -249,13 +250,13 @@ export default function PatientsPage() {
   // Filter today visits by type and search
   const filterTodayVisits = (type: string) => {
     let list = todayVisits.filter((v) => v.visitType === type);
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
+    if (activeSearch) {
+      const q = activeSearch.toLowerCase();
       list = list.filter(
         (v) =>
           v.visitNumber.toLowerCase().includes(q) ||
           v.patient.fullName.toLowerCase().includes(q) ||
-          v.patient.nrNumber.toLowerCase().includes(q) ||
+          matchesMRN(v.patient.nrNumber, q) ||
           v.patient.mobile?.toLowerCase().includes(q),
       );
     }
@@ -357,17 +358,34 @@ export default function PatientsPage() {
           <CardDescription>View and search all registered patients and today's visits</CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Search */}
+          {/* Search — runs on submit only, never while typing */}
           <div className="mb-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by MRN, Visit ID, Name, or Mobile..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by MRN, Visit ID, Name, or Mobile..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSearch();
+                    }
+                  }}
+                  className="pl-10"
+                />
+              </div>
+              <Button onClick={handleSearch}>
+                <Search className="h-4 w-4 mr-2" />
+                Search
+              </Button>
             </div>
+            {activeSearch && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Showing results for &ldquo;{activeSearch}&rdquo;
+              </p>
+            )}
           </div>
 
           {/* Tabs */}
@@ -408,7 +426,7 @@ export default function PatientsPage() {
                     <div className="text-center py-12">
                       <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                       <p className="text-muted-foreground">
-                        {searchQuery ? 'No patients found matching your search' : 'No patients registered yet'}
+                        {activeSearch ? 'No patients found matching your search' : 'No patients registered yet'}
                       </p>
                     </div>
                   ) : (
@@ -431,7 +449,7 @@ export default function PatientsPage() {
                       <TableBody>
                         {list.map((patient) => (
                           <TableRow key={patient.id}>
-                            <TableCell className="font-mono font-semibold">{patient.nrNumber}</TableCell>
+                            <TableCell className="font-mono font-semibold">{formatMRN(patient.nrNumber)}</TableCell>
                             <TableCell className="font-medium">{patient.fullName}</TableCell>
                             <TableCell>
                               <Badge className={getGenderBadge(patient.gender)}>{patient.gender}</Badge>
@@ -512,7 +530,7 @@ export default function PatientsPage() {
                   <div className="text-center py-12">
                     <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                     <p className="text-muted-foreground">
-                      {searchQuery ? 'No visits found matching your search' : `No ${label} visits recorded`}
+                      {activeSearch ? 'No visits found matching your search' : `No ${label} visits recorded`}
                     </p>
                   </div>
                 ) : (
@@ -537,7 +555,7 @@ export default function PatientsPage() {
                       {list.map((visit) => (
                         <TableRow key={visit.id}>
                           <TableCell className="font-mono font-semibold text-xs">{visit.visitNumber}</TableCell>
-                          <TableCell className="font-mono">{visit.patient.nrNumber}</TableCell>
+                          <TableCell className="font-mono">{formatMRN(visit.patient.nrNumber)}</TableCell>
                           <TableCell className="font-medium">{visit.patient.fullName}</TableCell>
                           <TableCell>
                             {visit.patient.mobile ? (
@@ -591,7 +609,7 @@ export default function PatientsPage() {
             <DialogTitle>
               Visit History — {visitHistoryPatient?.fullName}{' '}
               <span className="text-muted-foreground font-normal text-sm ml-2">
-                ({visitHistoryPatient?.nrNumber})
+                ({formatMRN(visitHistoryPatient?.nrNumber)})
               </span>
             </DialogTitle>
           </DialogHeader>
