@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import api from '@/lib/api';
+import { fetchAllMedicines } from '@/lib/medicines';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -138,15 +139,25 @@ export default function CreatePrescriptionPage() {
     }
   };
 
-  // Total stock this pharmacy holds for a medicine (across NORMAL + LP).
-  const stockFor = (medicineId: string): number => availability[medicineId]?.totalStock ?? 0;
+  // Stock this pharmacy holds for a medicine in one pool. Templates carry their
+  // own category, so an item must be checked against the pool it will be added
+  // to — combined stock would admit an LP row backed only by Normal stock.
+  const stockFor = (medicineId: string, category: 'NORMAL' | 'LP' = 'NORMAL'): number => {
+    const a = availability[medicineId];
+    if (!a) return 0;
+    return category === 'LP' ? a.lpStock : a.normalStock;
+  };
 
   // Drop a template's medicines into the rows in one go. Only medicines that are
   // actually in this pharmacy's inventory are added — the prescription screen
   // only lets you dispense in-stock items — and any skipped ones are reported.
   const applyTemplate = (template: Template) => {
-    const inStock = template.items.filter((it) => stockFor(it.medicine.id) > 0);
-    const skipped = template.items.filter((it) => stockFor(it.medicine.id) <= 0);
+    const inStock = template.items.filter(
+      (it) => stockFor(it.medicine.id, it.category ?? 'NORMAL') > 0,
+    );
+    const skipped = template.items.filter(
+      (it) => stockFor(it.medicine.id, it.category ?? 'NORMAL') <= 0,
+    );
 
     const rows = inStock.map((it) => {
       const freq = (it.dosageFrequency ?? '') as DosageFrequency | '';
@@ -193,13 +204,13 @@ export default function CreatePrescriptionPage() {
     if (!currentHospitalId) return;
     setLoadingMedicines(true);
     try {
-      const [medRes, availRes] = await Promise.all([
-        api.get('/medicines', { params: { hospitalId: currentHospitalId, limit: 1000 } }),
+      const [allMedicines, availRes] = await Promise.all([
+        fetchAllMedicines<Medicine>(currentHospitalId),
         pharmacyId
           ? api.get(`/inventory/availability/${pharmacyId}`)
           : Promise.resolve({ data: [] as Availability[] }),
       ]);
-      setMedicines(medRes.data.data ?? medRes.data ?? []);
+      setMedicines(allMedicines);
       const map: Record<string, Availability> = {};
       (availRes.data ?? []).forEach((a: Availability) => { map[a.medicineId] = a; });
       setAvailability(map);
@@ -293,14 +304,36 @@ export default function CreatePrescriptionPage() {
     }
   };
 
-  // Only medicines that currently have stock in this pharmacy.
-  const medicineOptions = medicines
-    .filter((m) => (availability[m.id]?.totalStock ?? 0) > 0)
-    .map((m) => ({
-      value: m.id,
-      label: m.name,
-      sub: [m.genericName, m.strength, m.form].filter(Boolean).join(' · '),
-    }));
+  // Normal and LP are separate stock pools, so a row may only pick medicines
+  // stocked in the pool it is set to. Both lists are built once per catalogue
+  // or stock change rather than per row — the catalogue runs to thousands.
+  const optionsByCategory = useMemo(() => {
+    const build = (pool: 'NORMAL' | 'LP') =>
+      medicines
+        .filter((m) => {
+          const a = availability[m.id];
+          if (!a) return false;
+          return (pool === 'LP' ? a.lpStock : a.normalStock) > 0;
+        })
+        .map((m) => ({
+          value: m.id,
+          label: m.name,
+          sub: [m.genericName, m.strength, m.form].filter(Boolean).join(' · '),
+        }));
+
+    return { NORMAL: build('NORMAL'), LP: build('LP') };
+  }, [medicines, availability]);
+
+  // Switching a row's pool: a medicine stocked as Normal may not exist as LP,
+  // so drop a selection that has no stock in the pool being switched to.
+  const handleCategoryChange = (index: number, next: 'NORMAL' | 'LP') => {
+    setValue(`medicines.${index}.category`, next);
+
+    const medicineId = getValues(`medicines.${index}.medicineId`);
+    if (medicineId && (remainingFor(medicineId, next) ?? 0) <= 0) {
+      setValue(`medicines.${index}.medicineId`, '', { shouldValidate: false });
+    }
+  };
 
   return (
     <div className="container mx-auto py-6 px-4 max-w-4xl">
@@ -430,12 +463,14 @@ export default function CreatePrescriptionPage() {
                     {/* Medicine select */}
                     <div>
                       <SearchableSelect
-                        options={medicineOptions}
+                        options={optionsByCategory[category]}
                         value={selectedMedId || ''}
                         onValueChange={(val) =>
                           setValue(`medicines.${index}.medicineId`, val, { shouldValidate: true })
                         }
-                        placeholder="Select medicine..."
+                        placeholder={
+                          category === 'LP' ? 'Select LP medicine...' : 'Select Normal medicine...'
+                        }
                         searchPlaceholder="Search by name or generic..."
                       />
                       {errors.medicines?.[index]?.medicineId && (
@@ -489,7 +524,7 @@ export default function CreatePrescriptionPage() {
                         type="checkbox"
                         checked={category === 'LP'}
                         onChange={(e) =>
-                          setValue(`medicines.${index}.category`, e.target.checked ? 'LP' : 'NORMAL')
+                          handleCategoryChange(index, e.target.checked ? 'LP' : 'NORMAL')
                         }
                         className="w-8 h-4 appearance-none bg-gray-200 rounded-full relative cursor-pointer transition-colors checked:bg-orange-400 before:content-[''] before:absolute before:w-4 before:h-4 before:rounded-full before:bg-white before:shadow before:transition-transform checked:before:translate-x-4"
                       />
@@ -623,7 +658,7 @@ export default function CreatePrescriptionPage() {
                         <div className="ml-6 mb-3 border border-gray-100 rounded-lg overflow-hidden">
                           <div className="divide-y divide-gray-100">
                             {t.items.map((it, i) => {
-                              const stock = stockFor(it.medicine.id);
+                              const stock = stockFor(it.medicine.id, it.category ?? 'NORMAL');
                               const out = stock <= 0;
                               return (
                                 <div key={i} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
