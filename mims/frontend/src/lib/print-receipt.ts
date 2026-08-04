@@ -1,4 +1,5 @@
 import { format } from 'date-fns';
+import { formatMRN } from './mrn';
 
 export interface ReceiptPatient {
   nrNumber: string;
@@ -24,7 +25,7 @@ export function printPatientReceipt(
 ) {
   const infoFields: { label: string; value?: string | null }[] = [
     { label: 'Full Name', value: patient.fullName },
-    { label: 'MRN', value: patient.nrNumber },
+    { label: 'MRN', value: formatMRN(patient.nrNumber) },
     { label: 'Printed by', value: printedBy },
     { label: 'Gender', value: patient.gender },
     { label: 'Mobile', value: patient.mobile },
@@ -60,8 +61,8 @@ export function printPatientReceipt(
           .header { border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 16px; }
           .meta { font-size: 12px; color: #374151; }
           .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
-          .label { font-size: 11px; color: #6b7280; margin-bottom: 4px; }
-          .value { font-size: 13px; }
+          .label { font-size: 13px; color: #6b7280; margin-bottom: 4px; }
+          .value { font-size: 15px; font-weight: 700; }
           .printed-by { text-align: right; font-size: 11px; color: #374151; margin-bottom: 12px; }
         </style>
       </head>
@@ -116,7 +117,7 @@ export function printLabReceipt(
 
   const infoFields: { label: string; value?: string | null }[] = [
     { label: 'Full Name', value: patient?.fullName },
-    { label: 'MRN', value: patient?.nrNumber || opts.patientId },
+    { label: 'MRN', value: formatMRN(patient?.nrNumber) || opts.patientId },
     { label: 'Printed by', value: opts.printedBy },
     { label: 'Gender', value: patient?.gender },
     { label: 'Mobile', value: patient?.mobile },
@@ -156,7 +157,7 @@ export function printLabReceipt(
           body { font-family: Arial, sans-serif; color: #111827; padding: 15mm 15mm 15mm 22mm; margin-top: 15%; }
           .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
           .label { font-size: 11px; color: #6b7280; margin-bottom: 4px; }
-          .value { font-size: 13px; }
+          .value { font-size: 15px; font-weight: 700; }
           table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 12px; }
           th, td { border: 1px solid #d1d5db; padding: 6px 8px; text-align: left; }
           th { background: #f3f4f6; font-weight: 600; }
