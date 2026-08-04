@@ -41,16 +41,20 @@ export function isUniqueMrnCode(code: string): boolean {
 /**
  * Prisma filter matching a patient by either the full MRN or its short code.
  *
- * Short codes resolve by suffix, but ONLY when they are long enough to be
- * unique. A bare legacy code like "0001" matches 19 different patients, so it
+ * A value containing a hyphen is always a complete identifier, never a short
+ * code — this covers `MRN-YYYYMMDD-xxxx` and the older `NR-YYYYMMDD-xxxx` rows,
+ * which would otherwise be mistaken for codes and suffix-matched into nothing.
+ *
+ * Bare codes resolve by suffix, but ONLY when they are long enough to be
+ * unique. A legacy code like "0001" belongs to 19 different patients, so it
  * falls through to an exact match — which finds nothing, exactly as it did
  * before short codes existed. Never let an ambiguous code pick a patient.
  */
 export function mrnFilter(input: string) {
   const value = input.trim();
-  const isFullMrn = /^MRN-\d{8}-/i.test(value);
+  const isFullIdentifier = value.includes('-');
 
-  if (!isFullMrn && isUniqueMrnCode(value)) {
+  if (!isFullIdentifier && isUniqueMrnCode(value)) {
     return { endsWith: `-${value}`, mode: 'insensitive' as const };
   }
   return { equals: value, mode: 'insensitive' as const };

@@ -47,6 +47,22 @@ describe('mrn.util', () => {
       // "0001" belongs to 19 different patients — it must never pick one
       expect(mrnFilter('0001')).toEqual({ equals: '0001', mode: 'insensitive' });
     });
+
+    it('treats the older NR- prefixed MRNs as complete identifiers', () => {
+      // Regression: these were suffix-matched into nothing, so prescriptions
+      // for these patients failed with "patient not found"
+      expect(mrnFilter('NR-20260422-0001')).toEqual({
+        equals: 'NR-20260422-0001',
+        mode: 'insensitive',
+      });
+    });
+
+    it('treats any hyphenated value as a complete identifier', () => {
+      expect(mrnFilter('SOME-OTHER-ID')).toEqual({
+        equals: 'SOME-OTHER-ID',
+        mode: 'insensitive',
+      });
+    });
   });
 
   describe('isUuid', () => {
