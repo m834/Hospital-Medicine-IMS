@@ -158,7 +158,7 @@ export default function InventoryDashboardPage() {
 
   // Edit batch dialog
   const [editBatch, setEditBatch] = useState<StockBatch | null>(null);
-  const [editForm, setEditForm] = useState({ batchNo: '', expiryDate: '', qtyReceived: 0, qtyAvailable: 0, purchasePrice: 0, storageType: '', status: '' });
+  const [editForm, setEditForm] = useState({ batchNo: '', expiryDate: '', qtyAvailable: 0, purchasePrice: 0, storageType: '', status: '' });
   const [editError, setEditError] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
@@ -372,7 +372,6 @@ export default function InventoryDashboardPage() {
     setEditForm({
       batchNo: batch.batchNo,
       expiryDate: batch.expiryDate.slice(0, 10),
-      qtyReceived: batch.qtyReceived,
       qtyAvailable: batch.qtyAvailable,
       purchasePrice: Number(batch.purchasePrice),
       storageType: batch.storageType,
@@ -383,19 +382,16 @@ export default function InventoryDashboardPage() {
   const handleBatchUpdate = async () => {
     if (!editBatch) return;
 
-    const qtyReceived = Number(editForm.qtyReceived);
     const qtyAvailable = Number(editForm.qtyAvailable);
 
-    if (!Number.isInteger(qtyReceived) || qtyReceived < 0) {
-      setEditError('Received quantity must be a whole number of 0 or more');
-      return;
-    }
     if (!Number.isInteger(qtyAvailable) || qtyAvailable < 0) {
       setEditError('Available quantity must be a whole number of 0 or more');
       return;
     }
-    if (qtyAvailable > qtyReceived) {
-      setEditError(`Available quantity cannot exceed the received quantity (${qtyReceived})`);
+    if (qtyAvailable > editBatch.qtyReceived) {
+      setEditError(
+        `Available quantity cannot exceed the received quantity (${editBatch.qtyReceived})`,
+      );
       return;
     }
 
@@ -410,12 +406,6 @@ export default function InventoryDashboardPage() {
         storageType: editForm.storageType,
         status: editForm.status,
       };
-
-      // The API rejects any qtyReceived on a batch that has been issued from,
-      // so only send it while the batch is untouched.
-      if (editIssuedQty === 0) {
-        payload.qtyReceived = qtyReceived;
-      }
 
       await api.patch(`/inventory/batches/${editBatch.id}`, payload);
       setEditBatch(null);
@@ -979,37 +969,21 @@ export default function InventoryDashboardPage() {
               <label className="text-sm font-medium">Expiry Date</label>
               <DateInput value={editForm.expiryDate} onChange={v => setEditForm(f => ({ ...f, expiryDate: v }))} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Received Quantity</label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={editForm.qtyReceived}
-                  disabled={editIssuedQty > 0}
-                  onChange={e => setEditForm(f => ({ ...f, qtyReceived: Number(e.target.value) }))}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {editIssuedQty > 0
-                    ? `Locked — ${editIssuedQty.toLocaleString()} already issued`
-                    : 'Nothing issued yet, safe to correct'}
-                </p>
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Available Quantity</label>
-                <Input
-                  type="number"
-                  min="0"
-                  max={editForm.qtyReceived}
-                  step="1"
-                  value={editForm.qtyAvailable}
-                  onChange={e => setEditForm(f => ({ ...f, qtyAvailable: Number(e.target.value) }))}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Set to 0 to mark the batch depleted
-                </p>
-              </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Available Quantity</label>
+              <Input
+                type="number"
+                min="0"
+                max={editBatch?.qtyReceived}
+                step="1"
+                value={editForm.qtyAvailable}
+                onChange={e => setEditForm(f => ({ ...f, qtyAvailable: Number(e.target.value) }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                {editBatch
+                  ? `Received ${editBatch.qtyReceived.toLocaleString()} · ${editIssuedQty.toLocaleString()} issued · max ${editBatch.qtyReceived.toLocaleString()}. Set to 0 to mark the batch depleted.`
+                  : ''}
+              </p>
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">Purchase Price (PKR)</label>
