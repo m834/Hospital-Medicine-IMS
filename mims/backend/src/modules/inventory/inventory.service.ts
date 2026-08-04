@@ -421,6 +421,16 @@ export class InventoryService {
       }
     }
 
+    // Available can never exceed received — issued is derived as
+    // (received - available), so allowing it would make issued negative.
+    const effectiveReceived = updateStockBatchDto.qtyReceived ?? batch.qtyReceived;
+    const effectiveAvailable = updateStockBatchDto.qtyAvailable ?? batch.qtyAvailable;
+    if (effectiveAvailable > effectiveReceived) {
+      throw new BadRequestException(
+        `Available quantity (${effectiveAvailable}) cannot exceed received quantity (${effectiveReceived})`,
+      );
+    }
+
     const updateData: any = {
       ...updateStockBatchDto,
       expiryDate: updateStockBatchDto.expiryDate
