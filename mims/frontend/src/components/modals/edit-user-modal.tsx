@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -99,18 +99,50 @@ const USER_STATUSES = [
   { value: 'SUSPENDED', label: 'Suspended' },
 ];
 
+// Same policy the backend enforces on registration and password reset
+const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]/;
+
 // Validation schema
-const editUserSchema = z.object({
-  fullName: z.string().min(2, 'Full name must be at least 2 characters'),
-  email: z.string().email('Invalid email address'),
-  phone: z.string().optional(),
-  role: z.string().min(1, 'Role is required'),
-  status: z.string().min(1, 'Status is required'),
-  pharmacyId: z.string().optional(),
-  departmentId: z.string().optional(),
-  subDepartmentId: z.string().optional(),
-  managedDepartmentId: z.string().optional(),
-});
+const editUserSchema = z
+  .object({
+    fullName: z.string().min(2, 'Full name must be at least 2 characters'),
+    email: z.string().email('Invalid email address'),
+    phone: z.string().optional(),
+    role: z.string().min(1, 'Role is required'),
+    status: z.string().min(1, 'Status is required'),
+    pharmacyId: z.string().optional(),
+    departmentId: z.string().optional(),
+    subDepartmentId: z.string().optional(),
+    managedDepartmentId: z.string().optional(),
+    // Both blank = password left unchanged
+    password: z.string().optional(),
+    confirmPassword: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.password && !data.confirmPassword) return;
+
+    if (!data.password || data.password.length < 8) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['password'],
+        message: 'Password must be at least 8 characters',
+      });
+    } else if (!PASSWORD_PATTERN.test(data.password)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['password'],
+        message: 'Password must contain uppercase, lowercase, number, and special character',
+      });
+    }
+
+    if (data.confirmPassword !== data.password) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['confirmPassword'],
+        message: 'Passwords do not match',
+      });
+    }
+  });
 
 type EditUserFormData = z.infer<typeof editUserSchema>;
 
@@ -130,6 +162,7 @@ interface SubDepartment {
 
 export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalProps) {
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
   const [loadingPharmacies, setLoadingPharmacies] = useState(false);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -148,6 +181,8 @@ export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalPro
       departmentId: '',
       subDepartmentId: '',
       managedDepartmentId: '',
+      password: '',
+      confirmPassword: '',
     },
   });
 
@@ -171,7 +206,11 @@ export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalPro
         departmentId: (user as any).departmentId || '',
         subDepartmentId: (user as any).subDepartmentId || '',
         managedDepartmentId: (user as any).managedDepartmentId || '',
+        // Always blank on open — never carry a typed password between users
+        password: '',
+        confirmPassword: '',
       });
+      setShowPassword(false);
 
       // Fetch pharmacies and departments for the user's hospital
       fetchPharmacies(user.hospitalId);
@@ -271,6 +310,11 @@ export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalPro
         status: data.status,
       };
 
+      // Only send a password when the admin actually typed one
+      if (data.password) {
+        updateData.password = data.password;
+      }
+
       // Only include pharmacyId if role requires it
       if (requiresPharmacy && data.pharmacyId) {
         updateData.pharmacyId = data.pharmacyId;
@@ -310,6 +354,7 @@ export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalPro
 
   const handleClose = () => {
     form.reset();
+    setShowPassword(false);
     onClose();
   };
 
@@ -595,6 +640,71 @@ export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalPro
                 </FormItem>
               )}
             />
+
+            {/* Password (optional — blank leaves it unchanged) */}
+            <div className="rounded-lg border p-3 space-y-4">
+              <div>
+                <p className="text-sm font-medium">Change Password</p>
+                <p className="text-xs text-muted-foreground">
+                  Leave blank to keep the current password
+                </p>
+              </div>
+
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>New Password</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input
+                          type={showPassword ? 'text' : 'password'}
+                          placeholder="••••••••"
+                          autoComplete="new-password"
+                          className="pr-10"
+                          {...field}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          {showPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    </FormControl>
+                    <FormDescription>
+                      Min 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special char
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Confirm New Password</FormLabel>
+                    <FormControl>
+                      <Input
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="••••••••"
+                        autoComplete="new-password"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             {/* Hospital Info (read-only) */}
             {user?.hospital && (

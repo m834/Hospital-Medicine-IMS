@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import { IsEmail, IsEnum, IsOptional, IsString, IsUUID, Matches, MinLength } from 'class-validator';
 import { UserRole, UserStatus } from '@prisma/client';
 
 export class UpdateUserDto {
@@ -6,6 +6,19 @@ export class UpdateUserDto {
   @IsString()
   @MinLength(2)
   fullName?: string;
+
+  /**
+   * New password set by an admin. Omit to leave the password unchanged —
+   * the service hashes this and never stores or logs the raw value.
+   * Same policy as registration.
+   */
+  @IsOptional()
+  @IsString()
+  @MinLength(8, { message: 'Password must be at least 8 characters' })
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]/, {
+    message: 'Password must contain uppercase, lowercase, number and special character',
+  })
+  password?: string;
 
   @IsOptional()
   @IsEmail()

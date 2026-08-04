@@ -2,10 +2,21 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException 
 import { PrismaService } from '../../database/prisma.service';
 import { UpdateUserDto } from './dto';
 import { UserRole } from '@prisma/client';
+import * as argon2 from 'argon2';
 
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Strip credential fields before a user record leaves the API. Prisma returns
+   * every scalar by default, so without this the password hash and reset token
+   * would be sent to the client.
+   */
+  private sanitize<T extends Record<string, any>>(user: T) {
+    const { passwordHash, resetToken, resetTokenExpiry, ...safe } = user;
+    return safe;
+  }
 
   async findOne(id: string, requestingUserId: string) {
     const user = await this.prisma.user.findUnique({
@@ -35,7 +46,7 @@ export class UsersService {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
 
-    return user;
+    return this.sanitize(user);
   }
 
   async update(id: string, updateUserDto: UpdateUserDto, requestingUserId: string) {
@@ -110,11 +121,17 @@ export class UsersService {
       }
     }
 
+    // Separate the raw password from everything else: it must never reach
+    // Prisma as-is, nor the audit log. Absent password = unchanged password.
+    const { password, ...userFields } = updateUserDto;
+    const passwordHash = password ? await argon2.hash(password) : undefined;
+
     // Update the user
     const updatedUser = await this.prisma.user.update({
       where: { id },
       data: {
-        ...updateUserDto,
+        ...userFields,
+        ...(passwordHash ? { passwordHash } : {}),
         version: { increment: 1 },
       },
       include: {
@@ -138,19 +155,26 @@ export class UsersService {
       },
     });
 
-    // Create audit log
+    // Create audit log — a password reset is recorded, but never its value
     await this.prisma.auditLog.create({
       data: {
         hospitalId: updatedUser.hospitalId,
         userId: requestingUserId,
         action: 'UPDATE',
+        module: 'Users',
         entityType: 'User',
         entityId: id,
-        afterState: JSON.stringify(updateUserDto),
+        description: password
+          ? `Updated user ${updatedUser.email} and reset their password`
+          : `Updated user ${updatedUser.email}`,
+        afterState: JSON.stringify({
+          ...userFields,
+          ...(password ? { password: '[REDACTED]' } : {}),
+        }),
       },
     });
 
-    return updatedUser;
+    return this.sanitize(updatedUser);
   }
 
   async remove(id: string, requestingUserId: string) {
