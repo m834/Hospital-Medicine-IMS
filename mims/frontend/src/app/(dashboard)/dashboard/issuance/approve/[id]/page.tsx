@@ -142,7 +142,9 @@ export default function ApproveTransferPage() {
             const response = await api.get(
               `/inventory/batches/stock-level/${item.medicine.id}/${pharmacyId}`
             );
-            levels[item.medicine.id] = response.data?.totalQty || 0;
+            // The endpoint returns normalStock / lpStock / totalStock — there
+            // is no totalQty, so reading it made every item show 0 / Out of Stock.
+            levels[item.medicine.id] = response.data?.totalStock ?? 0;
           } catch (error) {
             console.error(`Error fetching stock for ${item.medicine.name}:`, error);
             levels[item.medicine.id] = 0;
@@ -205,7 +207,7 @@ export default function ApproveTransferPage() {
                 const response = await api.get(
                   `/inventory/batches/stock-level/${item.medicine.id}/${pharmacy.id}`
                 );
-                const quantity = response.data?.totalQty || 0;
+                const quantity = response.data?.totalStock ?? 0;
 
                 // Only include if they have more than 10 units
                 if (quantity > 10) {
