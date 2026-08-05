@@ -125,23 +125,37 @@ export function getStoredUser(): User | null {
 export async function validateToken(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
 
-  // STEP 1: Check if token exists
-  const accessToken = getAccessToken();
+  // STEP 1: Check if token exists. A missing access token is not the end of the
+  // session — the refresh token lasts far longer and exists precisely to mint a
+  // new one. Only give up once that also fails.
+  let accessToken = getAccessToken();
   if (!accessToken) {
-    console.log('[Auth] No access token found - user not authenticated');
-    return false;
+    console.log('[Auth] No access token - attempting refresh before giving up');
+    accessToken = await refreshAccessToken();
+    if (!accessToken) {
+      console.warn('[Auth] Refresh failed - user not authenticated');
+      return false;
+    }
   }
 
-  // STEP 2: Check if token is expired (client-side check)
+  // STEP 2: Check if the token has expired (client-side check). Again, refresh
+  // rather than logging the user out: this path runs on every page load, and
+  // dropping the session here was signing people out mid-shift even though a
+  // valid refresh token was sitting in storage.
   const tokenExpiry = localStorage.getItem(AUTH_TOKENS.TOKEN_EXPIRY);
   if (tokenExpiry) {
     const expiryTime = parseInt(tokenExpiry) * 1000; // Convert to milliseconds
     const now = Date.now();
 
     if (now >= expiryTime) {
-      console.warn('[Auth] Token expired (client-side check)');
-      clearAuthTokens();
-      return false;
+      console.warn('[Auth] Token expired - attempting refresh');
+      const refreshed = await refreshAccessToken();
+      if (!refreshed) {
+        console.warn('[Auth] Refresh failed after expiry - signing out');
+        clearAuthTokens();
+        return false;
+      }
+      accessToken = refreshed;
     }
   }
 
@@ -154,6 +168,18 @@ export async function validateToken(): Promise<boolean> {
         Authorization: `Bearer ${accessToken}`,
       },
     });
+
+    // A rejected token is worth one refresh attempt before ending the session.
+    if (response.status === 401) {
+      console.warn('[Auth] Verify returned 401 - attempting refresh');
+      const refreshed = await refreshAccessToken();
+      if (refreshed) {
+        console.log('[Auth] Session restored via refresh token');
+        return true;
+      }
+      clearAuthTokens();
+      return false;
+    }
 
     if (!response.ok) {
       console.warn('[Auth] Token validation failed - status:', response.status);
