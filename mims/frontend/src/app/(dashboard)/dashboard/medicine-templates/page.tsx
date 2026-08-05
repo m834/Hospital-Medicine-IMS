@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import api from '@/lib/api';
 import { fetchAllMedicines } from '@/lib/medicines';
 import { useAuthStore } from '@/stores/auth.store';
@@ -56,6 +56,13 @@ interface EditorState {
   rows: EditorRow[];
 }
 
+interface Availability {
+  medicineId: string;
+  normalStock: number;
+  lpStock: number;
+  totalStock: number;
+}
+
 const emptyRow = (): EditorRow => ({ medicineId: '', dosageFrequency: '', quantity: 1, category: 'NORMAL' });
 
 export default function MedicineTemplatesPage() {
@@ -70,6 +77,7 @@ export default function MedicineTemplatesPage() {
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [availability, setAvailability] = useState<Record<string, Availability>>({});
 
   useEffect(() => {
     void loadAll();
@@ -94,11 +102,78 @@ export default function MedicineTemplatesPage() {
     }
   };
 
-  const medicineOptions = medicines.map((m) => ({
-    value: m.id,
-    label: m.name,
-    sub: [m.genericName, m.strength, m.form].filter(Boolean).join(' · '),
-  }));
+  // A template belongs to a pharmacy, so its rows are limited to what that
+  // pharmacy actually stocks — same rule the prescription screen applies.
+  const editorPharmacyId = editor?.pharmacyId || user?.pharmacyId || '';
+
+  useEffect(() => {
+    if (!editorPharmacyId) {
+      setAvailability({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get(`/inventory/availability/${editorPharmacyId}`);
+        if (cancelled) return;
+        const map: Record<string, Availability> = {};
+        (res.data ?? []).forEach((a: Availability) => { map[a.medicineId] = a; });
+        setAvailability(map);
+      } catch {
+        if (!cancelled) setAvailability({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [editorPharmacyId]);
+
+  // Normal and LP are separate stock pools, so each row only offers medicines
+  // stocked in the pool it is set to. Built once per catalogue/stock change
+  // rather than per row — the catalogue runs to thousands.
+  const optionsByCategory = useMemo(() => {
+    const build = (pool: 'NORMAL' | 'LP') =>
+      medicines
+        .filter((m) => {
+          const a = availability[m.id];
+          if (!a) return false;
+          return (pool === 'LP' ? a.lpStock : a.normalStock) > 0;
+        })
+        .map((m) => ({
+          value: m.id,
+          label: m.name,
+          sub: [m.genericName, m.strength, m.form].filter(Boolean).join(' · '),
+        }));
+
+    return { NORMAL: build('NORMAL'), LP: build('LP') };
+  }, [medicines, availability]);
+
+  // An existing template may reference a medicine the pharmacy has since run
+  // out of. Keep that selection visible and labelled rather than letting the
+  // field render blank, which looks like the template lost its medicine.
+  const optionsForRow = (row: EditorRow) => {
+    const base = optionsByCategory[row.category];
+    if (!row.medicineId || base.some((o) => o.value === row.medicineId)) return base;
+
+    const selected = medicines.find((m) => m.id === row.medicineId);
+    if (!selected) return base;
+
+    return [
+      {
+        value: selected.id,
+        label: selected.name,
+        sub: `Not in stock for ${row.category === 'LP' ? 'LP' : 'Normal'}`,
+      },
+      ...base,
+    ];
+  };
+
+  // Switching a row's pool: a medicine stocked as Normal may not exist as LP,
+  // so drop a selection that has no stock in the pool being switched to.
+  const handleCategoryChange = (index: number, next: 'NORMAL' | 'LP') => {
+    const row = editor?.rows[index];
+    const a = row?.medicineId ? availability[row.medicineId] : undefined;
+    const stockInNext = a ? (next === 'LP' ? a.lpStock : a.normalStock) : 0;
+    updateRow(index, { category: next, ...(stockInNext > 0 ? {} : { medicineId: '' }) });
+  };
 
   const startCreate = () => {
     setError(null);
@@ -271,10 +346,12 @@ export default function MedicineTemplatesPage() {
               {editor.rows.map((row, index) => (
                 <div key={index} className="grid grid-cols-[1fr_120px_90px_90px_28px] gap-2 items-center">
                   <SearchableSelect
-                    options={medicineOptions}
+                    options={optionsForRow(row)}
                     value={row.medicineId}
                     onValueChange={(val) => updateRow(index, { medicineId: val })}
-                    placeholder="Select medicine..."
+                    placeholder={
+                      row.category === 'LP' ? 'Select LP medicine...' : 'Select Normal medicine...'
+                    }
                     searchPlaceholder="Search by name or generic..."
                   />
                   <select
@@ -301,7 +378,7 @@ export default function MedicineTemplatesPage() {
                     <input
                       type="checkbox"
                       checked={row.category === 'LP'}
-                      onChange={(e) => updateRow(index, { category: e.target.checked ? 'LP' : 'NORMAL' })}
+                      onChange={(e) => handleCategoryChange(index, e.target.checked ? 'LP' : 'NORMAL')}
                       className="w-8 h-4 appearance-none bg-gray-200 rounded-full relative cursor-pointer transition-colors checked:bg-orange-400 before:content-[''] before:absolute before:w-4 before:h-4 before:rounded-full before:bg-white before:shadow before:transition-transform checked:before:translate-x-4"
                     />
                     <span className={`text-xs ${row.category === 'LP' ? 'text-orange-600 font-medium' : 'text-gray-400'}`}>LP</span>
