@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsEnum, IsOptional, IsDateString, IsUUID, IsObject, ValidateNested, Matches, IsInt, Min, Max } from 'class-validator';
+import { IsNotEmpty, IsString, IsEnum, IsOptional, IsDateString, IsUUID, IsObject, ValidateNested, Matches, IsInt, Min, Max, Validate } from 'class-validator';
 
 export enum Gender {
   MALE = 'MALE',
@@ -16,8 +16,14 @@ export enum GuardianType {
   WIFE = 'WIFE',
   CHILD = 'CHILD',
 }
+
+export enum PatientIdType {
+  CNIC = 'CNIC',
+  OTHER = 'OTHER',
+}
 import { Type } from 'class-transformer';
 import { VitalSignsDto } from '../../visits/dto';
+import { PatientIdNumberConstraint } from './patient-id-number.validator';
 
 export class CreatePatientDto {
   @IsString()
@@ -43,9 +49,20 @@ export class CreatePatientDto {
   @IsOptional()
   gender?: Gender;
 
-  @IsString()
-  @IsNotEmpty({ message: 'CNIC is required' })
-  @Matches(/^\d{5}-\d{7}-\d$/, { message: 'Enter a valid CNIC (XXXXX-XXXXXXX-X)' })
+  /**
+   * How to read the identifier below. CNIC is the Pakistani national ID and is
+   * format-checked; OTHER covers passports and foreign IDs, which have no
+   * single format. Defaults to CNIC so existing callers are unaffected.
+   */
+  @IsEnum(PatientIdType, { message: 'Invalid ID type' })
+  @IsOptional()
+  idType?: PatientIdType;
+
+  /**
+   * The identifier itself — always required, format-checked as a CNIC only when
+   * idType says so. See PatientIdNumberConstraint.
+   */
+  @Validate(PatientIdNumberConstraint)
   cnic: string;
 
   @IsString()

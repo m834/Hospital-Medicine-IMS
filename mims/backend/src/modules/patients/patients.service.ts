@@ -168,6 +168,9 @@ export class PatientsService {
           where: {
             hospitalId,
             cnic: createPatientDto.cnic,
+            // Two different ID schemes can produce the same string, so the type
+            // is part of the family key, not just the number.
+            idType: createPatientDto.idType ?? 'CNIC',
             guardianType: createPatientDto.guardianType,
           },
           include: patientInclude,
@@ -178,7 +181,10 @@ export class PatientsService {
     } else {
       const identifierFilters = [];
       if (createPatientDto.cnic) {
-        identifierFilters.push({ cnic: createPatientDto.cnic });
+        identifierFilters.push({
+          cnic: createPatientDto.cnic,
+          idType: createPatientDto.idType ?? 'CNIC',
+        });
       }
       if (createPatientDto.nrNumber) {
         identifierFilters.push({ nrNumber: mrnFilter(createPatientDto.nrNumber) });
@@ -215,6 +221,7 @@ export class PatientsService {
         fullName: createPatientDto.fullName,
         mobile: createPatientDto.mobile ?? null,
         cnic: createPatientDto.cnic,
+        idType: createPatientDto.idType ?? 'CNIC',
         dob: createPatientDto.dob ? new Date(createPatientDto.dob) : null,
         age: createPatientDto.age ?? null,
         guardianType: createPatientDto.guardianType ?? null,

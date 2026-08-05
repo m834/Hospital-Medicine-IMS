@@ -38,13 +38,13 @@ import { useHospitalStore } from '@/stores/hospital.store';
 import api from '@/lib/api';
 
 const patientSchema = z.object({
-  // Only Full Name and CNIC are mandatory. CNIC is the identity key:
-  // a matching CNIC records a new visit against the existing MRN.
+  // Only Full Name and the ID number are mandatory. The ID is the identity key:
+  // a matching ID records a new visit against the existing MRN.
   fullName: z.string().min(2, 'Full name is required'),
-  cnic: z
-    .string()
-    .min(1, 'CNIC is required')
-    .regex(/^\d{5}-\d{7}-\d$/, 'Enter a valid CNIC (XXXXX-XXXXXXX-X)'),
+  // CNIC = Pakistani national ID (fixed format); OTHER = passport / foreign ID,
+  // which has no single format and is accepted as entered.
+  idType: z.enum(['CNIC', 'OTHER']),
+  cnic: z.string().min(1, 'ID number is required'),
   age: z
     .string()
     .optional()
@@ -64,6 +64,27 @@ const patientSchema = z.object({
   ward: z.string().optional(),
   bed: z.string().optional(),
   attendingDoctorId: z.string().optional(),
+}).superRefine((data, ctx) => {
+  // Format is only meaningful for a CNIC. Passports and foreign IDs vary by
+  // country, so they are checked for a sane minimum length and nothing more.
+  const value = (data.cnic ?? '').trim();
+  if (!value) return; // the per-field "required" rule already covers this
+
+  if (data.idType === 'CNIC') {
+    if (!/^\d{5}-\d{7}-\d$/.test(value)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['cnic'],
+        message: 'Enter a valid CNIC (XXXXX-XXXXXXX-X)',
+      });
+    }
+  } else if (value.length < 4) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['cnic'],
+      message: 'Enter a valid ID number (at least 4 characters)',
+    });
+  }
 });
 
 type PatientFormData = z.infer<typeof patientSchema>;
@@ -175,6 +196,7 @@ export default function RegisterPatientPage() {
       age: '',
       mobile: '',
       cnic: '',
+      idType: 'CNIC' as const,
       gender: 'MALE' as const,
       isGuardian: false,
       guardianType: 'WIFE' as const,
@@ -348,6 +370,7 @@ export default function RegisterPatientPage() {
         age: data.age ? Number(data.age) : undefined,
         mobile: data.mobile || undefined,
         cnic: data.cnic || undefined,
+        idType: data.idType,
         guardianType: data.isGuardian ? data.guardianType : undefined,
         visitType: data.visitType,
         clinicId: data.clinicId || undefined,
@@ -395,10 +418,11 @@ export default function RegisterPatientPage() {
         <CardHeader>
           <CardTitle>Patient Information</CardTitle>
           <CardDescription>
-            Only Full Name and CNIC are required — all other fields are optional. A matching CNIC
-            records a new visit against the existing MRN. To register a wife or child under the
-            same CNIC holder, turn on <span className="font-medium">Guardian</span> and pick
-            Wife or Children — they each get their own MRN.
+            Only Full Name and the ID number are required — all other fields are optional. Switch
+            the ID toggle to <span className="font-medium">Other</span> for a passport or foreign
+            national ID. A matching ID records a new visit against the existing MRN. To register a
+            wife or child under the same ID holder, turn on <span className="font-medium">Guardian</span>
+            and pick Wife or Children — they each get their own MRN.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -486,21 +510,55 @@ export default function RegisterPatientPage() {
                   <FormField
                     control={form.control}
                     name="cnic"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>CNIC *</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="XXXXX-XXXXXXX-X"
-                            value={field.value || ''}
-                            onChange={(event) => {
-                              field.onChange(formatCnic(event.target.value));
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                    render={({ field }) => {
+                      const idType = form.watch('idType');
+                      const isCnic = idType === 'CNIC';
+                      return (
+                        <FormItem>
+                          <div className="flex items-center justify-between gap-2">
+                            <FormLabel>{isCnic ? 'CNIC *' : 'ID Number *'}</FormLabel>
+                            {/* Foreign patients carry passports and other national
+                                IDs that do not fit the CNIC format. */}
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs ${isCnic ? 'font-medium' : 'text-muted-foreground'}`}>
+                                CNIC
+                              </span>
+                              <Switch
+                                id="idType"
+                                checked={!isCnic}
+                                onCheckedChange={(checked) => {
+                                  form.setValue('idType', checked ? 'OTHER' : 'CNIC');
+                                  // Formats are incompatible, so start clean
+                                  form.setValue('cnic', '', { shouldValidate: false });
+                                }}
+                              />
+                              <span className={`text-xs ${!isCnic ? 'font-medium' : 'text-muted-foreground'}`}>
+                                Other
+                              </span>
+                            </div>
+                          </div>
+                          <FormControl>
+                            <Input
+                              placeholder={isCnic ? 'XXXXX-XXXXXXX-X' : 'Passport / other ID number'}
+                              value={field.value || ''}
+                              onChange={(event) => {
+                                // Auto-format digits only for a CNIC; other IDs
+                                // are alphanumeric and kept exactly as typed.
+                                field.onChange(
+                                  isCnic ? formatCnic(event.target.value) : event.target.value,
+                                );
+                              }}
+                            />
+                          </FormControl>
+                          {!isCnic && (
+                            <p className="text-xs text-muted-foreground">
+                              Passport or other national ID, entered as printed
+                            </p>
+                          )}
+                          <FormMessage />
+                        </FormItem>
+                      );
+                    }}
                   />
 
                   <FormField

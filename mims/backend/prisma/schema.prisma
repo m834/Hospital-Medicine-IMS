@@ -274,7 +274,8 @@ model Patient {
   nrNumber          String    @unique @map("nr_number")
   fullName          String    @map("full_name")
   mobile            String?
-  cnic              String? // Encrypted
+  cnic              String? // National ID or other identifier — see idType
+  idType            PatientIdType @default(CNIC) @map("id_type") // CNIC = Pakistani national ID (validated format); OTHER = passport/foreign ID
   dob               DateTime?
   age               Int?
   guardianType      GuardianType? @map("guardian_type") // WIFE/CHILD registered under the CNIC holder; null = the CNIC holder themselves
@@ -1429,6 +1430,14 @@ enum DepartmentStatus {
 enum SubDepartmentStatus {
   ACTIVE
   INACTIVE
+}
+
+/// How a patient's identifier should be read. CNIC follows the Pakistani
+/// XXXXX-XXXXXXX-X format; OTHER covers passports and foreign IDs, which have
+/// no single format and are stored as entered.
+enum PatientIdType {
+  CNIC
+  OTHER
 }
 
 enum PharmacyType {
