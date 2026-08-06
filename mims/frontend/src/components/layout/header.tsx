@@ -114,12 +114,9 @@ export function Header({ onToggleSidebar, isSidebarCollapsed }: HeaderProps) {
 
   const handleLogout = () => {
     // Clear auth tokens and user data
-    clearAuthTokens();
+    clearAuthTokens(); // also clears the middleware cookie
     clearUser();
-    
-    // Clear cookie
-    document.cookie = 'access_token=; path=/; max-age=0';
-    
+
     // Redirect to login
     router.push('/login');
   };

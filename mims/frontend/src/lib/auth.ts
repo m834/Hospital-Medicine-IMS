@@ -56,6 +56,37 @@ function decodeJWT(token: string): TokenPayload | null {
 /**
  * Store authentication tokens and user data
  */
+/**
+ * The Next.js middleware gates every protected route on an `access_token`
+ * cookie — it runs on the server and cannot read localStorage. The cookie's
+ * lifetime must therefore track the token's own expiry.
+ *
+ * This was previously hard-coded to max-age=1800 (30 minutes), so the browser
+ * dropped the cookie half an hour after login and the next navigation was
+ * redirected to /login?error=authentication_required — while the JWT in
+ * localStorage was still valid for hours. That was the mid-shift logout.
+ */
+const AUTH_COOKIE = 'access_token';
+const FALLBACK_COOKIE_MAX_AGE = 24 * 60 * 60; // matches the backend default
+
+export function setAuthCookie(accessToken: string): void {
+  if (typeof document === 'undefined') return;
+
+  const decoded = decodeJWT(accessToken);
+  const now = Math.floor(Date.now() / 1000);
+  // Expire with the token, never before it
+  const maxAge = decoded?.exp
+    ? Math.max(decoded.exp - now, 0)
+    : FALLBACK_COOKIE_MAX_AGE;
+
+  document.cookie = `${AUTH_COOKIE}=${accessToken}; path=/; max-age=${maxAge}; SameSite=Strict`;
+}
+
+export function clearAuthCookie(): void {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${AUTH_COOKIE}=; path=/; max-age=0; SameSite=Strict`;
+}
+
 export function storeAuthTokens(authResponse: AuthResponse): void {
   if (typeof window === 'undefined') return;
 
@@ -68,6 +99,9 @@ export function storeAuthTokens(authResponse: AuthResponse): void {
   if (decodedToken?.exp) {
     localStorage.setItem(AUTH_TOKENS.TOKEN_EXPIRY, decodedToken.exp.toString());
   }
+
+  // Keep the middleware's cookie in step with the token
+  setAuthCookie(authResponse.accessToken);
 }
 
 /**
@@ -79,6 +113,10 @@ export function clearAuthTokens(): void {
   Object.values(AUTH_TOKENS).forEach((key) => {
     localStorage.removeItem(key);
   });
+
+  // Leaving the cookie behind would let middleware wave the user through to a
+  // dashboard that immediately bounces them back out.
+  clearAuthCookie();
 }
 
 /**
@@ -181,10 +219,16 @@ export async function validateToken(): Promise<boolean> {
       return false;
     }
 
+    // Anything other than a rejection is a server-side problem, not an invalid
+    // session — a 502 while the backend restarts must not sign everyone out.
+    // Trust the local expiry check that already passed above.
     if (!response.ok) {
       console.warn('[Auth] Token validation failed - status:', response.status);
-      clearAuthTokens();
-      return false;
+      if (response.status === 403) {
+        clearAuthTokens();
+        return false;
+      }
+      return true;
     }
 
     const data = await response.json();
@@ -230,9 +274,14 @@ export async function refreshAccessToken(): Promise<string | null> {
         body: JSON.stringify({ refreshToken }),
       });
 
+      // Only a definitive rejection ends the session. A 502/503 while the
+      // backend restarts, or any other server-side blip, must not destroy a
+      // session whose refresh token is still perfectly valid.
       if (!response.ok) {
         console.error('[Auth] Token refresh failed:', response.status);
-        clearAuthTokens();
+        if (response.status === 401 || response.status === 403) {
+          clearAuthTokens();
+        }
         return null;
       }
 
@@ -247,6 +296,9 @@ export async function refreshAccessToken(): Promise<string | null> {
         if (decodedToken?.exp) {
           localStorage.setItem(AUTH_TOKENS.TOKEN_EXPIRY, decodedToken.exp.toString());
         }
+
+        // Renew the middleware cookie against the new token
+        setAuthCookie(data.accessToken);
       }
 
       if (data.refreshToken) {
@@ -259,8 +311,10 @@ export async function refreshAccessToken(): Promise<string | null> {
 
       return data.accessToken ?? null;
     } catch (error) {
-      console.error('[Auth] Token refresh error:', error);
-      clearAuthTokens();
+      // Network error — the server was unreachable, which says nothing about
+      // whether the session is valid. Keep the tokens so the next attempt can
+      // recover, matching how validateToken treats an unreachable backend.
+      console.error('[Auth] Token refresh network error (keeping session):', error);
       return null;
     } finally {
       // clear the shared promise

@@ -134,9 +134,8 @@ export default function LoginPage() {
       setUser(authResponse.user);
       console.log('[Login] User set in store:', authResponse.user);
 
-      // Store access token in cookie for middleware
-      document.cookie = `access_token=${authResponse.accessToken}; path=/; max-age=1800; SameSite=Strict`;
-      console.log('[Login] Cookie set');
+      // The middleware cookie is set by storeAuthTokens, with a lifetime that
+      // tracks the token instead of a fixed window.
 
       // Redirect to role-based dashboard
       const userRole = authResponse.user.role as UserRole;
