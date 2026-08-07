@@ -7,6 +7,9 @@ export interface Room {
   id: string;
   hospitalId: string;
   departmentId?: string;
+  /** Sub-pharmacy responsible for this room's ward prescriptions */
+  pharmacyId?: string | null;
+  pharmacy?: { id: string; name: string; code: string; type: string } | null;
   roomNumber: string;
   roomType: 'PRIVATE' | 'SEMI_PRIVATE' | 'GENERAL' | 'ICU' | 'NICU' | 'PICU' | 'CCU' | 'HDU' | 'ISOLATION' | 'EMERGENCY';
   floor?: number;
@@ -41,6 +44,7 @@ export interface Room {
 
 export interface RoomFilters {
   hospitalId?: string;
+  pharmacyId?: string;
   departmentId?: string;
   roomType?: string;
   status?: string;
@@ -53,6 +57,7 @@ export interface RoomFilters {
 export interface CreateRoomData {
   hospitalId: string;
   departmentId?: string;
+  pharmacyId?: string;
   roomNumber: string;
   roomType: string;
   floor?: number;

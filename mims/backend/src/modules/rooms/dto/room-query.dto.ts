@@ -14,6 +14,12 @@ export class RoomQueryDto {
   @IsUUID()
   departmentId?: string;
 
+  /** Restrict to the rooms one sub-pharmacy looks after. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  pharmacyId?: string;
+
   @ApiPropertyOptional({ enum: RoomType })
   @IsOptional()
   @IsEnum(RoomType)

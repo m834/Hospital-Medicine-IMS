@@ -106,6 +106,10 @@ export default function RoomsPage() {
   const [departments, setDepartments] = useState<any[]>([]);
   const [departmentsLoading, setDepartmentsLoading] = useState(false);
 
+  // Sub-pharmacies — a room (ward) is looked after by one of them, which is
+  // what scopes ward prescription entry
+  const [subPharmacies, setSubPharmacies] = useState<any[]>([]);
+
   // Form state
   const [formData, setFormData] = useState<Partial<CreateRoomData>>({
     roomNumber: '',
@@ -155,6 +159,11 @@ export default function RoomsPage() {
       const response = await api.get('/departments', { params });
       console.log('[RoomsPage] Departments API Response:', response.data);
       setDepartments(response.data || []);
+
+      const pharmacyRes = await api.get('/pharmacies', { params });
+      setSubPharmacies(
+        (pharmacyRes.data || []).filter((p: any) => p.type === 'SUB' && p.status === 'ACTIVE'),
+      );
     } catch (error) {
       console.error('[RoomsPage] Failed to fetch departments:', error);
       toast({
@@ -213,6 +222,7 @@ export default function RoomsPage() {
         dailyRate: parseFloat(room.dailyRate),
         status: room.status,
         departmentId: room.departmentId,
+        pharmacyId: room.pharmacyId ?? undefined,
         amenities: room.amenities || [],
         notes: room.notes,
       });
@@ -246,6 +256,7 @@ export default function RoomsPage() {
         dailyRate: formData.dailyRate || 0,
         status: formData.status,
         departmentId: formData.departmentId && formData.departmentId !== 'none' ? formData.departmentId : undefined,
+        pharmacyId: formData.pharmacyId || undefined,
         amenities: formData.amenities,
         notes: formData.notes,
       });
@@ -287,6 +298,7 @@ export default function RoomsPage() {
           dailyRate: formData.dailyRate || 0,
           status: formData.status,
           departmentId: formData.departmentId,
+          pharmacyId: formData.pharmacyId || undefined,
           amenities: formData.amenities,
           notes: formData.notes,
         },
@@ -771,6 +783,37 @@ export default function RoomsPage() {
                   )}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="roomPharmacy">Sub-Pharmacy (Ward)</Label>
+              <Select
+                value={formData.pharmacyId || 'none'}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, pharmacyId: value === 'none' ? undefined : value })
+                }
+              >
+                <SelectTrigger id="roomPharmacy">
+                  <SelectValue placeholder="Select sub-pharmacy (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {subPharmacies.length === 0 ? (
+                    <div className="py-2 px-2 text-sm text-muted-foreground">
+                      No sub-pharmacies found
+                    </div>
+                  ) : (
+                    subPharmacies.map((ph: any) => (
+                      <SelectItem key={ph.id} value={ph.id}>
+                        {ph.name} ({ph.code})
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                That pharmacy can enter ward prescriptions for this room
+              </p>
             </div>
 
             <div className="grid gap-2">

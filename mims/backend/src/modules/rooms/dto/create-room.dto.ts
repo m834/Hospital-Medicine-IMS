@@ -23,6 +23,12 @@ export class CreateRoomDto {
   @IsUUID()
   departmentId?: string;
 
+  /** Sub-pharmacy responsible for this room's ward prescriptions. */
+  @ApiPropertyOptional({ example: '123e4567-e89b-12d3-a456-426614174002' })
+  @IsOptional()
+  @IsUUID()
+  pharmacyId?: string;
+
   @ApiProperty({ example: '101' })
   @IsString()
   roomNumber: string;

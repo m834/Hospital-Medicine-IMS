@@ -76,6 +76,7 @@ export class RoomsService {
     const {
       hospitalId,
       departmentId,
+      pharmacyId,
       roomType,
       status,
       floor,
@@ -88,6 +89,7 @@ export class RoomsService {
 
     if (hospitalId) where.hospitalId = hospitalId;
     if (departmentId) where.departmentId = departmentId;
+    if (pharmacyId) where.pharmacyId = pharmacyId;
     if (roomType) where.roomType = roomType;
     if (status) where.status = status;
     if (floor) where.floor = floor;
@@ -104,6 +106,7 @@ export class RoomsService {
         include: {
           hospital: { select: { id: true, name: true, code: true } },
           department: { select: { id: true, name: true, code: true } },
+          pharmacy: { select: { id: true, name: true, code: true, type: true } },
           beds: {
             select: {
               id: true,

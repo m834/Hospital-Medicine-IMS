@@ -256,6 +256,7 @@ model Pharmacy {
   returnTransactions ReturnTransaction[]
   alerts             Alert[]
   syncOperations     SyncOperation[]
+  rooms              Room[]
 
   @@unique([hospitalId, code])
   @@index([hospitalId])
@@ -1180,6 +1181,9 @@ model Room {
   id           String     @id @default(uuid())
   hospitalId   String     @map("hospital_id")
   departmentId String?    @map("department_id")
+  // The sub-pharmacy responsible for this room/ward. Ward prescriptions are
+  // entered and dispensed by that pharmacy.
+  pharmacyId   String?    @map("pharmacy_id")
   roomNumber   String     @map("room_number")
   roomType     RoomType   @map("room_type")
   floor        Int?
@@ -1195,6 +1199,7 @@ model Room {
   // Relations
   hospital   Hospital    @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  pharmacy   Pharmacy?   @relation(fields: [pharmacyId], references: [id], onDelete: SetNull)
   beds       Bed[]
   admissions Admission[]
 
