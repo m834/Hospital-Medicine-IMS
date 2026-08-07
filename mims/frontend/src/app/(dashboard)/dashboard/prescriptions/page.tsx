@@ -640,12 +640,21 @@ export default function PrescriptionsPage() {
           <p className="text-gray-600 mt-1">Active and completed patient prescriptions</p>
         </div>
         {canCreate && (
-          <button
-            onClick={() => router.push('/dashboard/prescriptions/create')}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-          >
-            + New Prescription
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => router.push('/dashboard/prescriptions/ward')}
+              className="px-4 py-2 border border-blue-600 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors text-sm font-medium"
+              title="Enter prescriptions for several indoor patients in one ward"
+            >
+              Add Prescription by Ward
+            </button>
+            <button
+              onClick={() => router.push('/dashboard/prescriptions/create')}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+            >
+              + New Prescription
+            </button>
+          </div>
         )}
       </div>
 
