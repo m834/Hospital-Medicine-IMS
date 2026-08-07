@@ -632,6 +632,118 @@ export class InventoryService {
     return Array.from(map.values());
   }
 
+  /**
+   * Every time this medicine left the shelf to a patient, newest first.
+   *
+   * Stock leaves by two routes and the report must cover both:
+   *  - prescription dispatches, including the first dose dispensed at
+   *    prescription creation, which also writes a dispatch record
+   *  - pharmacy issue transactions
+   *
+   * Only issue transactions record which batch the stock came from; the
+   * prescription route deducts FEFO across batches without storing the link,
+   * so batchNo is null for those rows.
+   */
+  async getDispensingReport(
+    medicineId: string,
+    hospitalId: string,
+    options: { pharmacyId?: string; from?: Date; to?: Date } = {},
+  ) {
+    const { pharmacyId, from, to } = options;
+    const dateFilter =
+      from || to ? { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } : undefined;
+
+    const medicine = await this.prisma.medicine.findFirst({
+      where: { id: medicineId, hospitalId },
+      select: { id: true, name: true, genericName: true, strength: true, form: true },
+    });
+
+    if (!medicine) {
+      throw new NotFoundException('Medicine not found');
+    }
+
+    const [dispatchItems, issueItems] = await Promise.all([
+      this.prisma.prescriptionDispatchItem.findMany({
+        where: {
+          prescriptionMedicine: { medicineId },
+          dispatch: {
+            ...(dateFilter ? { dispatchedAt: dateFilter } : {}),
+            prescription: {
+              hospitalId,
+              ...(pharmacyId ? { pharmacyId } : {}),
+            },
+          },
+        },
+        include: {
+          prescriptionMedicine: { select: { category: true } },
+          dispatch: {
+            include: {
+              dispatcher: { select: { fullName: true } },
+              prescription: {
+                select: {
+                  id: true,
+                  nrNumber: true,
+                  patient: { select: { fullName: true, nrNumber: true } },
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.issueItem.findMany({
+        where: {
+          medicineId,
+          issueTransaction: {
+            hospitalId,
+            ...(pharmacyId ? { pharmacyId } : {}),
+            ...(dateFilter ? { issuedAt: dateFilter } : {}),
+          },
+        },
+        include: {
+          batch: { select: { batchNo: true, category: true } },
+          issueTransaction: {
+            include: {
+              issuer: { select: { fullName: true } },
+              patient: { select: { fullName: true, nrNumber: true } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const rows = [
+      ...dispatchItems.map((item) => ({
+        dispensedAt: item.dispatch.dispatchedAt,
+        patientName: item.dispatch.prescription.patient?.fullName ?? null,
+        nrNumber: item.dispatch.prescription.nrNumber,
+        quantity: item.quantityDispatched,
+        dispensedBy: item.dispatch.dispatcher?.fullName ?? null,
+        batchNo: null as string | null,
+        category: item.prescriptionMedicine.category,
+        reference: item.dispatch.prescription.id,
+        source: 'PRESCRIPTION' as const,
+      })),
+      ...issueItems.map((item) => ({
+        dispensedAt: item.issueTransaction.issuedAt,
+        patientName: item.issueTransaction.patient?.fullName ?? null,
+        nrNumber: item.issueTransaction.nrNumber,
+        quantity: item.qtyIssued,
+        dispensedBy: item.issueTransaction.issuer?.fullName ?? null,
+        batchNo: item.batch?.batchNo ?? null,
+        category: item.batch?.category ?? null,
+        reference: item.issueTransaction.prescriptionId ?? item.issueTransaction.id,
+        source: 'ISSUANCE' as const,
+      })),
+    ].sort((a, b) => b.dispensedAt.getTime() - a.dispensedAt.getTime());
+
+    return {
+      medicine,
+      rows,
+      totalQuantity: rows.reduce((sum, r) => sum + r.quantity, 0),
+      totalRecords: rows.length,
+    };
+  }
+
   async getStockByCategory(
     medicineId: string,
     pharmacyId: string,

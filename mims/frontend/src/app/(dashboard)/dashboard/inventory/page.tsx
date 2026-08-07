@@ -51,6 +51,7 @@ import {
   ChevronDown,
   ChevronRight,
   FileDown,
+  FileText,
   Pencil,
 } from 'lucide-react';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -64,6 +65,7 @@ interface StockBatch {
   id: string;
   batchNo: string;
   medicine: {
+    id: string;
     name: string;
     strength?: string;
     form: string;
@@ -87,6 +89,7 @@ interface StockBatch {
 
 interface MedicineGroup {
   key: string;
+  medicineId: string;
   medicineName: string;
   medicineStrength?: string;
   medicineForm: string;
@@ -332,6 +335,7 @@ export default function InventoryDashboardPage() {
       if (!map[key]) {
         map[key] = {
           key,
+          medicineId: batch.medicine.id,
           medicineName: batch.medicine.name,
           medicineStrength: batch.medicine.strength,
           medicineForm: batch.medicine.form,
@@ -814,11 +818,26 @@ export default function InventoryDashboardPage() {
                             </TableCell>
                           )}
                           <TableCell>
-                            <div>
-                              <p className="font-semibold">{group.medicineName}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {[group.medicineStrength, group.medicineForm].filter(Boolean).join(' · ')}
-                              </p>
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <p className="font-semibold">{group.medicineName}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {[group.medicineStrength, group.medicineForm].filter(Boolean).join(' · ')}
+                                </p>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="shrink-0"
+                                title="Dispensing report for this item"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  router.push(`/dashboard/inventory/dispensing/${group.medicineId}`);
+                                }}
+                              >
+                                <FileText className="h-3.5 w-3.5 mr-1" />
+                                Report
+                              </Button>
                             </div>
                           </TableCell>
                           <TableCell className="text-center">

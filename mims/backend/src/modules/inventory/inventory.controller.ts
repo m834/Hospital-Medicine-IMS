@@ -174,6 +174,38 @@ export class InventoryController {
     return { medicineId, pharmacyId, ...stockByCategory };
   }
 
+  /**
+   * Full dispensing history for one medicine — every time it was given to a
+   * patient. Scoped to the caller's pharmacy unless they can see the whole
+   * hospital.
+   */
+  @Get('dispensing-report/:medicineId')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HOSPITAL_ADMIN,
+    UserRole.MAIN_PHARMACY_MANAGER,
+    UserRole.SUB_PHARMACY_MANAGER,
+    UserRole.PHARMACY_STAFF,
+    UserRole.AUDITOR,
+  )
+  async getDispensingReport(
+    @Param('medicineId') medicineId: string,
+    @Query('pharmacyId') pharmacyId: string | undefined,
+    @Query('from') from: string | undefined,
+    @Query('to') to: string | undefined,
+    @Request() req,
+  ) {
+    // Pharmacy users only ever see their own pharmacy's dispensing
+    const scopedPharmacyId = req.user.pharmacyId || pharmacyId || undefined;
+
+    return this.inventoryService.getDispensingReport(medicineId, req.user.hospitalId, {
+      pharmacyId: scopedPharmacyId,
+      from: from ? new Date(from) : undefined,
+      // An end date with no time means "to the end of that day"
+      to: to ? new Date(new Date(to).setHours(23, 59, 59, 999)) : undefined,
+    });
+  }
+
   @Get('availability/:pharmacyId')
   @Roles(
     UserRole.SUPER_ADMIN,
