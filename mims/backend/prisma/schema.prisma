@@ -41,6 +41,7 @@ model Hospital {
   issueTransactions  IssueTransaction[]
   transferRequests   TransferRequest[]   @relation("HospitalTransfers")
   returnTransactions ReturnTransaction[]
+  disposals          DisposalTransaction[]
   alerts             Alert[]
   auditLogs          AuditLog[]
   syncOperations     SyncOperation[]
@@ -178,6 +179,7 @@ model User {
   transfersApproved     TransferRequest[]   @relation("TransferApprover")
   transfersReceived     TransferRequest[]   @relation("TransferReceiver")
   returnTransactions    ReturnTransaction[]
+  disposals             DisposalTransaction[]
   purchaseOrdersCreated PurchaseOrder[]
   grnsReceived          GRN[]
   alertsAcknowledged    Alert[]
@@ -254,6 +256,7 @@ model Pharmacy {
   transfersFrom      TransferRequest[]   @relation("FromPharmacy")
   transfersTo        TransferRequest[]   @relation("ToPharmacy")
   returnTransactions ReturnTransaction[]
+  disposals          DisposalTransaction[]
   alerts             Alert[]
   syncOperations     SyncOperation[]
   rooms              Room[]
@@ -344,6 +347,7 @@ model Medicine {
   issueItems            IssueItem[]
   transferItems     TransferItem[]
   returnItems       ReturnItem[]
+  disposalItems     DisposalItem[]
   alternativesFor   MedicineAlternative[] @relation("MainMedicine")
   alternatives      MedicineAlternative[] @relation("AlternativeMedicine")
 
@@ -414,6 +418,7 @@ model StockBatch {
   medicine                    Medicine               @relation(fields: [medicineId], references: [id], onDelete: Cascade)
   issueItems                  IssueItem[]
   returnItems                 ReturnItem[]
+  disposalItems               DisposalItem[]
   transferBatchMappingsSource TransferBatchMapping[] @relation("SourceBatch")
   transferBatchMappingsDest   TransferBatchMapping[] @relation("DestinationBatch")
   grnItems                    GRNItem[]
@@ -767,6 +772,49 @@ model ReturnItem {
 
   @@index([returnId])
   @@map("return_items")
+}
+
+/// Stock written off the shelf — expired, damaged, recalled and so on.
+/// Append-only: a mistake is corrected with a further adjustment, never by
+/// editing or deleting a disposal, so the audit trail stays intact.
+model DisposalTransaction {
+  id         String   @id @default(uuid())
+  hospitalId String   @map("hospital_id")
+  pharmacyId String   @map("pharmacy_id")
+  disposedBy String   @map("disposed_by")
+  notes      String?
+  disposedAt DateTime @default(now()) @map("disposed_at")
+
+  // Relations
+  hospital       Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  pharmacy       Pharmacy       @relation(fields: [pharmacyId], references: [id])
+  disposedByUser User           @relation(fields: [disposedBy], references: [id])
+  items          DisposalItem[]
+
+  @@index([hospitalId])
+  @@index([pharmacyId])
+  @@index([disposedAt])
+  @@map("disposal_transactions")
+}
+
+model DisposalItem {
+  id          String         @id @default(uuid())
+  disposalId  String         @map("disposal_id")
+  batchId     String         @map("batch_id")
+  medicineId  String         @map("medicine_id")
+  qtyDisposed Int            @map("qty_disposed")
+  reason      DisposalReason
+  /// Free text, required when the reason is OTHER
+  note        String?
+
+  // Relations
+  disposal DisposalTransaction @relation(fields: [disposalId], references: [id], onDelete: Cascade)
+  batch    StockBatch          @relation(fields: [batchId], references: [id])
+  medicine Medicine            @relation(fields: [medicineId], references: [id])
+
+  @@index([disposalId])
+  @@index([batchId])
+  @@map("disposal_items")
 }
 
 // ============================================
@@ -1440,6 +1488,17 @@ enum SubDepartmentStatus {
 /// How a patient's identifier should be read. CNIC follows the Pakistani
 /// XXXXX-XXXXXXX-X format; OTHER covers passports and foreign IDs, which have
 /// no single format and are stored as entered.
+/// Why stock was written off. Kept separate from dispensing so reports can
+/// tell a disposal apart from medicine given to a patient.
+enum DisposalReason {
+  EXPIRED
+  DAMAGED
+  BROKEN
+  CONTAMINATED
+  RECALLED
+  OTHER
+}
+
 enum PatientIdType {
   CNIC
   OTHER

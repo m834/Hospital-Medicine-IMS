@@ -9,6 +9,7 @@ import { CacheService } from '../../common/services/cache.service';
 import { CreateStockBatchDto } from './dto/create-stock-batch.dto';
 import { UpdateStockBatchDto } from './dto/update-stock-batch.dto';
 import { SearchStockBatchDto } from './dto/search-stock-batch.dto';
+import { CreateDisposalDto } from './dto/create-disposal.dto';
 
 @Injectable()
 export class InventoryService {
@@ -644,6 +645,179 @@ export class InventoryService {
    * prescription route deducts FEFO across batches without storing the link,
    * so batchNo is null for those rows.
    */
+  /**
+   * Write stock off the shelf. Batch-level, since disposal is always of a
+   * specific physical batch — expired, damaged, recalled and so on.
+   *
+   * Deduction mirrors dispenseBatch (qtyAvailable, the dispensing-unit
+   * counter, and DEPLETED at zero) rather than inventing separate arithmetic,
+   * and the whole disposal is one transaction so a rejected line cannot leave
+   * some batches already decremented.
+   *
+   * Append-only: there is deliberately no update or delete path.
+   */
+  async createDisposal(
+    dto: CreateDisposalDto,
+    hospitalId: string,
+    userId: string,
+    userPharmacyId?: string,
+  ) {
+    if (!dto.items || dto.items.length === 0) {
+      throw new BadRequestException('Add at least one item to dispose');
+    }
+
+    // The owning pharmacy comes from the batch itself, never from the client —
+    // a caller cannot book a write-off against someone else's pharmacy.
+    const firstBatch = await this.prisma.stockBatch.findFirst({
+      where: { id: dto.items[0].batchId, hospitalId },
+      select: { pharmacyId: true },
+    });
+
+    if (!firstBatch) {
+      throw new NotFoundException(`Batch not found: ${dto.items[0].batchId}`);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const disposal = await tx.disposalTransaction.create({
+        data: {
+          hospitalId,
+          pharmacyId: firstBatch.pharmacyId,
+          disposedBy: userId,
+          notes: dto.notes,
+        },
+      });
+
+      for (const item of dto.items) {
+        const batch = await tx.stockBatch.findFirst({
+          where: { id: item.batchId, hospitalId },
+          include: { medicine: { select: { name: true } } },
+        });
+
+        if (!batch) {
+          throw new NotFoundException(`Batch not found: ${item.batchId}`);
+        }
+
+        // A pharmacy user may only write off stock from their own shelf
+        if (userPharmacyId && batch.pharmacyId !== userPharmacyId) {
+          throw new BadRequestException(
+            `${batch.medicine.name} (batch ${batch.batchNo}) belongs to another pharmacy`,
+          );
+        }
+
+        // Every line must belong to the same pharmacy as the disposal header
+        if (batch.pharmacyId !== firstBatch.pharmacyId) {
+          throw new BadRequestException('All items in one disposal must belong to the same pharmacy');
+        }
+
+        // Disposal can never take more than is physically on the shelf
+        if (item.quantity > batch.qtyAvailable) {
+          throw new BadRequestException(
+            `Cannot dispose ${item.quantity} of ${batch.medicine.name} (batch ${batch.batchNo}) — only ${batch.qtyAvailable} available`,
+          );
+        }
+
+        const remaining = batch.qtyAvailable - item.quantity;
+        const remainingDispensing =
+          batch.qtyAvailableDispensing != null
+            ? Math.max(0, batch.qtyAvailableDispensing - item.quantity)
+            : null;
+
+        await tx.stockBatch.update({
+          where: { id: batch.id },
+          data: {
+            qtyAvailable: remaining,
+            ...(remainingDispensing != null
+              ? { qtyAvailableDispensing: remainingDispensing }
+              : {}),
+            status: remaining <= 0 ? 'DEPLETED' : batch.status,
+          },
+        });
+
+        await tx.disposalItem.create({
+          data: {
+            disposalId: disposal.id,
+            batchId: batch.id,
+            medicineId: batch.medicineId,
+            qtyDisposed: item.quantity,
+            reason: item.reason,
+            note: item.note,
+          },
+        });
+      }
+
+      await this.invalidateCache(hospitalId);
+
+      return tx.disposalTransaction.findUnique({
+        where: { id: disposal.id },
+        include: {
+          disposedByUser: { select: { id: true, fullName: true } },
+          pharmacy: { select: { id: true, name: true, code: true } },
+          items: {
+            include: {
+              medicine: { select: { id: true, name: true, strength: true, form: true } },
+              batch: { select: { id: true, batchNo: true, expiryDate: true, category: true } },
+            },
+          },
+        },
+      });
+    });
+  }
+
+  /** Disposal history, newest first, with the total written off. */
+  async getDisposals(
+    hospitalId: string,
+    options: { pharmacyId?: string; from?: Date; to?: Date } = {},
+  ) {
+    const { pharmacyId, from, to } = options;
+    const dateFilter =
+      from || to ? { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } : undefined;
+
+    const disposals = await this.prisma.disposalTransaction.findMany({
+      where: {
+        hospitalId,
+        ...(pharmacyId ? { pharmacyId } : {}),
+        ...(dateFilter ? { disposedAt: dateFilter } : {}),
+      },
+      include: {
+        disposedByUser: { select: { id: true, fullName: true } },
+        pharmacy: { select: { id: true, name: true, code: true } },
+        items: {
+          include: {
+            medicine: { select: { id: true, name: true, strength: true, form: true } },
+            batch: { select: { id: true, batchNo: true, expiryDate: true, category: true } },
+          },
+        },
+      },
+      orderBy: { disposedAt: 'desc' },
+    });
+
+    // Flattened to one row per disposed item, matching the inventory columns
+    const rows = disposals.flatMap((d) =>
+      d.items.map((item) => ({
+        disposalId: d.id,
+        disposedAt: d.disposedAt,
+        disposedBy: d.disposedByUser?.fullName ?? null,
+        pharmacy: d.pharmacy?.name ?? null,
+        medicineName: item.medicine.name,
+        medicineStrength: item.medicine.strength,
+        medicineForm: item.medicine.form,
+        batchNo: item.batch.batchNo,
+        expiryDate: item.batch.expiryDate,
+        category: item.batch.category,
+        quantity: item.qtyDisposed,
+        reason: item.reason,
+        note: item.note,
+        transactionNotes: d.notes,
+      })),
+    );
+
+    return {
+      rows,
+      totalQuantity: rows.reduce((sum, r) => sum + r.quantity, 0),
+      totalRecords: rows.length,
+    };
+  }
+
   async getDispensingReport(
     medicineId: string,
     hospitalId: string,

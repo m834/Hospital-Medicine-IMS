@@ -9,6 +9,7 @@ import {
   AlertCircle, Syringe, HeartPulse, Activity, ChevronLeft, ChevronRight,
   Store, Flag, Shield, Stethoscope, ClipboardList, Clock, UserPlus, Receipt,
   DoorOpen, Bed, UserRoundPlus, UserRoundX, TestTube, Microscope, CheckSquare, FileCheck, Wallet, DollarSign,
+  Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -159,6 +160,12 @@ const menuItems: MenuItem[] = [
     href: '/dashboard/inventory/alerts',
     icon: AlertCircle,
     roles: [UserRole.SUPER_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.HOSPITAL_ADMIN]
+  },
+  {
+    label: 'Dispose',
+    href: '/dashboard/dispose',
+    icon: Trash2,
+    roles: [UserRole.SUPER_ADMIN, UserRole.MASTER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.MAIN_PHARMACY_MANAGER, UserRole.SUB_PHARMACY_MANAGER, UserRole.AUDITOR]
   },
   {
     label: 'Rx Templates',

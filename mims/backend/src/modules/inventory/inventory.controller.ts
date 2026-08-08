@@ -16,6 +16,7 @@ import { BulkCreateStockBatchDto } from './dto/create-stock-batch-bulk.dto';
 import { UpdateStockBatchDto } from './dto/update-stock-batch.dto';
 import { SearchStockBatchDto } from './dto/search-stock-batch.dto';
 import { DispenseBatchDto } from './dto/dispense-batch.dto';
+import { CreateDisposalDto } from './dto/create-disposal.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -172,6 +173,52 @@ export class InventoryController {
       hospitalId,
     );
     return { medicineId, pharmacyId, ...stockByCategory };
+  }
+
+  /**
+   * Write stock off the shelf. Append-only — there is no edit or delete
+   * counterpart by design; a correction is a further adjustment.
+   */
+  @Post('disposals')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HOSPITAL_ADMIN,
+    UserRole.MAIN_PHARMACY_MANAGER,
+    UserRole.SUB_PHARMACY_MANAGER,
+  )
+  createDisposal(@Body() dto: CreateDisposalDto, @Request() req) {
+    return this.inventoryService.createDisposal(
+      dto,
+      req.user.hospitalId,
+      req.user.id,
+      req.user.pharmacyId,
+    );
+  }
+
+  /** Disposal history with an optional date range and the total written off. */
+  @Get('disposals')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HOSPITAL_ADMIN,
+    UserRole.MAIN_PHARMACY_MANAGER,
+    UserRole.SUB_PHARMACY_MANAGER,
+    UserRole.PHARMACY_STAFF,
+    UserRole.AUDITOR,
+  )
+  getDisposals(
+    @Query('pharmacyId') pharmacyId: string | undefined,
+    @Query('from') from: string | undefined,
+    @Query('to') to: string | undefined,
+    @Request() req,
+  ) {
+    // Pharmacy users only ever see their own pharmacy's write-offs
+    const scopedPharmacyId = req.user.pharmacyId || pharmacyId || undefined;
+
+    return this.inventoryService.getDisposals(req.user.hospitalId, {
+      pharmacyId: scopedPharmacyId,
+      from: from ? new Date(from) : undefined,
+      to: to ? new Date(new Date(to).setHours(23, 59, 59, 999)) : undefined,
+    });
   }
 
   /**
