@@ -365,30 +365,41 @@ export default function WardPrescriptionPage() {
   );
 
   return (
-    <div className="container mx-auto max-w-7xl p-6">
-      <div className="mb-6 flex items-center gap-4">
-        <Button variant="ghost" onClick={() => router.back()}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold">Add Prescription by Ward</h1>
-          <p className="text-sm text-muted-foreground">
-            Enter prescriptions for several indoor patients in one go
-          </p>
+    <div className="min-h-screen bg-slate-50">
+      {/* Ward round header — teal marks indoor care, distinct from OPD blue */}
+      <div className="border-b border-teal-900/10 bg-gradient-to-r from-teal-700 via-teal-600 to-blue-600">
+        <div className="container mx-auto max-w-7xl px-6 py-5">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              onClick={() => router.back()}
+              className="text-white/90 hover:bg-white/15 hover:text-white"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back
+            </Button>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-teal-100">
+                Ward round
+              </p>
+              <h1 className="text-2xl font-bold text-white">Add Prescription by Ward</h1>
+            </div>
+          </div>
         </div>
       </div>
 
-      <Card className="mb-4">
-        <CardHeader>
-          <CardTitle className="text-base">Ward</CardTitle>
-          <CardDescription>
+      <div className="container mx-auto max-w-7xl p-6">
+
+      <Card className="mb-6 border-teal-200/70 shadow-sm">
+        <CardHeader className="rounded-t-lg border-b border-teal-100 bg-teal-50/60">
+          <CardTitle className="text-base text-teal-900">Ward</CardTitle>
+          <CardDescription className="text-teal-800/70">
             {rooms.length === 0
               ? 'No wards are assigned to your pharmacy yet — an administrator assigns rooms to a sub-pharmacy.'
               : 'Select the ward these patients are admitted to'}
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-5">
           <div className="max-w-md">
             <SearchableSelect
               options={rooms.map((r) => ({
@@ -407,12 +418,32 @@ export default function WardPrescriptionPage() {
 
       {selectedRoom && (
         <>
-          {patients.map((patient, index) => (
-            <Card key={patient.id} className="mb-4">
-              <CardHeader className="pb-3">
+          {patients.map((patient, index) => {
+            const identified = patient.lookupState === 'found';
+            return (
+            <div key={patient.id} className="relative mb-4 pl-12">
+              {/* Ward-round spine: the number is the order you walk the beds,
+                  and the marker carries whether that patient is identified yet */}
+              <div
+                aria-hidden
+                className="absolute left-[18px] top-0 h-full w-px bg-gradient-to-b from-teal-300 via-slate-200 to-transparent"
+              />
+              <div
+                aria-hidden
+                className={`absolute left-0 top-5 flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold tabular-nums ring-4 ring-slate-50 transition-colors ${
+                  identified
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-white text-slate-400 ring-4 ring-slate-50 border border-slate-300'
+                }`}
+              >
+                {index + 1}
+              </div>
+
+            <Card className="overflow-hidden border-slate-200 shadow-sm">
+              <CardHeader className="border-b border-slate-100 bg-slate-50/80 pb-3">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
-                    <CardTitle className="text-base">Patient {index + 1}</CardTitle>
+                    <CardTitle className="text-base text-slate-900">Patient {index + 1}</CardTitle>
                     <CardDescription>
                       All medicines below are saved as one prescription
                     </CardDescription>
@@ -487,12 +518,20 @@ export default function WardPrescriptionPage() {
                 </div>
 
                 {patient.lookupState === 'found' && (
-                  <p className="mt-1 text-sm font-medium text-green-700">
-                    {patient.patientName} · {formatMRN(patient.patientNrNumber ?? '')}
-                  </p>
+                  <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1">
+                    <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="text-sm font-semibold text-emerald-900">
+                      {patient.patientName}
+                    </span>
+                    <span className="font-mono text-xs text-emerald-700">
+                      {formatMRN(patient.patientNrNumber ?? '')}
+                    </span>
+                  </div>
                 )}
                 {patient.lookupState === 'missing' && (
-                  <p className="mt-1 text-sm text-destructive">Patient not found</p>
+                  <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-sm text-rose-800">
+                    No patient with that MR number
+                  </div>
                 )}
                 {patient.notice && (
                   <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">
@@ -514,7 +553,7 @@ export default function WardPrescriptionPage() {
               <CardContent>
                 <div className="overflow-x-auto">
                   <div className="min-w-[900px] space-y-2">
-                    <div className="grid grid-cols-[1fr_110px_120px_90px_90px_1fr_36px] gap-2 px-1 text-xs font-medium text-muted-foreground">
+                    <div className="grid grid-cols-[1fr_110px_120px_90px_90px_1fr_36px] gap-2 rounded-md bg-slate-100/70 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       <span>Medicine</span>
                       <span>Type</span>
                       <span>Frequency</span>
@@ -531,7 +570,11 @@ export default function WardPrescriptionPage() {
                       return (
                         <div
                           key={row.id}
-                          className="grid grid-cols-[1fr_110px_120px_90px_90px_1fr_36px] items-start gap-2"
+                          className={`grid grid-cols-[1fr_110px_120px_90px_90px_1fr_36px] items-start gap-2 rounded-md px-2 py-1.5 transition-colors ${
+                            row.category === 'LP'
+                              ? 'bg-orange-50/70 ring-1 ring-inset ring-orange-200'
+                              : 'hover:bg-slate-50'
+                          }`}
                         >
                           <SearchableSelect
                             options={optionsFor(row.category)}
@@ -575,7 +618,15 @@ export default function WardPrescriptionPage() {
                               className={`text-center ${overStock ? 'border-red-400 text-red-600' : ''}`}
                             />
                             {remaining !== null && (
-                              <p className={`mt-1 text-center text-xs ${overStock ? 'text-destructive' : 'text-muted-foreground'}`}>
+                              <p
+                                className={`mt-1 text-center text-xs font-semibold tabular-nums ${
+                                  overStock
+                                    ? 'text-rose-600'
+                                    : remaining <= row.quantity * 2
+                                      ? 'text-amber-600'
+                                      : 'text-emerald-600'
+                                }`}
+                              >
                                 {remaining} left
                               </p>
                             )}
@@ -652,49 +703,69 @@ export default function WardPrescriptionPage() {
                 </Button>
               </CardContent>
             </Card>
-          ))}
+            </div>
+            );
+          })}
 
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setPatients((ps) => [...ps, newPatient()])}
-          >
-            <UserPlus className="mr-2 h-4 w-4" />
-            Add Patient
-          </Button>
+          <div className="pl-12">
+            <Button
+              type="button"
+              variant="outline"
+              className="border-dashed border-teal-300 text-teal-800 hover:bg-teal-50"
+              onClick={() => setPatients((ps) => [...ps, newPatient()])}
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              Add Patient
+            </Button>
+          </div>
 
           {error && (
-            <div className="mt-4 rounded-lg border border-destructive bg-destructive/10 p-3">
-              <p className="text-sm text-destructive">{error}</p>
+            <div className="mt-4 rounded-lg border-l-4 border-l-rose-500 border border-rose-200 bg-rose-50 p-3">
+              <p className="text-sm font-medium text-rose-900">{error}</p>
             </div>
           )}
           {result && (
-            <div className="mt-4 flex items-center gap-2 rounded-lg border border-green-300 bg-green-50 p-3 text-sm text-green-800">
+            <div className="mt-4 flex items-center gap-2 rounded-lg border-l-4 border-l-emerald-500 border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-900">
               <CheckCircle className="h-4 w-4" />
               {result}
             </div>
           )}
 
-          <div className="mt-4 flex items-center justify-between rounded-lg bg-muted p-4">
-            <span className="text-sm text-muted-foreground">
-              {patients.length} patient{patients.length === 1 ? '' : 's'} ·{' '}
-              {totalMedicines} medicine{totalMedicines === 1 ? '' : 's'}
-              <Badge variant="secondary" className="ml-2">
-                {patients.length} prescription{patients.length === 1 ? '' : 's'} will be created
-              </Badge>
-            </span>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => router.push('/dashboard/prescriptions')}>
-                Cancel
-              </Button>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {saving ? 'Saving...' : 'Save Prescriptions'}
-              </Button>
+          {/* Stays in reach however long the ward list grows */}
+          <div className="sticky bottom-0 z-30 -mx-6 mt-6 border-t border-slate-200 bg-white/95 px-6 backdrop-blur">
+            <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div className="flex items-center gap-4 text-sm">
+                <span className="flex items-baseline gap-1.5">
+                  <span className="text-xl font-bold tabular-nums text-slate-900">{patients.length}</span>
+                  <span className="text-slate-500">patient{patients.length === 1 ? '' : 's'}</span>
+                </span>
+                <span className="h-6 w-px bg-slate-200" />
+                <span className="flex items-baseline gap-1.5">
+                  <span className="text-xl font-bold tabular-nums text-slate-900">{totalMedicines}</span>
+                  <span className="text-slate-500">medicine{totalMedicines === 1 ? '' : 's'}</span>
+                </span>
+                <Badge className="bg-teal-100 text-teal-900 hover:bg-teal-100">
+                  {patients.length} prescription{patients.length === 1 ? '' : 's'} will be created
+                </Badge>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => router.push('/dashboard/prescriptions')}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="bg-teal-600 hover:bg-teal-700"
+                >
+                  {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {saving ? 'Saving...' : 'Save Prescriptions'}
+                </Button>
+              </div>
             </div>
           </div>
         </>
       )}
+      </div>
     </div>
   );
 }
