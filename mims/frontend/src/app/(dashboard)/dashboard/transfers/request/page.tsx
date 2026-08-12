@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -79,6 +79,13 @@ interface Pharmacy {
   parentPharmacyId?: string | null;
 }
 
+interface Availability {
+  medicineId: string;
+  normalStock: number;
+  lpStock: number;
+  totalStock: number;
+}
+
 interface TransferItem {
   medicineId: string;
   medicineName: string;
@@ -98,6 +105,9 @@ type TransferRequestFormData = z.infer<typeof transferRequestSchema>;
 
 export default function RequestTransferPage() {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
+  // Live stock of the counterparty pharmacy currently selected, keyed by medicine
+  const [availability, setAvailability] = useState<Record<string, Availability>>({});
+  const [loadingStock, setLoadingStock] = useState(false);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
   const [allPharmacies, setAllPharmacies] = useState<Pharmacy[]>([]);
@@ -129,10 +139,37 @@ export default function RequestTransferPage() {
   });
 
   const selectedHospitalId = form.watch('hospitalId');
+  // The pharmacy the request is aimed at — the one whose shelves the stock
+  // would actually come off, whichever direction the transfer runs.
+  const targetPharmacyId = form.watch('fromPharmacyId');
+  const targetPharmacy = allPharmacies.find((p) => p.id === targetPharmacyId);
 
   useEffect(() => {
     fetchData();
   }, [currentHospitalId]);
+
+  // Stock belongs to a pharmacy, so it can only be loaded once one is chosen,
+  // and must be reloaded whenever the choice changes.
+  useEffect(() => {
+    if (!targetPharmacyId) {
+      setAvailability({});
+      return;
+    }
+    let cancelled = false;
+    setLoadingStock(true);
+    api
+      .get(`/inventory/availability/${targetPharmacyId}`)
+      .then((res) => {
+        if (cancelled) return;
+        const map: Record<string, Availability> = {};
+        (res.data ?? []).forEach((a: Availability) => { map[a.medicineId] = a; });
+        setAvailability(map);
+      })
+      .catch(() => { if (!cancelled) setAvailability({}); })
+      .finally(() => { if (!cancelled) setLoadingStock(false); });
+
+    return () => { cancelled = true; };
+  }, [targetPharmacyId]);
 
   useEffect(() => {
     if (isSuperAdmin && selectedHospitalId) {
@@ -169,9 +206,9 @@ export default function RequestTransferPage() {
     }
   };
 
-  // Every active medicine in the catalogue, not just what the source pharmacy
-  // happens to stock — this is a request, and the main pharmacy decides what it
-  // can actually fulfil. Paged, since the endpoint defaults to 50 per page.
+  // The catalogue only supplies names and forms; what the picker actually
+  // offers is narrowed to the selected pharmacy's stock in `optionsByPool`.
+  // Paged, since the endpoint defaults to 50 per page.
   const fetchMedicines = async () => {
     try {
       if (!currentHospitalId) return;
@@ -235,6 +272,39 @@ export default function RequestTransferPage() {
       console.error('Error fetching pharmacies:', error);
     }
   };
+
+  // Remaining stock at the target pharmacy for one medicine in one pool.
+  const remainingFor = (medicineId: string, lp: boolean) => {
+    const a = availability[medicineId];
+    if (!a) return 0;
+    return lp ? a.lpStock : a.normalStock;
+  };
+
+  // Normal and LP are separate stock pools, so the picker offers only what the
+  // selected pharmacy holds in the pool the toggle is set to. Rebuilt on stock
+  // or pool change rather than per render — the catalogue runs to thousands.
+  const medicineOptions = useMemo(
+    () =>
+      medicines
+        .filter((m) => {
+          const a = availability[m.id];
+          if (!a) return false;
+          return (isLP ? a.lpStock : a.normalStock) > 0;
+        })
+        .map((m) => ({
+          value: m.id,
+          label: m.name,
+          sub: [m.strength, m.form].filter(Boolean).join(' · '),
+        })),
+    [medicines, availability, isLP],
+  );
+
+  // Changing pharmacy or pool can strand a selection that no longer has stock.
+  useEffect(() => {
+    if (selectedMedicine && remainingFor(selectedMedicine, isLP) <= 0) {
+      setSelectedMedicine('');
+    }
+  }, [availability, isLP]);
 
   const handleAddItem = () => {
     if (!selectedMedicine || quantity <= 0) return;
@@ -531,7 +601,11 @@ export default function RequestTransferPage() {
         <Card>
           <CardHeader>
             <CardTitle>Add Medicines</CardTitle>
-            <CardDescription>Select medicines and quantities to request</CardDescription>
+            <CardDescription>
+              {targetPharmacy
+                ? `Showing stock held by ${targetPharmacy.name} (${targetPharmacy.code})`
+                : 'Select a pharmacy above to see the stock it holds'}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {/* LP Toggle */}
@@ -559,16 +633,27 @@ export default function RequestTransferPage() {
               <div className="flex-1">
                 <label className="text-sm font-medium mb-2 block">Medicine</label>
                 <SearchableSelect
-                  options={medicines.map((m) => ({
-                    value: m.id,
-                    label: m.name,
-                    sub: [m.strength, m.form].filter(Boolean).join(' · '),
-                  }))}
+                  options={medicineOptions}
                   value={selectedMedicine}
                   onValueChange={setSelectedMedicine}
-                  placeholder="Select medicine..."
+                  disabled={!targetPharmacyId || loadingStock}
+                  placeholder={
+                    !targetPharmacyId
+                      ? 'Select a pharmacy first...'
+                      : loadingStock
+                      ? 'Loading stock...'
+                      : 'Select medicine...'
+                  }
                   searchPlaceholder="Search medicine by name or strength..."
+                  emptyMessage={`No ${isLP ? 'LP' : 'Normal'} stock at this pharmacy.`}
                 />
+              </div>
+
+              <div className="w-28">
+                <label className="text-sm font-medium mb-2 block">Available</label>
+                <div className="h-10 flex items-center px-3 rounded-md border bg-muted text-sm tabular-nums">
+                  {selectedMedicine ? remainingFor(selectedMedicine, isLP) : '—'}
+                </div>
               </div>
 
               <div className="w-32">
@@ -587,6 +672,16 @@ export default function RequestTransferPage() {
                 Add Item
               </Button>
             </div>
+
+            {/* A request over stock is allowed — the supplying pharmacy settles
+                the final quantity at approval — but it should not be silent. */}
+            {selectedMedicine && quantity > remainingFor(selectedMedicine, isLP) && (
+              <p className="text-xs text-orange-600 mt-2">
+                Requesting more than the {remainingFor(selectedMedicine, isLP)} in stock.
+                {targetPharmacy ? ` ${targetPharmacy.name} ` : ' The supplying pharmacy '}
+                will confirm the final quantity at approval.
+              </p>
+            )}
 
           </CardContent>
         </Card>
