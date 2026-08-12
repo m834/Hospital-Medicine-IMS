@@ -190,15 +190,40 @@ export class AuditInterceptor implements NestInterceptor {
       return `Failed to ${verb} ${entity.toLowerCase()} ${name} — ${errorMessage || 'unknown error'}`;
     }
 
+    // A record entered under an earlier date is a different act from one
+    // entered as it happens, and the log has to say so — otherwise the only
+    // trace is a timestamp that disagrees with the entry it sits next to.
+    const backDated = this.describeBackDating(body, response);
+
     // Prefer the readable past tense (covers CREATE/UPDATE/DELETE and every
     // custom verb like DISPATCH/APPROVE/RECEIVE); fall back gracefully.
     const pastTense = ACTION_PAST_TENSE[action];
     if (pastTense) {
       return action === 'CREATE'
-        ? `Created new ${entity}: ${name}`
-        : `${pastTense} ${entity}: ${name}`;
+        ? `Created new ${entity}: ${name}${backDated}`
+        : `${pastTense} ${entity}: ${name}${backDated}`;
     }
-    return `${action} on ${entity}: ${name}`;
+    return `${action} on ${entity}: ${name}${backDated}`;
+  }
+
+  /**
+   * Suffix naming the date a record was back-dated to, or '' when it was not.
+   * Reads the request body so it holds for any resource that grows a
+   * back-dating field, not just prescriptions.
+   */
+  private describeBackDating(body: any, response: any): string {
+    const raw = body?.prescribedAt ?? body?.backDatedTo;
+    if (!raw) return '';
+
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+
+    const entered = response?.createdAt ? new Date(response.createdAt) : null;
+    const shown = entered && !Number.isNaN(entered.getTime()) ? entered : date;
+
+    const dd = String(shown.getDate()).padStart(2, '0');
+    const mm = String(shown.getMonth() + 1).padStart(2, '0');
+    return ` — back-dated to ${dd}/${mm}/${shown.getFullYear()}`;
   }
 
   private toPascalCase(str: string): string {

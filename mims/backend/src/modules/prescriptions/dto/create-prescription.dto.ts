@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsArray, ValidateNested, IsOptional, IsEnum, IsInt, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsArray, ValidateNested, IsOptional, IsEnum, IsInt, Min, IsDateString } from 'class-validator';
 import { BatchCategory, DosageFrequency } from '@prisma/client';
 import { Type } from 'class-transformer';
 
@@ -59,6 +59,15 @@ export class CreatePrescriptionDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  /**
+   * Date the prescription was actually written, for entering one after the
+   * fact. Omit for a prescription being written now. Date only (yyyy-mm-dd);
+   * the server keeps the current time of day so ordering within a day holds.
+   */
+  @IsOptional()
+  @IsDateString()
+  prescribedAt?: string;
 
   @IsArray()
   @ValidateNested({ each: true })

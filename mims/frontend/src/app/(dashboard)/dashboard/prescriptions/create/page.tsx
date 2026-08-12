@@ -10,6 +10,7 @@ import { fetchAllMedicines } from '@/lib/medicines';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { DateInput, isoToDisplayDate } from '@/components/ui/date-input';
 import {
   Dialog,
   DialogContent,
@@ -32,11 +33,23 @@ const medicineRowSchema = z.object({
   category: z.enum(['NORMAL', 'LP']),
 });
 
+/** Local yyyy-mm-dd — toISOString would shift the day across the timezone. */
+const todayIso = () => {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+};
+
 const prescriptionSchema = z.object({
   nrNumber: z.string().optional(),
   prescriptionType: z.enum(['E_PRESCRIPTION', 'SCANNED', 'WRITTEN']),
   scannedImageUrl: z.string().optional(),
   notes: z.string().optional(),
+  prescribedAt: z
+    .string()
+    .min(1, 'Prescription date is required')
+    .refine((v) => v <= todayIso(), 'Prescription date cannot be in the future'),
   medicines: z.array(medicineRowSchema).min(1, 'Add at least one medicine'),
 });
 
@@ -115,12 +128,15 @@ export default function CreatePrescriptionPage() {
     resolver: zodResolver(prescriptionSchema),
     defaultValues: {
       prescriptionType: 'E_PRESCRIPTION',
+      prescribedAt: todayIso(),
       medicines: [{ medicineId: '', dosageFrequency: '', quantity: 1, category: 'NORMAL' }],
     },
   });
 
   const { fields, append, remove, replace } = useFieldArray({ control, name: 'medicines' });
   const prescriptionType = watch('prescriptionType');
+  const prescribedAt = watch('prescribedAt');
+  const isBackDated = !!prescribedAt && prescribedAt !== todayIso();
 
   useEffect(() => {
     loadMedicines();
@@ -283,6 +299,9 @@ export default function CreatePrescriptionPage() {
         prescriptionType: data.prescriptionType,
         scannedImageUrl: data.scannedImageUrl || undefined,
         notes: data.notes || undefined,
+        // Only sent when back-dated — today is the server's own default, and
+        // omitting it keeps the exact creation time rather than rebuilding it.
+        prescribedAt: data.prescribedAt !== todayIso() ? data.prescribedAt : undefined,
         prescriptionMedicines: data.medicines.map((m) => ({
           medicineId: m.medicineId,
           dosageFrequency: m.dosageFrequency || undefined,
@@ -553,9 +572,31 @@ export default function CreatePrescriptionPage() {
           )}
         </div>
 
-        {/* Type + Notes */}
+        {/* Date + Type + Notes */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Prescription Date</label>
+              <DateInput
+                value={prescribedAt}
+                onChange={(iso) => setValue('prescribedAt', iso, { shouldValidate: true })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+              />
+              {errors.prescribedAt ? (
+                <p className="text-red-500 text-xs mt-1">{errors.prescribedAt.message}</p>
+              ) : isBackDated ? (
+                <p className="text-amber-600 text-xs mt-1">
+                  Back-dated — this prescription and its first dose will be recorded on{' '}
+                  {isoToDisplayDate(prescribedAt)}, not today. Stock is still taken from
+                  what is on the shelf now.
+                </p>
+              ) : (
+                <p className="text-gray-400 text-xs mt-1">
+                  Defaults to today. Change it to enter a prescription written earlier.
+                </p>
+              )}
+            </div>
+
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Prescription Type</label>
               <select

@@ -8,6 +8,7 @@ import { CreatePrescriptionDispatchDto } from './dto/create-prescription-dispatc
 import { PrescriptionStatus } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { mrnFilter } from '../../common/utils/mrn.util';
+import { resolveBackDate } from '../../common/utils/back-date.util';
 
 @Injectable()
 export class PrescriptionsService {
@@ -18,11 +19,12 @@ export class PrescriptionsService {
     private cacheService: CacheService,
   ) {}
 
+
   async create(
     createPrescriptionDto: CreatePrescriptionDto,
     user?: { id?: string; hospitalId?: string; pharmacyId?: string },
   ) {
-    const { nrNumber, doctorId, visitId: dtoVisitId, prescriptionMedicines, ...rest } = createPrescriptionDto;
+    const { nrNumber, doctorId, visitId: dtoVisitId, prescriptionMedicines, prescribedAt, ...rest } = createPrescriptionDto;
 
     const patient = await this.prisma.patient.findFirst({ where: { nrNumber: mrnFilter(nrNumber) } });
     if (!patient) throw new NotFoundException(`Patient with MRN ${nrNumber} not found`);
@@ -52,6 +54,13 @@ export class PrescriptionsService {
     const pharmacyId = user?.pharmacyId ?? null;
     const now = new Date();
 
+    // A back-dated prescription is one written earlier and entered now. The
+    // record carries the earlier date so it lands on the right day in every
+    // list and report; `now` stays the real clock and is what stock expiry is
+    // still judged against, since the batches being deducted are the ones on
+    // the shelf today.
+    const recordedAt = resolveBackDate(prescribedAt, now, 'Prescription date');
+
     const prescriptionId = await this.prisma.$transaction(async (tx) => {
       const created = await tx.prescription.create({
         data: {
@@ -65,6 +74,7 @@ export class PrescriptionsService {
           scannedImageUrl: rest.scannedImageUrl,
           notes: rest.notes,
           status: PrescriptionStatus.ACTIVE,
+          createdAt: recordedAt,
         },
       });
 
@@ -82,6 +92,7 @@ export class PrescriptionsService {
             instructions: m.instructions,
             category,
             addedBy: user?.id ?? '',
+            addedAt: recordedAt,
           },
         });
 
@@ -118,6 +129,10 @@ export class PrescriptionsService {
               visitId: resolvedVisitId,
               dispatchedBy: user?.id ?? '',
               notes: 'First dose dispensed at creation',
+              // Matches the prescription, so the per-item dispensing report —
+              // which filters on dispatchedAt — attributes the stock movement
+              // to the day it actually happened.
+              dispatchedAt: recordedAt,
             },
           });
         }
