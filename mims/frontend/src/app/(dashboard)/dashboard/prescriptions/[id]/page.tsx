@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { ArrowLeft, ChevronDown, ChevronRight, Loader2, Plus } from 'lucide-react';
@@ -18,6 +18,13 @@ interface MedicineInfo {
   genericName?: string;
   strength?: string;
   form: string;
+}
+
+interface Availability {
+  medicineId: string;
+  normalStock: number;
+  lpStock: number;
+  totalStock: number;
 }
 
 interface PrescriptionMedicine {
@@ -91,6 +98,7 @@ export default function PrescriptionDetailPage() {
   const { selectedHospital } = useHospitalStore();
 
   const currentHospitalId = selectedHospital?.id || user?.hospitalId;
+  const pharmacyId = user?.pharmacyId;
   const canDispatch = DISPATCH_ROLES.includes(user?.role || '');
   const canEdit = ALL_ROLES.includes(user?.role || '');
 
@@ -110,6 +118,7 @@ export default function PrescriptionDetailPage() {
   // Add medicine panel state
   const [showAdd, setShowAdd] = useState(false);
   const [allMedicines, setAllMedicines] = useState<MedicineInfo[]>([]);
+  const [availability, setAvailability] = useState<Record<string, Availability>>({});
   const [selectedMedId, setSelectedMedId] = useState('');
   const [addDosage, setAddDosage] = useState('');
   const [addInstructions, setAddInstructions] = useState('');
@@ -120,12 +129,58 @@ export default function PrescriptionDetailPage() {
     if (id) fetchPrescription();
   }, [id]);
 
+  // Catalogue plus live stock for the user's own pharmacy. Adding a medicine
+  // this pharmacy does not hold only produces an item that cannot be
+  // dispatched, so the picker is built from stock rather than the catalogue.
   useEffect(() => {
     if (!currentHospitalId) return;
-    fetchAllMedicines<MedicineInfo>(currentHospitalId)
-      .then(setAllMedicines)
+    Promise.all([
+      fetchAllMedicines<MedicineInfo>(currentHospitalId),
+      pharmacyId
+        ? api.get(`/inventory/availability/${pharmacyId}`)
+        : Promise.resolve({ data: [] as Availability[] }),
+    ])
+      .then(([medicineList, availRes]) => {
+        setAllMedicines(medicineList);
+        const map: Record<string, Availability> = {};
+        (availRes.data ?? []).forEach((a: Availability) => { map[a.medicineId] = a; });
+        setAvailability(map);
+      })
       .catch(() => {});
-  }, [currentHospitalId]);
+  }, [currentHospitalId, pharmacyId]);
+
+  // Remaining stock for a medicine in one pool, live from pharmacy inventory.
+  const remainingFor = (medicineId: string, category: 'NORMAL' | 'LP') => {
+    const a = availability[medicineId];
+    if (!a) return 0;
+    return category === 'LP' ? a.lpStock : a.normalStock;
+  };
+
+  // Normal and LP are separate stock pools, so the picker only offers what this
+  // pharmacy holds in the pool being added to.
+  const optionsByCategory = useMemo(() => {
+    const build = (pool: 'NORMAL' | 'LP') =>
+      allMedicines
+        .filter((m) => {
+          const a = availability[m.id];
+          if (!a) return false;
+          return (pool === 'LP' ? a.lpStock : a.normalStock) > 0;
+        })
+        .map((m) => ({
+          value: m.id,
+          label: m.name,
+          sub: [m.genericName, m.strength, m.form].filter(Boolean).join(' · '),
+        }));
+
+    return { NORMAL: build('NORMAL'), LP: build('LP') };
+  }, [allMedicines, availability]);
+
+  // A medicine stocked as Normal may not exist as LP, so switching pool drops a
+  // selection that has no stock in the pool being switched to.
+  function handleAddCategoryChange(next: 'NORMAL' | 'LP') {
+    setAddCategory(next);
+    if (selectedMedId && remainingFor(selectedMedId, next) <= 0) setSelectedMedId('');
+  }
 
   async function fetchPrescription() {
     setLoading(true);
@@ -424,22 +479,41 @@ export default function PrescriptionDetailPage() {
         <div className="bg-white rounded-lg shadow-sm border border-blue-200 p-6">
           <h3 className="font-semibold text-gray-800 mb-4">Add Medicine to Prescription</h3>
 
-          <div className="mb-4">
-            <SearchableSelect
-              options={allMedicines.map((m) => ({
-                value: m.id,
-                label: m.name,
-                sub: [m.genericName, m.strength, m.form].filter(Boolean).join(' · '),
-              }))}
-              value={selectedMedId}
-              onValueChange={setSelectedMedId}
-              placeholder="Select medicine..."
-              searchPlaceholder="Search by name or generic..."
-            />
+          {/* Pool first — it decides which medicines the picker can offer */}
+          <div className="grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 mb-1">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
+              <select
+                value={addCategory}
+                onChange={(e) => handleAddCategoryChange(e.target.value as 'NORMAL' | 'LP')}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="NORMAL">Normal</option>
+                <option value="LP">LP (Local Purchase)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Medicine</label>
+              <SearchableSelect
+                options={optionsByCategory[addCategory]}
+                value={selectedMedId}
+                onValueChange={setSelectedMedId}
+                placeholder={addCategory === 'LP' ? 'Select LP medicine...' : 'Select Normal medicine...'}
+                searchPlaceholder="Search by name or generic..."
+                emptyMessage="No medicine in stock in this pharmacy."
+              />
+            </div>
           </div>
+          <p className="text-xs text-gray-500 mb-4">
+            {!pharmacyId
+              ? 'Your account has no pharmacy assigned, so no stock can be shown.'
+              : selectedMedId
+                ? `${remainingFor(selectedMedId, addCategory)} in stock`
+                : `${optionsByCategory[addCategory].length} medicine(s) in stock in this pharmacy`}
+          </p>
 
           {selectedMedId && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Dosage</label>
                 <input
@@ -459,17 +533,6 @@ export default function PrescriptionDetailPage() {
                   onChange={(e) => setAddInstructions(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
-                <select
-                  value={addCategory}
-                  onChange={(e) => setAddCategory(e.target.value as 'NORMAL' | 'LP')}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="NORMAL">Normal</option>
-                  <option value="LP">LP (Local Purchase)</option>
-                </select>
               </div>
             </div>
           )}

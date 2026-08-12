@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { fetchAllMedicines } from '@/lib/medicines';
@@ -34,6 +34,13 @@ interface MedicineInfo {
   genericName?: string;
   strength?: string;
   form: string;
+}
+
+interface Availability {
+  medicineId: string;
+  normalStock: number;
+  lpStock: number;
+  totalStock: number;
 }
 
 type DosageFrequency = 'OD' | 'BID' | 'TDS' | 'SOS';
@@ -98,12 +105,14 @@ function ExpandedPanel({
   canDispatch,
   canEdit,
   hospitalId,
+  pharmacyId,
 }: {
   detail: PrescriptionDetail;
   onRefresh: () => void;
   canDispatch: boolean;
   canEdit: boolean;
   hospitalId?: string;
+  pharmacyId?: string;
 }) {
   const { toast } = useToast();
   const isActive = detail.status === 'ACTIVE';
@@ -131,6 +140,7 @@ function ExpandedPanel({
   // Add medicine state
   const [showAdd, setShowAdd] = useState(false);
   const [medicines, setMedicines] = useState<MedicineInfo[]>([]);
+  const [availability, setAvailability] = useState<Record<string, Availability>>({});
   const [selectedMedId, setSelectedMedId] = useState('');
   const [addDosage, setAddDosage] = useState('');
   const [addDosageFrequency, setAddDosageFrequency] = useState<DosageFrequency | ''>('');
@@ -141,12 +151,25 @@ function ExpandedPanel({
   // Dispatch history expand
   const [historyOpen, setHistoryOpen] = useState<Record<string, boolean>>({});
 
+  // Catalogue plus live stock for the user's own pharmacy. Adding a medicine
+  // this pharmacy does not hold only produces an item that cannot be
+  // dispatched, so the picker is built from stock rather than the catalogue.
   useEffect(() => {
     if (!hospitalId) return;
-    fetchAllMedicines<MedicineInfo>(hospitalId)
-      .then(setMedicines)
+    Promise.all([
+      fetchAllMedicines<MedicineInfo>(hospitalId),
+      pharmacyId
+        ? api.get(`/inventory/availability/${pharmacyId}`)
+        : Promise.resolve({ data: [] as Availability[] }),
+    ])
+      .then(([allMedicines, availRes]) => {
+        setMedicines(allMedicines);
+        const map: Record<string, Availability> = {};
+        (availRes.data ?? []).forEach((a: Availability) => { map[a.medicineId] = a; });
+        setAvailability(map);
+      })
       .catch(() => {});
-  }, [hospitalId]);
+  }, [hospitalId, pharmacyId]);
 
   function toggleCheck(pmId: string) {
     setChecked((p) => ({ ...p, [pmId]: !p[pmId] }));
@@ -245,6 +268,40 @@ function ExpandedPanel({
     setAddDosageFrequency('');
     setAddInstructions('');
     setAddCategory('NORMAL');
+  }
+
+  // Remaining stock for a medicine in one pool, live from pharmacy inventory.
+  const remainingFor = (medicineId: string, category: 'NORMAL' | 'LP') => {
+    const a = availability[medicineId];
+    if (!a) return 0;
+    return category === 'LP' ? a.lpStock : a.normalStock;
+  };
+
+  // Normal and LP are separate stock pools, so the picker only offers what this
+  // pharmacy holds in the pool being added to. Built once per catalogue or
+  // stock change rather than per render — the catalogue runs to thousands.
+  const optionsByCategory = useMemo(() => {
+    const build = (pool: 'NORMAL' | 'LP') =>
+      medicines
+        .filter((m) => {
+          const a = availability[m.id];
+          if (!a) return false;
+          return (pool === 'LP' ? a.lpStock : a.normalStock) > 0;
+        })
+        .map((m) => ({
+          value: m.id,
+          label: m.name,
+          sub: [m.genericName, m.strength, m.form].filter(Boolean).join(' · '),
+        }));
+
+    return { NORMAL: build('NORMAL'), LP: build('LP') };
+  }, [medicines, availability]);
+
+  // A medicine stocked as Normal may not exist as LP, so switching pool drops a
+  // selection that has no stock in the pool being switched to.
+  function handleAddCategoryChange(next: 'NORMAL' | 'LP') {
+    setAddCategory(next);
+    if (selectedMedId && remainingFor(selectedMedId, next) <= 0) setSelectedMedId('');
   }
 
   const lastDispatch = detail.dispatches?.[0];
@@ -457,19 +514,32 @@ function ExpandedPanel({
       {showAdd && isActive && (
         <div className="bg-white rounded-lg border border-blue-200 p-4">
           <h4 className="text-sm font-semibold text-gray-800 mb-3">Add Medicine</h4>
-          <div className="mb-3">
+          {/* Pool first — it decides which medicines the picker can offer */}
+          <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-2 mb-1">
+            <select
+              value={addCategory}
+              onChange={(e) => handleAddCategoryChange(e.target.value as 'NORMAL' | 'LP')}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="NORMAL">Normal</option>
+              <option value="LP">LP</option>
+            </select>
             <SearchableSelect
-              options={medicines.map((m) => ({
-                value: m.id,
-                label: m.name,
-                sub: [m.genericName, m.strength, m.form].filter(Boolean).join(' · '),
-              }))}
+              options={optionsByCategory[addCategory]}
               value={selectedMedId}
               onValueChange={setSelectedMedId}
-              placeholder="Select medicine..."
+              placeholder={addCategory === 'LP' ? 'Select LP medicine...' : 'Select Normal medicine...'}
               searchPlaceholder="Search by name or generic..."
+              emptyMessage="No medicine in stock in this pharmacy."
             />
           </div>
+          <p className="text-xs text-gray-500 mb-3">
+            {!pharmacyId
+              ? 'Your account has no pharmacy assigned, so no stock can be shown.'
+              : selectedMedId
+                ? `${remainingFor(selectedMedId, addCategory)} in stock`
+                : `${optionsByCategory[addCategory].length} medicine(s) in stock in this pharmacy`}
+          </p>
           {selectedMedId && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
               <select
@@ -489,11 +559,6 @@ function ExpandedPanel({
               <input type="text" placeholder="Instructions (e.g. after meals)" value={addInstructions}
                 onChange={(e) => setAddInstructions(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
-              <select value={addCategory} onChange={(e) => setAddCategory(e.target.value as 'NORMAL' | 'LP')}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
-                <option value="NORMAL">Normal</option>
-                <option value="LP">LP</option>
-              </select>
             </div>
           )}
           <div className="flex gap-2">
@@ -787,6 +852,7 @@ export default function PrescriptionsPage() {
                         canDispatch={canDispatch}
                         canEdit={canEdit}
                         hospitalId={currentHospitalId}
+                        pharmacyId={user?.pharmacyId}
                       />
                     ) : null
                   )}
