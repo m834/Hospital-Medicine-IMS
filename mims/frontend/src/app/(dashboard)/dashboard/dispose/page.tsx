@@ -18,7 +18,17 @@ import {
   PackageX,
   ShieldAlert,
   CheckCircle,
+  ClipboardList,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -93,6 +103,25 @@ interface PendingItem {
   note: string;
 }
 
+/**
+ * The same templates the prescription screen uses. A template item names a
+ * medicine; a disposal item needs a batch, so applying one has to choose the
+ * batch — see pickBatchForDisposal.
+ */
+interface TemplateItem {
+  medicine: { id: string; name: string };
+  quantity: number | null;
+  category: 'NORMAL' | 'LP';
+}
+
+interface Template {
+  id: string;
+  name: string;
+  description?: string | null;
+  pharmacy?: { id: string; name: string };
+  items: TemplateItem[];
+}
+
 interface DisposalRow {
   disposalId: string;
   disposedAt: string;
@@ -142,6 +171,15 @@ export default function DisposePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
 
+  // --- Templates ---
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
+  const [templateReason, setTemplateReason] = useState('');
+  const [templateNote, setTemplateNote] = useState('');
+  const [templateError, setTemplateError] = useState('');
+  const [templateNotice, setTemplateNotice] = useState<string | null>(null);
+
   // --- Disposed List tab ---
   const [report, setReport] = useState<DisposalReport | null>(null);
   const [loadingReport, setLoadingReport] = useState(true);
@@ -178,10 +216,24 @@ export default function DisposePage() {
     }
   }, []);
 
+  // Shared with the prescription screen — there is one set of templates per
+  // pharmacy, not a separate disposal set.
+  const loadTemplates = useCallback(async () => {
+    if (!currentHospitalId) return;
+    try {
+      const res = await api.get('/medicine-templates', { params: { hospitalId: currentHospitalId } });
+      setTemplates(res.data ?? []);
+    } catch {
+      // Optional convenience — a failure here must not block writing stock off
+      setTemplates([]);
+    }
+  }, [currentHospitalId]);
+
   useEffect(() => {
     void loadBatches();
     void loadReport({});
-  }, [loadBatches, loadReport]);
+    void loadTemplates();
+  }, [loadBatches, loadReport, loadTemplates]);
 
   // One entry per medicine, however many batches it has
   const medicineOptions = Array.from(
@@ -240,6 +292,96 @@ export default function DisposePage() {
     setNote('');
   };
 
+  /**
+   * A template names a medicine; a disposal is always of a specific physical
+   * batch. Of the batches this pharmacy holds in the item's pool, take the one
+   * closest to expiring — disposal is overwhelmingly expiry-driven, and it is
+   * the same expiry-first rule the rest of the app allocates by.
+   */
+  const pickBatchForDisposal = (medicineId: string, category: 'NORMAL' | 'LP') =>
+    batches
+      .filter((b) => b.medicine.id === medicineId && b.category === category)
+      .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime())[0];
+
+  /**
+   * Queue every medicine in a template that this pharmacy actually holds.
+   * Rows land in the pending list like manually added ones and can be adjusted
+   * or removed before saving; nothing leaves stock until the disposal is saved.
+   */
+  const applyTemplate = (template: Template) => {
+    setTemplateError('');
+
+    if (!templateReason) { setTemplateError('Choose a reason for these items'); return; }
+    if (templateReason === 'OTHER' && !templateNote.trim()) {
+      setTemplateError('Describe the reason when choosing Other'); return;
+    }
+
+    // Running tally, so several template items landing on the same batch —
+    // and anything already queued — cannot together exceed what it holds.
+    const claimed = new Map<string, number>();
+    pending.forEach((p) => claimed.set(p.batch.id, (claimed.get(p.batch.id) ?? 0) + p.quantity));
+
+    const added: PendingItem[] = [];
+    const skipped: string[] = [];
+
+    for (const item of template.items) {
+      const category = item.category ?? 'NORMAL';
+      const batch = pickBatchForDisposal(item.medicine.id, category);
+
+      if (!batch) { skipped.push(item.medicine.name); continue; }
+
+      const alreadyClaimed = claimed.get(batch.id) ?? 0;
+      const room = batch.qtyAvailable - alreadyClaimed;
+      if (room <= 0) { skipped.push(item.medicine.name); continue; }
+
+      // The template's quantity is a starting point, never more than the batch
+      // actually holds. It stays editable in the queued list.
+      const quantity = Math.min(item.quantity ?? 1, room);
+      claimed.set(batch.id, alreadyClaimed + quantity);
+
+      added.push({
+        id: Math.random().toString(36).slice(2),
+        batch,
+        quantity,
+        reason: templateReason,
+        note: templateNote.trim(),
+      });
+    }
+
+    if (added.length > 0) setPending((p) => [...p, ...added]);
+
+    setTemplateDialogOpen(false);
+    setExpandedTemplateId(null);
+    setTemplateReason('');
+    setTemplateNote('');
+
+    let notice = added.length > 0
+      ? `Queued ${added.length} item${added.length === 1 ? '' : 's'} from "${template.name}"`
+      : `Nothing queued from "${template.name}"`;
+    if (skipped.length > 0) {
+      notice += ` — ${skipped.length} skipped (no stock: ${skipped.join(', ')})`;
+    }
+    setTemplateNotice(notice);
+  };
+
+  /**
+   * Queued quantities are editable, since a templated quantity is a starting
+   * point rather than a decision. Capped against the batch, counting what other
+   * queued rows have already claimed from it.
+   */
+  const updatePendingQuantity = (id: string, next: number) => {
+    setPending((rows) =>
+      rows.map((row) => {
+        if (row.id !== id) return row;
+        const claimedElsewhere = rows
+          .filter((r) => r.id !== id && r.batch.id === row.batch.id)
+          .reduce((sum, r) => sum + r.quantity, 0);
+        const ceiling = row.batch.qtyAvailable - claimedElsewhere;
+        return { ...row, quantity: Math.max(1, Math.min(next, ceiling)) };
+      }),
+    );
+  };
+
   const save = async () => {
     if (pending.length === 0) { setFormError('Add at least one item'); return; }
 
@@ -262,6 +404,7 @@ export default function DisposePage() {
       setPending([]);
       setNotes('');
       setSelectedMedicineId('');
+      setTemplateNotice(null);
       await Promise.all([loadBatches(), loadReport(applied)]);
     } catch (err: any) {
       setFormError(err.response?.data?.message || 'Failed to record the disposal');
@@ -356,12 +499,46 @@ export default function DisposePage() {
               <>
                 <Card className="mb-4 border-orange-200/70 shadow-sm">
                   <CardHeader className="rounded-t-lg border-b border-orange-100 bg-orange-50/60">
-                    <CardTitle className="text-base text-orange-950">Add Item</CardTitle>
-                    <CardDescription className="text-orange-900/70">
-                      Add as many items as you need, then record them together
-                    </CardDescription>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <CardTitle className="text-base text-orange-950">Add Item</CardTitle>
+                        <CardDescription className="text-orange-900/70">
+                          Add as many items as you need, then record them together
+                        </CardDescription>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() => {
+                          setExpandedTemplateId(null);
+                          setTemplateError('');
+                          setTemplateDialogOpen(true);
+                        }}
+                        disabled={templates.length === 0}
+                        title={
+                          templates.length === 0
+                            ? 'No templates available'
+                            : 'Queue the medicines from a template'
+                        }
+                      >
+                        <ClipboardList className="h-3.5 w-3.5" /> Select Template
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent className="pt-5">
+                    {templateNotice && (
+                      <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-800">
+                        <span>{templateNotice}</span>
+                        <button
+                          type="button"
+                          onClick={() => setTemplateNotice(null)}
+                          className="text-indigo-500 hover:text-indigo-700"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
                     {loadingBatches ? (
                       <div className="flex min-h-[120px] items-center justify-center">
                         <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -507,8 +684,23 @@ export default function DisposePage() {
                                   </TableCell>
                                   <TableCell className="font-mono text-xs">{item.batch.batchNo}</TableCell>
                                   <TableCell className="text-sm">{formatDay(item.batch.expiryDate)}</TableCell>
-                                  <TableCell className="text-right font-semibold tabular-nums">
-                                    {item.quantity.toLocaleString()}
+                                  <TableCell className="text-right">
+                                    {/* Editable: a templated quantity is a
+                                        starting point, and correcting it should
+                                        not mean deleting the row and re-adding */}
+                                    <Input
+                                      type="number"
+                                      min={1}
+                                      max={item.batch.qtyAvailable}
+                                      value={item.quantity}
+                                      onChange={(e) =>
+                                        updatePendingQuantity(item.id, parseInt(e.target.value, 10) || 1)
+                                      }
+                                      className="ml-auto h-8 w-24 text-right tabular-nums"
+                                    />
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                      of {item.batch.qtyAvailable.toLocaleString()}
+                                    </p>
                                   </TableCell>
                                   <TableCell>
                                     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${REASON_STYLE[item.reason]}`}>
@@ -697,6 +889,125 @@ export default function DisposePage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Template picker: choose the reason once, then expand a template to see
+          which of its medicines this pharmacy can actually write off. */}
+      <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Select a Template</DialogTitle>
+            <DialogDescription>
+              Queues the batch closest to expiring for each medicine. Quantities stay
+              editable, and nothing leaves stock until you record the disposal.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* One reason covers the whole template — a template sweep is a single
+              act (an expiry check, a recall), not a per-item judgement. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Reason</label>
+              <Select value={templateReason} onValueChange={setTemplateReason}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select reason" />
+                </SelectTrigger>
+                <SelectContent>
+                  {REASONS.map((r) => (
+                    <SelectItem key={r.value} value={r.value}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">
+                Note {templateReason === 'OTHER' ? '' : <span className="text-muted-foreground">(optional)</span>}
+              </label>
+              <Input
+                placeholder="Applies to every item added"
+                value={templateNote}
+                onChange={(e) => setTemplateNote(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {templateError && (
+            <p className="text-sm text-red-600">{templateError}</p>
+          )}
+
+          <div className="max-h-[45vh] overflow-y-auto">
+            {templates.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No templates available.
+              </p>
+            ) : (
+              <ul className="divide-y divide-gray-100">
+                {templates.map((t) => {
+                  const expanded = expandedTemplateId === t.id;
+                  return (
+                    <li key={t.id}>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedTemplateId(expanded ? null : t.id)}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-3 text-left hover:bg-gray-50"
+                      >
+                        {expanded ? (
+                          <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-gray-800">{t.name}</span>
+                          <span className="block text-xs text-gray-500">
+                            {t.items.length} medicine{t.items.length === 1 ? '' : 's'}
+                            {t.pharmacy?.name ? ` · ${t.pharmacy.name}` : ''}
+                          </span>
+                        </span>
+                      </button>
+
+                      {expanded && (
+                        <div className="mb-3 ml-6 overflow-hidden rounded-lg border border-gray-100">
+                          <div className="divide-y divide-gray-100">
+                            {t.items.map((it, i) => {
+                              const category = it.category ?? 'NORMAL';
+                              const batch = pickBatchForDisposal(it.medicine.id, category);
+                              return (
+                                <div key={i} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                                  <div className="min-w-0">
+                                    <span className="block truncate text-gray-800">{it.medicine.name}</span>
+                                    <span className="block text-xs text-gray-500">
+                                      {it.quantity ? `Qty ${it.quantity}` : 'Qty 1'}
+                                      {category === 'LP' ? ' · LP' : ''}
+                                      {batch ? ` · batch ${batch.batchNo} exp ${formatDay(batch.expiryDate)}` : ''}
+                                    </span>
+                                  </div>
+                                  <span
+                                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                                      batch ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
+                                    }`}
+                                  >
+                                    {batch ? `Holds ${batch.qtyAvailable}` : 'No stock'}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="flex justify-end bg-gray-50 px-3 py-2">
+                            <Button size="sm" onClick={() => applyTemplate(t)}>
+                              Add to disposal
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
