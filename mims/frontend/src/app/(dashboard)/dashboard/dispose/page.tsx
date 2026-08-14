@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Loader2,
   Plus,
@@ -61,39 +62,16 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import api from '@/lib/api';
 import { format } from 'date-fns';
+import {
+  REASONS,
+  REASON_LABEL,
+  REASON_STYLE,
+  DisposalBatch,
+  DisposalRoom,
+} from '@/lib/disposal';
 
-const REASONS = [
-  { value: 'EXPIRED', label: 'Expired' },
-  { value: 'DAMAGED', label: 'Damaged' },
-  { value: 'BROKEN', label: 'Broken' },
-  { value: 'CONTAMINATED', label: 'Contaminated' },
-  { value: 'RECALLED', label: 'Recalled' },
-  { value: 'OTHER', label: 'Other' },
-] as const;
-
-const REASON_LABEL: Record<string, string> = Object.fromEntries(
-  REASONS.map((r) => [r.value, r.label]),
-);
-
-// Reasons are facts, not severities — colour groups them quietly
-const REASON_STYLE: Record<string, string> = {
-  EXPIRED: 'bg-amber-100 text-amber-900',
-  DAMAGED: 'bg-rose-100 text-rose-900',
-  BROKEN: 'bg-rose-100 text-rose-900',
-  CONTAMINATED: 'bg-purple-100 text-purple-900',
-  RECALLED: 'bg-blue-100 text-blue-900',
-  OTHER: 'bg-slate-100 text-slate-900',
-};
-
-interface Batch {
-  id: string;
-  batchNo: string;
-  qtyAvailable: number;
-  expiryDate: string;
-  category: 'NORMAL' | 'LP';
-  status: string;
-  medicine: { id: string; name: string; strength?: string; form: string };
-}
+// Batch and Room live in @/lib/disposal, shared with the Dispose by Ward page
+type Batch = DisposalBatch;
 
 interface PendingItem {
   id: string;
@@ -122,18 +100,7 @@ interface Template {
   items: TemplateItem[];
 }
 
-/**
- * A ward is a Room, and a Room belongs to a sub-pharmacy. Stock itself has no
- * ward — it sits with the pharmacy — so picking a ward here is a way of
- * choosing whose shelves to write off from, not a filter on the stock.
- */
-interface Room {
-  id: string;
-  roomNumber: string;
-  roomType: string;
-  department?: { name: string } | null;
-  pharmacy?: { id: string; name: string; code: string; type: string } | null;
-}
+type Room = DisposalRoom;
 
 interface DisposalRow {
   disposalId: string;
@@ -162,6 +129,7 @@ const toIsoDate = (value: string): string | undefined => {
 };
 
 export default function DisposePage() {
+  const router = useRouter();
   const { user } = useAuthStore();
   const { selectedHospital } = useHospitalStore();
   const currentHospitalId = user?.hospitalId || selectedHospital?.id;
@@ -526,10 +494,25 @@ export default function DisposePage() {
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-orange-100">
             Stock write-off
           </p>
-          <h1 className="text-2xl font-bold text-white">Dispose</h1>
-          <p className="mt-1 text-sm text-orange-50/80">
-            Remove expired, damaged or recalled stock and keep an auditable record
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold text-white">Dispose</h1>
+              <p className="mt-1 text-sm text-orange-50/80">
+                Remove expired, damaged or recalled stock and keep an auditable record
+              </p>
+            </div>
+            {/* Counterpart to Add Prescription by Ward — a ward sweep is many
+                lines at once rather than one item at a time. */}
+            {canDispose && (
+              <button
+                onClick={() => router.push('/dashboard/dispose/ward')}
+                className="rounded-lg border border-white/70 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/10"
+                title="Write off several items from one ward's pharmacy in a single pass"
+              >
+                Dispose by Ward
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
