@@ -122,6 +122,19 @@ interface Template {
   items: TemplateItem[];
 }
 
+/**
+ * A ward is a Room, and a Room belongs to a sub-pharmacy. Stock itself has no
+ * ward — it sits with the pharmacy — so picking a ward here is a way of
+ * choosing whose shelves to write off from, not a filter on the stock.
+ */
+interface Room {
+  id: string;
+  roomNumber: string;
+  roomType: string;
+  department?: { name: string } | null;
+  pharmacy?: { id: string; name: string; code: string; type: string } | null;
+}
+
 interface DisposalRow {
   disposalId: string;
   disposedAt: string;
@@ -156,6 +169,18 @@ export default function DisposePage() {
 
   const canDispose = ['SUPER_ADMIN', 'MASTER_ADMIN', 'HOSPITAL_ADMIN', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER']
     .includes(user?.role ?? '');
+
+  // --- Ward selection ---
+  // The server only lets a pharmacy user write off their own stock
+  // (inventory.service: batch.pharmacyId must equal the user's), so choosing a
+  // ward is only meaningful for admins who carry no pharmacy of their own.
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [selectedWardId, setSelectedWardId] = useState('');
+  const canChooseWard = !pharmacyId;
+
+  const selectedWard = rooms.find((r) => r.id === selectedWardId) ?? null;
+  // A pharmacy user is pinned to their own; an admin follows the chosen ward.
+  const effectivePharmacyId = pharmacyId || selectedWard?.pharmacy?.id || undefined;
 
   // --- Dispose Items tab ---
   const [batches, setBatches] = useState<Batch[]>([]);
@@ -192,7 +217,7 @@ export default function DisposePage() {
     setLoadingBatches(true);
     try {
       const params: any = { hospitalId: currentHospitalId, limit: 2000 };
-      if (pharmacyId) params.pharmacyId = pharmacyId;
+      if (effectivePharmacyId) params.pharmacyId = effectivePharmacyId;
       const res = await api.get('/inventory/batches', { params });
       const list: Batch[] = res.data?.data ?? res.data ?? [];
       // Only stock that is actually on the shelf can be written off
@@ -202,7 +227,7 @@ export default function DisposePage() {
     } finally {
       setLoadingBatches(false);
     }
-  }, [currentHospitalId, pharmacyId]);
+  }, [currentHospitalId, effectivePharmacyId]);
 
   const loadReport = useCallback(async (range: { from?: string; to?: string }) => {
     setLoadingReport(true);
@@ -229,11 +254,35 @@ export default function DisposePage() {
     }
   }, [currentHospitalId]);
 
+  // Only wards that have a pharmacy behind them can point at any stock.
+  const loadRooms = useCallback(async () => {
+    if (!currentHospitalId || !canChooseWard) return;
+    try {
+      const res = await api.get('/rooms', { params: { hospitalId: currentHospitalId, limit: 200 } });
+      const list: Room[] = res.data?.data ?? res.data ?? [];
+      setRooms(list.filter((r) => r.pharmacy?.id));
+    } catch {
+      setRooms([]);
+    }
+  }, [currentHospitalId, canChooseWard]);
+
   useEffect(() => {
     void loadBatches();
     void loadReport({});
     void loadTemplates();
-  }, [loadBatches, loadReport, loadTemplates]);
+    void loadRooms();
+  }, [loadBatches, loadReport, loadTemplates, loadRooms]);
+
+  // Switching ward switches pharmacy, so anything queued belongs to the old
+  // one — the server would reject a disposal mixing two pharmacies anyway.
+  const handleWardChange = (wardId: string) => {
+    if (pending.length > 0 && !window.confirm('Changing ward clears the items you have queued. Continue?')) return;
+    setSelectedWardId(wardId);
+    setPending([]);
+    setSelectedMedicineId('');
+    setSelectedBatchId('');
+    setFormError('');
+  };
 
   // One entry per medicine, however many batches it has
   const medicineOptions = Array.from(
@@ -246,6 +295,17 @@ export default function DisposePage() {
 
   const batchesForMedicine = batches.filter((b) => b.medicine.id === selectedMedicineId);
   const selectedBatch = batches.find((b) => b.id === selectedBatchId) ?? null;
+
+  /**
+   * What is genuinely left in the selected batch: its stock less whatever the
+   * queued rows have already claimed from it. Null when no batch is chosen.
+   */
+  const remainingInSelectedBatch = selectedBatch
+    ? selectedBatch.qtyAvailable -
+      pending
+        .filter((p) => p.batch.id === selectedBatch.id)
+        .reduce((sum, p) => sum + p.quantity, 0)
+    : null;
 
   const formatDay = (v: string) => format(new Date(v), 'dd/MM/yyyy');
   const formatWhen = (v: string) => format(new Date(v), 'dd/MM/yyyy HH:mm');
@@ -539,6 +599,41 @@ export default function DisposePage() {
                         </button>
                       </div>
                     )}
+                    {/* Ward → the sub-pharmacy whose shelves are being written
+                        off. Shown only to admins with no pharmacy of their own;
+                        a pharmacy user is pinned to theirs by the server. */}
+                    {canChooseWard && (
+                      <div className="mb-4 grid gap-3 sm:grid-cols-[280px_1fr] sm:items-end">
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">Ward</label>
+                          <Select value={selectedWardId} onValueChange={handleWardChange}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="All pharmacies" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {rooms.length === 0 && (
+                                <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                                  No wards are assigned to a pharmacy
+                                </div>
+                              )}
+                              {rooms.map((r) => (
+                                <SelectItem key={r.id} value={r.id}>
+                                  {r.roomNumber}
+                                  {r.department?.name ? ` · ${r.department.name}` : ''}
+                                  {r.pharmacy?.name ? ` — ${r.pharmacy.name}` : ''}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <p className="pb-2 text-xs text-muted-foreground">
+                          {selectedWard
+                            ? `Showing stock held by ${selectedWard.pharmacy?.name}. Stock belongs to the pharmacy, not the ward.`
+                            : 'Pick a ward to write off from its pharmacy, or leave blank to see all stock in the hospital.'}
+                        </p>
+                      </div>
+                    )}
+
                     {loadingBatches ? (
                       <div className="flex min-h-[120px] items-center justify-center">
                         <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -551,7 +646,7 @@ export default function DisposePage() {
                       <>
                         {/* One row: medicine, batch, quantity, reason, note, add */}
                         <div className="overflow-x-auto">
-                        <div className="grid min-w-[1100px] grid-cols-[1.5fr_1.6fr_100px_150px_1fr_auto] items-end gap-3">
+                        <div className="grid min-w-[1200px] grid-cols-[1.5fr_1.6fr_100px_100px_150px_1fr_auto] items-end gap-3">
                           <div className="space-y-1">
                             <label className="text-sm font-medium">Medicine</label>
                             <SearchableSelect
@@ -590,11 +685,29 @@ export default function DisposePage() {
                             <Input
                               type="number"
                               min={1}
-                              max={selectedBatch?.qtyAvailable}
+                              max={remainingInSelectedBatch ?? undefined}
                               value={quantity}
                               onChange={(e) => setQuantity(Number(e.target.value))}
                             />
+                          </div>
 
+                          {/* Remaining, as on the prescription form. Counts what
+                              is already queued against this batch, so it shows
+                              what is genuinely left to take rather than the
+                              batch total — addItem enforces the same figure. */}
+                          <div className="space-y-1">
+                            <label className="text-sm font-medium">Remaining</label>
+                            <div
+                              className={`flex h-10 items-center justify-center rounded-md border px-3 text-sm tabular-nums ${
+                                remainingInSelectedBatch === null
+                                  ? 'bg-muted text-muted-foreground'
+                                  : quantity > remainingInSelectedBatch
+                                  ? 'border-red-300 bg-red-50 font-semibold text-red-700'
+                                  : 'bg-muted font-medium'
+                              }`}
+                            >
+                              {remainingInSelectedBatch ?? '—'}
+                            </div>
                           </div>
 
                           <div className="space-y-1">
