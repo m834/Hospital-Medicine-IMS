@@ -538,4 +538,35 @@ export class PrescriptionsService {
       select: { id: true, status: true },
     });
   }
+
+  /**
+   * Put a completed prescription back to ACTIVE so it can be dispatched again.
+   *
+   * Completion is normally the end of the line — the screen calls it
+   * discharging the patient — so this exists for the case where it was pressed
+   * by mistake, and is restricted to admins at the controller.
+   *
+   * Nothing else is undone: dispatches already made stand, and the stock they
+   * took stays deducted. Reopening reverses the status only, never the
+   * inventory, because the medicine really did leave the shelf.
+   */
+  async reopenPrescription(prescriptionId: string) {
+    const prescription = await this.prisma.prescription.findUnique({
+      where: { id: prescriptionId },
+      select: { id: true, status: true, nrNumber: true },
+    });
+    if (!prescription) throw new NotFoundException('Prescription not found');
+
+    if (prescription.status !== PrescriptionStatus.COMPLETED) {
+      throw new BadRequestException('Only completed prescriptions can be reopened');
+    }
+
+    this.logger.log(`Prescription ${prescriptionId} (${prescription.nrNumber}) reopened`);
+
+    return this.prisma.prescription.update({
+      where: { id: prescriptionId },
+      data: { status: PrescriptionStatus.ACTIVE },
+      select: { id: true, status: true, nrNumber: true },
+    });
+  }
 }

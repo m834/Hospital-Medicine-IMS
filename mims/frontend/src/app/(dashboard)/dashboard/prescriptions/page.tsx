@@ -88,6 +88,9 @@ interface PrescriptionDetail extends PrescriptionSummary {
 const DISPATCH_ROLES = ['SUPER_ADMIN', 'HOSPITAL_ADMIN', 'MAIN_PHARMACY_MANAGER', 'PHARMACY_STAFF', 'SUB_PHARMACY_MANAGER'];
 const ALL_ROLES = [...DISPATCH_ROLES, 'DOCTOR', 'DOCTOR_ASSISTANT'];
 const CREATE_ROLES = ['SUPER_ADMIN', 'HOSPITAL_ADMIN', 'DOCTOR', 'DOCTOR_ASSISTANT', 'MAIN_PHARMACY_MANAGER', 'SUB_PHARMACY_MANAGER'];
+// Reopening undoes a completion, so it is narrower than completing — mirrors
+// ADMIN_ROLES on the server, which is what actually enforces it.
+const REOPEN_ROLES = ['MASTER_ADMIN', 'SUPER_ADMIN', 'HOSPITAL_ADMIN'];
 
 function StatusBadge({ status }: { status: string }) {
   return status === 'ACTIVE' ? (
@@ -104,6 +107,7 @@ function ExpandedPanel({
   onRefresh,
   canDispatch,
   canEdit,
+  canReopen,
   hospitalId,
   pharmacyId,
 }: {
@@ -111,11 +115,13 @@ function ExpandedPanel({
   onRefresh: () => void;
   canDispatch: boolean;
   canEdit: boolean;
+  canReopen: boolean;
   hospitalId?: string;
   pharmacyId?: string;
 }) {
   const { toast } = useToast();
   const isActive = detail.status === 'ACTIVE';
+  const [reopening, setReopening] = useState(false);
 
   // Checklist state
   const [checked, setChecked] = useState<Record<string, boolean>>({});
@@ -261,6 +267,23 @@ function ExpandedPanel({
       toast({ title: 'Error', description: err.response?.data?.message || 'Failed', variant: 'destructive' });
     } finally {
       setAdding(false);
+    }
+  }
+
+  // Puts a completed prescription back to ACTIVE so it can be dispatched
+  // again. Dispatches already made stand and their stock stays deducted —
+  // the medicine really did leave the shelf — so the confirm says so.
+  async function handleReopen() {
+    if (!confirm('Reopen this prescription? It becomes active again so more medicines can be dispatched. Medicines already dispatched stay dispatched and their stock is not returned.')) return;
+    setReopening(true);
+    try {
+      await api.patch(`/prescriptions/${detail.id}/reopen`);
+      toast({ title: 'Prescription reopened' });
+      onRefresh();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.response?.data?.message || 'Failed to reopen', variant: 'destructive' });
+    } finally {
+      setReopening(false);
     }
   }
 
@@ -485,6 +508,24 @@ function ExpandedPanel({
         <p className="text-sm text-gray-400 italic">No medicines on this prescription yet.</p>
       )}
 
+      {/* Completed prescriptions are otherwise a dead end. Admins get a way
+          back for the case where discharge was pressed by mistake. */}
+      {!isActive && canReopen && (
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleReopen}
+            disabled={reopening}
+            className="flex items-center gap-1.5 rounded-lg border border-amber-400 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 transition-colors hover:bg-amber-100 disabled:opacity-50"
+          >
+            {reopening && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Reopen Prescription
+          </button>
+          <span className="text-xs text-gray-500">
+            Makes it active again. Medicines already dispatched are not returned to stock.
+          </span>
+        </div>
+      )}
+
       {/* Action buttons */}
       {isActive && (
         <div className="flex flex-wrap items-center gap-2">
@@ -651,6 +692,7 @@ export default function PrescriptionsPage() {
   const canCreate = CREATE_ROLES.includes(user?.role || '');
   const canDispatch = DISPATCH_ROLES.includes(user?.role || '');
   const canEdit = ALL_ROLES.includes(user?.role || '');
+  const canReopen = REOPEN_ROLES.includes(user?.role || '');
 
   const [prescriptions, setPrescriptions] = useState<PrescriptionSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -866,6 +908,7 @@ export default function PrescriptionsPage() {
                         onRefresh={() => refreshDetail(rx.id)}
                         canDispatch={canDispatch}
                         canEdit={canEdit}
+                        canReopen={canReopen}
                         hospitalId={currentHospitalId}
                         pharmacyId={user?.pharmacyId}
                       />

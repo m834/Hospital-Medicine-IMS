@@ -29,6 +29,14 @@ const ALL_PRESCRIPTION_ROLES = [
   UserRole.SUB_PHARMACY_MANAGER,
 ];
 
+// Reopening undoes a completion, so it is deliberately narrower than the roles
+// that may complete one — only the platform and hospital administrators.
+const ADMIN_ROLES = [
+  UserRole.MASTER_ADMIN,
+  UserRole.SUPER_ADMIN,
+  UserRole.HOSPITAL_ADMIN,
+];
+
 const PHARMACY_ROLES = [
   UserRole.SUPER_ADMIN,
   UserRole.HOSPITAL_ADMIN,
@@ -96,5 +104,11 @@ export class PrescriptionsController {
   @Roles(...ALL_PRESCRIPTION_ROLES)
   completePrescription(@Param('id') id: string) {
     return this.prescriptionsService.completePrescription(id);
+  }
+
+  @Patch(':id/reopen')
+  @Roles(...ADMIN_ROLES)
+  reopenPrescription(@Param('id') id: string) {
+    return this.prescriptionsService.reopenPrescription(id);
   }
 }

@@ -69,6 +69,7 @@ const SUB_ACTION_VERB: Record<string, string> = {
   'fix-received':  'FIX',
   'reset-password':'RESET_PASSWORD',
   download:        'DOWNLOAD',
+  reopen:          'REOPEN',
 };
 
 // Reads are not audited — there would be a row for every page view. The one
@@ -96,6 +97,7 @@ const ACTION_PAST_TENSE: Record<string, string> = {
   FIX:            'Fixed',
   RESET_PASSWORD: 'Reset password for',
   DOWNLOAD:       'Downloaded',
+  REOPEN:         'Reopened',
 };
 
 @Injectable()
