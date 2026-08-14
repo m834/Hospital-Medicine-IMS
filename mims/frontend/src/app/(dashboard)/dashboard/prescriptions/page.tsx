@@ -226,12 +226,15 @@ function ExpandedPanel({
     }
   }
 
+  // Labelled "Discharge Patient" per the ward's wording. It closes the
+  // prescription and nothing more — ward discharge lives on /ward/discharge —
+  // so the confirmation spells out the actual effect.
   async function handleComplete() {
-    if (!confirm('Mark this prescription as Completed? No further dispatches will be possible.')) return;
+    if (!confirm('Discharge this patient? The prescription will be closed and no further dispatches will be possible.')) return;
     setCompleting(true);
     try {
       await api.patch(`/prescriptions/${detail.id}/complete`);
-      toast({ title: 'Prescription completed' });
+      toast({ title: 'Patient discharged', description: 'Prescription closed' });
       onRefresh();
     } catch (err: any) {
       toast({ title: 'Error', description: err.response?.data?.message || 'Failed', variant: 'destructive' });
@@ -516,7 +519,7 @@ function ExpandedPanel({
               className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
             >
               {completing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Mark as Completed
+              Discharge Patient
             </button>
           )}
         </div>

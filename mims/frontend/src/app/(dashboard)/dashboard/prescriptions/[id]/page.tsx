@@ -254,12 +254,15 @@ export default function PrescriptionDetailPage() {
     }
   }
 
+  // Labelled "Discharge Patient" per the ward's wording. It closes the
+  // prescription and nothing more — ward discharge lives on /ward/discharge —
+  // so the confirmation spells out the actual effect.
   async function handleComplete() {
-    if (!confirm('Mark this prescription as Completed? No further dispatches will be possible.')) return;
+    if (!confirm('Discharge this patient? The prescription will be closed and no further dispatches will be possible.')) return;
     setCompleting(true);
     try {
       await api.patch(`/prescriptions/${id}/complete`);
-      toast({ title: 'Prescription completed' });
+      toast({ title: 'Patient discharged', description: 'Prescription closed' });
       await fetchPrescription();
     } catch (err: any) {
       toast({ title: 'Error', description: err.response?.data?.message || 'Failed to complete', variant: 'destructive' });
@@ -472,7 +475,7 @@ export default function PrescriptionDetailPage() {
                   className="ml-auto flex items-center gap-1.5 px-4 py-2 text-sm bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
                 >
                   {completing && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Complete Prescription
+                  Discharge Patient
                 </button>
               )}
             </div>
