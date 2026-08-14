@@ -9,7 +9,7 @@ import {
   AlertCircle, Syringe, HeartPulse, Activity, ChevronLeft, ChevronRight,
   Store, Flag, Shield, Stethoscope, ClipboardList, Clock, UserPlus, Receipt,
   DoorOpen, Bed, UserRoundPlus, UserRoundX, TestTube, Microscope, CheckSquare, FileCheck, Wallet, DollarSign,
-  Trash2,
+  Trash2, Database,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -259,11 +259,19 @@ const menuItems: MenuItem[] = [
   },
   
   // Feature Flags - Admin only
-  { 
-    label: 'Feature Flags', 
-    href: '/admin/feature-flags', 
-    icon: Flag, 
-    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN] 
+  {
+    label: 'Feature Flags',
+    href: '/admin/feature-flags',
+    icon: Flag,
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN]
+  },
+
+  // Database Backup - platform admins only (a dump is the whole database)
+  {
+    label: 'Database Backup',
+    href: '/admin/backups',
+    icon: Database,
+    roles: [UserRole.SUPER_ADMIN, UserRole.MASTER_ADMIN]
   },
   
   // Activity Logs - Admin only

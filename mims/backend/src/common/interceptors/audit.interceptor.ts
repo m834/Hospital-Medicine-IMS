@@ -39,6 +39,7 @@ const ROUTE_META: Record<string, { module: string; entity: string }> = {
   receipts:           { module: 'Receipts',      entity: 'Receipt'         },
   grn:                { module: 'Inventory',     entity: 'GRN'             },
   'purchase-orders':  { module: 'Inventory',     entity: 'PurchaseOrder'   },
+  backups:            { module: 'Backups',       entity: 'Backup'          },
 };
 
 const METHOD_ACTION: Record<string, string> = {
@@ -67,7 +68,13 @@ const SUB_ACTION_VERB: Record<string, string> = {
   complete:        'COMPLETE',
   'fix-received':  'FIX',
   'reset-password':'RESET_PASSWORD',
+  download:        'DOWNLOAD',
 };
+
+// Reads are not audited — there would be a row for every page view. The one
+// exception is a download, which for backups means the entire database
+// leaving the server. That is at least as sensitive as any write.
+const AUDITED_READ_SUFFIX = '/download';
 
 // Human-readable past tense for building the audit description line.
 const ACTION_PAST_TENSE: Record<string, string> = {
@@ -88,6 +95,7 @@ const ACTION_PAST_TENSE: Record<string, string> = {
   COMPLETE:       'Completed',
   FIX:            'Fixed',
   RESET_PASSWORD: 'Reset password for',
+  DOWNLOAD:       'Downloaded',
 };
 
 @Injectable()
@@ -99,7 +107,11 @@ export class AuditInterceptor implements NestInterceptor {
     const { method, url, params, body } = request;
     const { user } = request;
 
-    if (!Object.keys(METHOD_ACTION).includes(method) || !user?.sub) {
+    const isMutation = Object.keys(METHOD_ACTION).includes(method);
+    const isAuditedRead =
+      method === 'GET' && url.split('?')[0].endsWith(AUDITED_READ_SUFFIX);
+
+    if ((!isMutation && !isAuditedRead) || !user?.sub) {
       return next.handle();
     }
 
@@ -150,7 +162,15 @@ export class AuditInterceptor implements NestInterceptor {
         ? `${baseAction}_FAILED`
         : baseAction;
 
-      const entityId = params?.id || responseData?.id || requestBody?.id || 'unknown';
+      // Not every entity is keyed by id — a backup is identified by its
+      // filename, in the route for download/delete and in the body on create.
+      const entityId =
+        params?.id ||
+        params?.filename ||
+        responseData?.id ||
+        responseData?.filename ||
+        requestBody?.id ||
+        'unknown';
 
       const description = this.buildDescription(
         action, meta.module, meta.entity, entityId, requestBody, responseData, errorMessage,

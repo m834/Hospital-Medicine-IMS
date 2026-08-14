@@ -58,6 +58,7 @@ import { LicenseModule } from './common/license/license.module';
 // Import configuration
 import { DatabaseModule } from './database/database.module';
 import { HospitalsModule } from './modules/hospitals/hospitals.module';
+import { BackupModule } from './modules/backup/backup.module';
 import databaseConfig from './config/database.config';
 import appConfig from './config/app.config';
 
@@ -101,6 +102,7 @@ import appConfig from './config/app.config';
     NotificationsModule,
     IssuanceModule,
     HospitalsModule,
+    BackupModule,
     PharmaciesModule,
     UsersModule,
     TransfersModule,

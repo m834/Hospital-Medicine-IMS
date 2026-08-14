@@ -35,7 +35,10 @@ RUN addgroup -g 1001 -S mims && adduser -S mims -u 1001 -G mims
 WORKDIR /app
 
 # Install production-only system dependencies
-RUN apk add --no-cache openssl libstdc++
+# postgresql16-client provides pg_dump for the Super Admin backup feature.
+# The major version must match the server (postgres:16-alpine) — pg_dump
+# refuses to dump a database newer than itself.
+RUN apk add --no-cache openssl libstdc++ postgresql16-client
 
 # Copy obfuscated application (no TypeScript source)
 COPY --from=builder --chown=mims:mims /build/dist-protected/app ./app
@@ -44,6 +47,10 @@ COPY --from=builder --chown=mims:mims /build/dist-protected/package.json ./packa
 
 # Copy Prisma client (pre-generated, no source)
 COPY --from=builder --chown=mims:mims /build/dist-protected/node_modules ./node_modules
+
+# Backups are written here. Created with the app's ownership so the non-root
+# user can write to it even before a volume is mounted over the top.
+RUN mkdir -p /app/backups && chown mims:mims /app/backups
 
 # Install runtime node_modules (no source exposed)
 RUN npm install --omit=dev --ignore-scripts 2>/dev/null || true

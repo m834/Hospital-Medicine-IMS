@@ -66,8 +66,13 @@ services:
       HOSPITAL_LOCALE: ${HOSPITAL_LOCALE}
       FIFO_ALLOCATION_ENABLED: ${FIFO_ALLOCATION_ENABLED}
       LICENSE_MASTER_KEY: ${LICENSE_MASTER_KEY}
+      BACKUP_DIR: /app/backups
     volumes:
       - ./license.key:/app/license.key:ro
+      # Bind-mounted, not a named volume: a backup you cannot reach from the
+      # host shell is no use during a restore, and these files have to be
+      # copied between the local server and cloud by hand.
+      - ./backups:/app/backups
     depends_on:
       civil-postgres:
         condition: service_healthy
