@@ -365,13 +365,17 @@ export default function MedicineTemplatesPage() {
                     <option value="TDS">TDS (×3/day)</option>
                     <option value="SOS">SOS (if needed)</option>
                   </select>
+                  {/* Frequency pre-fills the quantity but must not lock it.
+                      The mapping gives doses per day; a template line is how
+                      much to hand over, which for OD over five days is five,
+                      not one. Locking it made any quantity above the daily
+                      count unreachable. */}
                   <input
                     type="number"
                     min={1}
                     value={row.quantity}
                     onChange={(e) => updateRow(index, { quantity: Math.max(1, Number(e.target.value) || 1) })}
-                    disabled={!!row.dosageFrequency && row.dosageFrequency !== 'SOS'}
-                    className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm text-center focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:text-gray-500"
+                    className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm text-center focus:ring-2 focus:ring-indigo-500"
                   />
                   <div className="flex items-center justify-center gap-1">
                     <span className="text-xs text-gray-400">N</span>
