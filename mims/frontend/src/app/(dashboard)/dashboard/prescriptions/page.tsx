@@ -359,6 +359,18 @@ function ExpandedPanel({
         </div>
       </div>
 
+      {/* Remark — written when the prescription was created. It was captured
+          and stored but never shown here, so whatever the prescriber wanted the
+          pharmacy to know was only visible on the separate detail page. Given
+          its own full-width row rather than a grid cell: it is free text and
+          would be clipped in a narrow column. */}
+      {detail.notes && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5">
+          <span className="block text-xs font-medium text-amber-800">Remark</span>
+          <p className="mt-0.5 whitespace-pre-wrap text-sm text-amber-900">{detail.notes}</p>
+        </div>
+      )}
+
       {/* Medicine checklist — ACTIVE only */}
       {isActive && detail.medicines.length > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">

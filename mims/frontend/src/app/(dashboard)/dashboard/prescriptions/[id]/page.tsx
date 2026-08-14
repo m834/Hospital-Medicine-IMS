@@ -348,8 +348,14 @@ export default function PrescriptionDetailPage() {
           {prescription.doctor && <span>Dr. {prescription.doctor.fullName}</span>}
           <span>Created: {format(new Date(prescription.createdAt), 'dd MMM yyyy')}</span>
         </div>
+        {/* Labelled rather than loose italic text: unlabelled it reads as a
+            subtitle to the heading, and the remark is the prescriber talking
+            to the pharmacy. Matches the styling on the prescriptions list. */}
         {prescription.notes && (
-          <p className="mt-1 text-sm text-gray-600 italic">{prescription.notes}</p>
+          <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5">
+            <span className="block text-xs font-medium text-amber-800">Remark</span>
+            <p className="mt-0.5 whitespace-pre-wrap text-sm text-amber-900">{prescription.notes}</p>
+          </div>
         )}
       </div>
 

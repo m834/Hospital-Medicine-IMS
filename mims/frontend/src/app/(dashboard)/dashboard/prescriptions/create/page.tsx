@@ -622,13 +622,15 @@ export default function CreatePrescriptionPage() {
             )}
 
             <div className={prescriptionType === 'SCANNED' ? '' : 'sm:col-span-1'}>
+              {/* Labelled Remark to match where it surfaces — the prescription
+                  info panel and detail page both show it under that heading */}
               <label className="block text-xs font-medium text-gray-600 mb-1">
-                Notes <span className="text-gray-400">(optional)</span>
+                Remark <span className="text-gray-400">(optional)</span>
               </label>
               <input
                 type="text"
                 {...register('notes')}
-                placeholder="Additional notes..."
+                placeholder="Shown to the pharmacy with the patient details"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
               />
             </div>
