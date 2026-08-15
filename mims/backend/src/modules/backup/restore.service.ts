@@ -235,15 +235,17 @@ export class RestoreService {
     const scratch = await this.loadIntoScratch(dumpPath);
     const source = new PrismaClient({ datasources: { db: { url: this.prismaUrlFor(scratch) } } });
 
+    // Declared outside the try so a failure can still report how far it got.
+    const tables: TableMergeResult[] = [];
+
     try {
-      const tables: TableMergeResult[] = [];
 
       // Parents first: each step needs the previous step's id mapping to
       // translate foreign keys from the file's ids to this database's.
       const hospitalIds = await this.mergeHospitals(source, tables, dryRun);
       const pharmacyIds = await this.mergePharmacies(source, tables, dryRun, hospitalIds);
       const medicineIds = await this.mergeMedicines(source, tables, dryRun, hospitalIds);
-      await this.mergePatients(source, tables, dryRun, hospitalIds);
+      await this.mergePatients(source, tables, dryRun, hospitalIds, user.id);
       await this.mergeStockBatches(source, tables, dryRun, hospitalIds, pharmacyIds, medicineIds);
 
       return {
@@ -254,6 +256,23 @@ export class RestoreService {
         totalInserted: tables.reduce((sum, t) => sum + t.inserted, 0),
         durationMs: Date.now() - startedAt,
       };
+    } catch (err) {
+      // A merge failure would otherwise reach the client as a bare 500 with no
+      // hint of which table or which row. Name what was reached and how far it
+      // got, and log the underlying error in full.
+      const e = err as Error & { code?: string; meta?: any };
+      const done = tables.map((t) => `${t.table} +${t.inserted}`).join(', ') || 'none';
+      this.logger.error(
+        `Restore failed after [${done}] — ${e.code ?? ''} ${e.message}`,
+        e.stack,
+      );
+
+      const where = tables.length > 0 ? ` The last table completed was ${tables[tables.length - 1].table}.` : '';
+      throw new OperationalException(
+        `The merge stopped partway.${where} Nothing after that point was added, ` +
+          `and a safety backup was taken first${safetyBackup ? ` (${safetyBackup})` : ''}. ` +
+          'The reason is in the server log.',
+      );
     } finally {
       await source.$disconnect().catch(() => undefined);
       await this.dropScratch(scratch);
@@ -393,6 +412,7 @@ export class RestoreService {
     out: TableMergeResult[],
     dryRun: boolean,
     hospitalIds: Map<string, string>,
+    importedBy: string,
   ) {
     const rows = await source.patient.findMany();
     const r = this.blank('Patients', rows.length);
@@ -413,14 +433,19 @@ export class RestoreService {
         r.inserted += 1;
         continue;
       }
-      // Clinical links (attending doctor, registering user) point at users
-      // this database may not have, so they are left unset rather than
-      // pointed at the wrong person.
+      // registeredBy is a REQUIRED foreign key to User, and users are not
+      // merged — the id in the file belongs to a user of the other system and
+      // does not exist here, so carrying it over violates the constraint.
+      // It becomes the person running the restore, who is in truth the one
+      // bringing the record in, and is an id certain to exist.
+      //
+      // attendingDoctorId is nullable and is left unset rather than pointed at
+      // whichever local user happens to share that id.
       const {
         id, hospitalId: _h, attendingDoctorId: _d, registeredBy: _r, ...data
       } = row as any;
       await this.prisma.patient.create({
-        data: { ...data, hospitalId, registeredBy: row.registeredBy },
+        data: { ...data, hospitalId, registeredBy: importedBy },
       });
       r.inserted += 1;
     }

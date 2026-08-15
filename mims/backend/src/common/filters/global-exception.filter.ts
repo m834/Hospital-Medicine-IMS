@@ -10,6 +10,7 @@ import {
   NotFoundException,
   ConflictException,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { Response } from 'express';
 
@@ -48,6 +49,8 @@ export interface ErrorResponse {
  */
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger('GlobalExceptionFilter');
+
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
@@ -63,13 +66,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     // which is unactionable precisely when action is what is needed.
     let isSafeMessage = false;
 
-    // Log the full error for debugging/monitoring
-    console.error('[EXCEPTION_FILTER]', {
-      exception,
-      url: request.url,
-      method: request.method,
-      timestamp: new Date().toISOString(),
-    });
+    // Logged via Nest's Logger, never console. The production build is passed
+    // through an obfuscator configured with disableConsoleOutput, which strips
+    // every console.* call in our own code — so a console.error here vanishes
+    // in the only environment where it matters, and an unhandled error becomes
+    // a 500 with no trace of what caused it.
+    this.logger.debug(`${request.method} ${request.url}`);
 
     // Handle Prisma validation errors
     if (exception instanceof BadRequestException) {
@@ -127,8 +129,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
     // Handle unknown exceptions
     else if (exception instanceof Error) {
-      // SECURITY: Never expose internal error details in production
-      console.error('[UNHANDLED_ERROR]', exception.message, exception.stack);
+      // The client is told nothing (right — the message may carry internals),
+      // so the log is the ONLY record of what happened. It has to survive the
+      // obfuscator, which means Logger rather than console.
+      this.logger.error(
+        `Unhandled error on ${request.method} ${request.url}: ${exception.message}`,
+        exception.stack,
+      );
       message = 'Internal Server Error';
       error = 'InternalServerError';
       statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
