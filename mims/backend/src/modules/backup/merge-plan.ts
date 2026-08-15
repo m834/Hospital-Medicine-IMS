@@ -111,7 +111,8 @@ export const MERGE_PLAN: TableSpec[] = [
     label: 'Lab tests',
     model: 'labTest',
     strategy: 'natural',
-    naturalKey: ['hospitalId', 'name'],
+    // testCode, not name — the column is testCode/testName here
+    naturalKey: ['hospitalId', 'testCode'],
     remap: { hospitalId: 'hospital', departmentId: 'department' },
     nullable: ['departmentId', 'subDepartmentId'],
     mapKey: 'labTest',
