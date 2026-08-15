@@ -9,6 +9,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { OperationalException } from '../../common/exceptions/operational.exception';
 import { BackupService } from './backup.service';
 import { RestoreReport, TableMergeResult } from './restore.types';
+import { toLibpqUrl } from './libpq-url.util';
 
 /**
  * Merge-restore: bring rows that exist in a backup file but not in this
@@ -52,8 +53,17 @@ export class RestoreService {
     return { base, database };
   }
 
-  /** A connection string for another database on the same server. */
+  /** A connection string for another database, safe to hand to psql. */
   private urlFor(dbName: string): string {
+    const { base } = this.adminUrl();
+    return toLibpqUrl(base.toString(), dbName);
+  }
+
+  /**
+   * The scratch database is read by Prisma, not psql, so it keeps the pool
+   * parameters that psql cannot take.
+   */
+  private prismaUrlFor(dbName: string): string {
     const { base } = this.adminUrl();
     const u = new URL(base.toString());
     u.pathname = `/${dbName}`;
@@ -165,7 +175,7 @@ export class RestoreService {
     }
 
     const scratch = await this.loadIntoScratch(dumpPath);
-    const source = new PrismaClient({ datasources: { db: { url: this.urlFor(scratch) } } });
+    const source = new PrismaClient({ datasources: { db: { url: this.prismaUrlFor(scratch) } } });
 
     try {
       const tables: TableMergeResult[] = [];
