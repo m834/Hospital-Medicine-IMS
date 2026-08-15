@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from '@prisma/client';
 import { spawn } from 'child_process';
 import { createReadStream } from 'fs';
-import { unlink } from 'fs/promises';
+import { unlink, open } from 'fs/promises';
 import { createGunzip } from 'zlib';
 import { PrismaService } from '../../database/prisma.service';
 import { OperationalException } from '../../common/exceptions/operational.exception';
@@ -118,6 +118,23 @@ export class RestoreService {
   }
 
   /**
+   * Is this file gzipped? Read the magic bytes rather than trusting the name.
+   *
+   * A dump may arrive as .sql.gz from this app, as plain .sql from pg_dump run
+   * by hand, or renamed by whoever copied it between environments. Sniffing
+   * two bytes is exact where an extension is a guess.
+   */
+  private async isGzipped(path: string): Promise<boolean> {
+    const handle = await open(path, 'r');
+    try {
+      const { buffer, bytesRead } = await handle.read(Buffer.alloc(2), 0, 2, 0);
+      return bytesRead === 2 && buffer[0] === 0x1f && buffer[1] === 0x8b;
+    } finally {
+      await handle.close();
+    }
+  }
+
+  /**
    * Load the uploaded dump into a throwaway database.
    * Named with a timestamp so a crashed run leaves an obvious orphan rather
    * than colliding with the next attempt.
@@ -131,8 +148,13 @@ export class RestoreService {
     await this.psql(database, `CREATE DATABASE "${scratch}"`);
 
     try {
-      const gunzipped = createReadStream(dumpPath).pipe(createGunzip());
-      await this.runPsql(['--dbname', this.urlFor(scratch)], gunzipped);
+      const gzipped = await this.isGzipped(dumpPath);
+      this.logger.log(`Loading ${gzipped ? 'gzipped' : 'plain'} dump into ${scratch}`);
+
+      const raw = createReadStream(dumpPath);
+      const stream = gzipped ? raw.pipe(createGunzip()) : raw;
+
+      await this.runPsql(['--dbname', this.urlFor(scratch)], stream);
       return scratch;
     } catch (err) {
       await this.dropScratch(scratch);

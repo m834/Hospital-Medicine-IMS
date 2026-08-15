@@ -292,13 +292,14 @@ export default function BackupsPage() {
           <CardDescription>
             Upload a backup from another environment to bring across what this database is
             missing. Existing records are never changed or removed — only missing ones are added.
+            Accepts a .sql or .sql.gz dump.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 pt-4">
           <div className="flex flex-wrap items-center gap-3">
             <input
               type="file"
-              accept=".gz"
+              accept=".sql,.gz,.sql.gz,.dump"
               onChange={(e) => {
                 setFile(e.target.files?.[0] ?? null);
                 setReport(null);

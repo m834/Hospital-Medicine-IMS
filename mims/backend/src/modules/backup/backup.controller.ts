@@ -91,10 +91,15 @@ export class BackupController {
       // would not fit comfortably, and psql reads it from disk anyway.
       storage: diskStorage({ destination: '/tmp' }),
       limits: { fileSize: 2 * 1024 * 1024 * 1024 },
+      // A dump may arrive gzipped from this app, or plain from pg_dump run by
+      // hand on another server. Both are accepted; the service sniffs the
+      // file's magic bytes rather than trusting the extension.
       fileFilter: (_req, file, cb) => {
-        if (!file.originalname.endsWith('.sql.gz')) {
+        if (!/\.(sql|sql\.gz|gz|dump)$/i.test(file.originalname)) {
           return cb(
-            new BadRequestException('Upload a .sql.gz backup produced by this system.'),
+            new BadRequestException(
+              'Upload a database dump — a .sql or .sql.gz file.',
+            ),
             false,
           );
         }
