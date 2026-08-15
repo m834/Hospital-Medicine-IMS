@@ -10,6 +10,7 @@ import { OperationalException } from '../../common/exceptions/operational.except
 import { BackupService } from './backup.service';
 import { RestoreReport, TableMergeResult } from './restore.types';
 import { toLibpqUrl } from './libpq-url.util';
+import { createPreambleFilter } from './sql-preamble-filter';
 
 /**
  * Merge-restore: bring rows that exist in a backup file but not in this
@@ -72,6 +73,26 @@ export class RestoreService {
 
   private async psql(dbName: string, sql: string): Promise<void> {
     await this.runPsql(['--dbname', this.urlFor(dbName), '--command', sql]);
+  }
+
+  /** Every session setting this server recognises, lower-cased. */
+  private async knownSettings(dbName: string): Promise<Set<string>> {
+    return new Promise((resolve) => {
+      const child = spawn('psql', [
+        '--dbname', this.urlFor(dbName),
+        '--tuples-only', '--no-align',
+        '--command', 'select name from pg_settings',
+      ]);
+
+      let out = '';
+      child.stdout.on('data', (c) => { out += c.toString(); });
+      // A failure here must not stop the restore: an empty set simply means
+      // nothing gets filtered, which is the behaviour we had before.
+      child.on('error', () => resolve(new Set()));
+      child.on('close', () =>
+        resolve(new Set(out.split('\n').map((s) => s.trim().toLowerCase()).filter(Boolean))),
+      );
+    });
   }
 
   private runPsql(args: string[], stdinFrom?: NodeJS.ReadableStream): Promise<void> {
@@ -151,10 +172,25 @@ export class RestoreService {
       const gzipped = await this.isGzipped(dumpPath);
       this.logger.log(`Loading ${gzipped ? 'gzipped' : 'plain'} dump into ${scratch}`);
 
+      // The dump may name session settings this server has never heard of —
+      // a newer pg_dump writing for a newer server. Ask what it accepts and
+      // drop the rest, or the load aborts on the preamble and creates nothing.
+      const known = await this.knownSettings(scratch);
+      const dropped = new Set<string>();
+
       const raw = createReadStream(dumpPath);
-      const stream = gzipped ? raw.pipe(createGunzip()) : raw;
+      const decompressed = gzipped ? raw.pipe(createGunzip()) : raw;
+      const stream = decompressed.pipe(
+        createPreambleFilter(known, (name) => dropped.add(name)),
+      );
 
       await this.runPsql(['--dbname', this.urlFor(scratch)], stream);
+
+      if (dropped.size > 0) {
+        this.logger.log(
+          `Ignored settings this server does not support: ${[...dropped].join(', ')}`,
+        );
+      }
       return scratch;
     } catch (err) {
       await this.dropScratch(scratch);
