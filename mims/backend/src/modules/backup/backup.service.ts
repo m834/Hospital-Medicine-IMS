@@ -7,12 +7,14 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { spawn } from 'child_process';
-import { createWriteStream, createReadStream } from 'fs';
-import { mkdir, readdir, readFile, writeFile, stat, unlink } from 'fs/promises';
+import { createWriteStream, createReadStream, constants as fsConstants } from 'fs';
+import { mkdir, readdir, readFile, writeFile, stat, unlink, access, statfs } from 'fs/promises';
 import { join, resolve } from 'path';
 import { createGzip } from 'zlib';
 import { pipeline } from 'stream/promises';
 import { isValidBackupFilename, buildBackupFilename } from './backup-filename.util';
+import { OperationalException } from '../../common/exceptions/operational.exception';
+import { describeDumpFailure } from './dump-failure.util';
 
 export interface BackupManifest {
   filename: string;
@@ -99,6 +101,48 @@ export class BackupService {
     return backupPath.replace(/\.sql\.gz$/, '.json');
   }
 
+  /**
+   * Fail before starting, with a reason, rather than part-way through with a
+   * stack. Each of these has actually bitten: the bind-mounted directory is
+   * root-owned while the app runs as another user, or the disk is too full to
+   * hold a dump that a small database never came close to filling.
+   */
+  private async assertCanWriteBackups(): Promise<void> {
+    try {
+      await mkdir(this.backupDir, { recursive: true });
+    } catch {
+      throw new OperationalException(
+        `The backups directory (${this.backupDir}) could not be created on the server.`,
+      );
+    }
+
+    try {
+      await access(this.backupDir, fsConstants.W_OK);
+    } catch {
+      throw new OperationalException(
+        `The backups directory (${this.backupDir}) is not writable by the application. ` +
+          'On a Docker deployment the mounted folder must be owned by the container user.',
+      );
+    }
+
+    // statfs is not on every platform; a failure to measure must not block a
+    // backup that would otherwise succeed.
+    try {
+      const fsStat = await statfs(this.backupDir);
+      const freeBytes = fsStat.bavail * fsStat.bsize;
+      const freeMb = Math.floor(freeBytes / (1024 * 1024));
+      if (freeMb < 200) {
+        throw new OperationalException(
+          `Only ${freeMb} MB of disk space is free where backups are written. Free space and try again.`,
+        );
+      }
+      this.logger.log(`Backup preflight OK — ${freeMb} MB free at ${this.backupDir}`);
+    } catch (err) {
+      if (err instanceof OperationalException) throw err;
+      this.logger.warn(`Could not measure free disk space at ${this.backupDir}`);
+    }
+  }
+
   async create(user: {
     id: string;
     fullName?: string;
@@ -109,7 +153,7 @@ export class BackupService {
     const startedAt = new Date();
     const filename = buildBackupFilename(db.database, startedAt);
 
-    await mkdir(this.backupDir, { recursive: true });
+    await this.assertCanWriteBackups();
     const target = join(this.backupDir, filename);
 
     this.logger.log(`Backup started by ${user.id} → ${filename}`);
@@ -143,8 +187,9 @@ export class BackupService {
       child.on('error', (err: NodeJS.ErrnoException) => {
         rej(
           err.code === 'ENOENT'
-            ? new InternalServerErrorException(
-                'pg_dump was not found in this container. The backend image needs postgresql-client installed.',
+            ? new OperationalException(
+                'The backup tool (pg_dump) is not installed in the application container. ' +
+                  'The backend image needs a postgresql client matching the database version.',
               )
             : err,
         );
@@ -159,17 +204,36 @@ export class BackupService {
         pipeline(child.stdout, createGzip(), createWriteStream(target)),
         exited.then((code) => {
           if (code !== 0) {
-            throw new InternalServerErrorException(
-              `pg_dump failed (exit ${code}): ${stderr.trim() || 'no output'}`,
-            );
+            // Full stderr to the log, a usable sentence to the client.
+            this.logger.error(`pg_dump exited ${code}: ${stderr.trim() || 'no output'}`);
+            throw new OperationalException(describeDumpFailure(stderr, code));
           }
         }),
       ]);
     } catch (err) {
       // Never leave a truncated file looking like a usable backup
       await unlink(target).catch(() => undefined);
-      this.logger.error(`Backup failed: ${(err as Error).message}`);
-      throw err;
+
+      if (err instanceof OperationalException) throw err;
+
+      // Anything else — a write that failed mid-stream, a disk filling up
+      // during the dump — still has to arrive as something actionable.
+      const e = err as NodeJS.ErrnoException;
+      this.logger.error(`Backup failed (${e.code ?? 'unknown'}): ${e.message}`, e.stack);
+
+      if (e.code === 'ENOSPC') {
+        throw new OperationalException(
+          'The server ran out of disk space while writing the backup. Free space and try again.',
+        );
+      }
+      if (e.code === 'EACCES' || e.code === 'EPERM') {
+        throw new OperationalException(
+          `The server was not allowed to write to ${this.backupDir}. The backups directory must be writable by the application user.`,
+        );
+      }
+      throw new OperationalException(
+        'The backup could not be written. The reason is in the server log.',
+      );
     }
 
     const { size } = await stat(target);

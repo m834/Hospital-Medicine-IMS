@@ -57,6 +57,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     let message = 'Internal Server Error';
     let error = 'InternalServerError';
     let validationErrors: any = undefined;
+    // Set by OperationalException: the message was written for the user and
+    // carries no internals, so sanitisation must leave it alone. Without this
+    // an operational failure reaches the client as "please try again later",
+    // which is unactionable precisely when action is what is needed.
+    let isSafeMessage = false;
 
     // Log the full error for debugging/monitoring
     console.error('[EXCEPTION_FILTER]', {
@@ -114,6 +119,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       if (typeof response === 'object' && 'message' in response) {
         message = (response as any).message || 'An error occurred';
         error = (response as any).error || 'Error';
+        isSafeMessage = (response as any).safe === true;
       } else if (typeof response === 'string') {
         message = response;
         error = 'Error';
@@ -131,8 +137,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     // Build response
     const errorResponse: ErrorResponse = {
       statusCode,
-      message: this.sanitizeMessage(message, statusCode),
-      error: this.sanitizeError(error, statusCode),
+      message: isSafeMessage ? message : this.sanitizeMessage(message, statusCode),
+      error: isSafeMessage ? error : this.sanitizeError(error, statusCode),
       timestamp: new Date().toISOString(),
       path: request.url,
     };

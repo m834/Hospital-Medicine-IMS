@@ -69,10 +69,14 @@ services:
       BACKUP_DIR: /app/backups
     volumes:
       - ./license.key:/app/license.key:ro
-      # Bind-mounted, not a named volume: a backup you cannot reach from the
-      # host shell is no use during a restore, and these files have to be
-      # copied between the local server and cloud by hand.
-      - ./backups:/app/backups
+      # A named volume, not a bind mount. Docker creates a missing bind-mount
+      # directory owned by root, which the container's non-root user cannot
+      # write to — that needs a chown by hand on every new deployment, and a
+      # deployment that needs a manual step is a deployment that fails. A named
+      # volume inherits the ownership baked into the image, so it works on any
+      # host with nothing to run. Backups are retrieved from the Super Admin
+      # screen, which is why host-shell access to the files is not needed.
+      - civil_backups:/app/backups
     depends_on:
       civil-postgres:
         condition: service_healthy
@@ -136,4 +140,8 @@ volumes:
   civil_postgres_data:
     driver: local
   civil_redis_data:
+    driver: local
+  # Database backups. Survives container recreation, so a rebuild never
+  # discards them.
+  civil_backups:
     driver: local

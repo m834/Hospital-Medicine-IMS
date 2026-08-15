@@ -85,12 +85,24 @@ export default function BackupsPage() {
     setNotice('');
     setCreating(true);
     try {
-      const res = await api.post('/backups');
+      // The shared client times out at 30s, which is fine for ordinary calls
+      // and far too short for dumping a real database. A large instance takes
+      // minutes, so this one request gets its own budget.
+      const res = await api.post('/backups', undefined, { timeout: 15 * 60 * 1000 });
       const made: BackupManifest = res.data;
       setNotice(`Backup created: ${made.filename} (${formatSize(made.sizeBytes)})`);
       await load();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Backup failed');
+      // A timeout has no response body, so it needs saying separately —
+      // otherwise it looks identical to the server refusing.
+      if (err.code === 'ECONNABORTED' || /timeout/i.test(err.message ?? '')) {
+        setError(
+          'The backup took longer than the request allowed. It may still be running on the server — ' +
+            'wait a minute and press Refresh before trying again, so you do not start a second one.',
+        );
+      } else {
+        setError(err.response?.data?.message || 'Backup failed');
+      }
     } finally {
       setCreating(false);
     }
@@ -209,10 +221,17 @@ export default function BackupsPage() {
 
       <Card>
         <CardHeader className="border-b">
-          <CardTitle className="text-base">
-            Backups {backups.length > 0 && `(${backups.length})`}
-          </CardTitle>
-          <CardDescription>Newest first</CardDescription>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-base">
+                Backups {backups.length > 0 && `(${backups.length})`}
+              </CardTitle>
+              <CardDescription>Newest first</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Refresh'}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="pt-4">
           {loading ? (

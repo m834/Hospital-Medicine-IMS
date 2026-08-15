@@ -34,11 +34,19 @@ RUN addgroup -g 1001 -S mims && adduser -S mims -u 1001 -G mims
 
 WORKDIR /app
 
-# Install production-only system dependencies
-# postgresql16-client provides pg_dump for the Super Admin backup feature.
-# The major version must match the server (postgres:16-alpine) — pg_dump
-# refuses to dump a database newer than itself.
-RUN apk add --no-cache openssl libstdc++ postgresql16-client
+# Install production-only system dependencies.
+#
+# pg_dump (for the Super Admin backup feature) is backward compatible: a newer
+# client dumps an older server without complaint, and refuses only when the
+# server is NEWER than itself. So install the newest client available rather
+# than pinning to the version this deployment happens to run — that way the
+# same image works against Postgres 15, 16 or 17 with nothing to configure,
+# and a site running a different version needs no special build.
+RUN apk add --no-cache openssl libstdc++ && \
+    (apk add --no-cache postgresql17-client || \
+     apk add --no-cache postgresql16-client || \
+     apk add --no-cache postgresql-client) && \
+    pg_dump --version
 
 # Copy obfuscated application (no TypeScript source)
 COPY --from=builder --chown=mims:mims /build/dist-protected/app ./app
