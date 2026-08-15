@@ -11,6 +11,7 @@ import { BackupService } from './backup.service';
 import { RestoreReport, TableMergeResult } from './restore.types';
 import { toLibpqUrl } from './libpq-url.util';
 import { createPreambleFilter } from './sql-preamble-filter';
+import { MERGE_PLAN, TableSpec } from './merge-plan';
 
 /**
  * Merge-restore: bring rows that exist in a backup file but not in this
@@ -240,13 +241,12 @@ export class RestoreService {
 
     try {
 
-      // Parents first: each step needs the previous step's id mapping to
-      // translate foreign keys from the file's ids to this database's.
-      const hospitalIds = await this.mergeHospitals(source, tables, dryRun);
-      const pharmacyIds = await this.mergePharmacies(source, tables, dryRun, hospitalIds);
-      const medicineIds = await this.mergeMedicines(source, tables, dryRun, hospitalIds);
-      await this.mergePatients(source, tables, dryRun, hospitalIds, user.id);
-      await this.mergeStockBatches(source, tables, dryRun, hospitalIds, pharmacyIds, medicineIds);
+      // Parents first: each step needs the earlier steps' id translations to
+      // repoint foreign keys from the file's ids to this database's.
+      const maps = new Map<string, Map<string, string>>();
+      for (const spec of MERGE_PLAN) {
+        tables.push(await this.mergeTable(source, spec, maps, dryRun, user.id));
+      }
 
       return {
         dryRun,
@@ -289,221 +289,100 @@ export class RestoreService {
     if (r.skipReasons.length < 10 && !r.skipReasons.includes(reason)) r.skipReasons.push(reason);
   }
 
-  // ── Hospitals — natural key: code ──────────────────────────────────────────
-  private async mergeHospitals(source: PrismaClient, out: TableMergeResult[], dryRun: boolean) {
-    const rows = await source.hospital.findMany();
-    const r = this.blank('Hospitals', rows.length);
-    const map = new Map<string, string>();
-
-    for (const row of rows) {
-      const live = await this.prisma.hospital.findUnique({ where: { code: row.code } });
-      if (live) {
-        map.set(row.id, live.id);
-        r.alreadyPresent += 1;
-        continue;
-      }
-      if (dryRun) {
-        r.inserted += 1;
-        continue;
-      }
-      const { id, ...data } = row;
-      const created = await this.prisma.hospital.create({ data });
-      map.set(row.id, created.id);
-      r.inserted += 1;
-    }
-
-    out.push(r);
-    return map;
-  }
-
-  // ── Pharmacies — natural key: (hospital, code) ─────────────────────────────
-  private async mergePharmacies(
+  /**
+   * Merge one table according to its spec.
+   *
+   * Prisma's delegates are reached by name here, which gives up compile-time
+   * types for this one function. The alternative was twenty near-identical
+   * hand-written mergers, where the risk is not a type error but one of them
+   * quietly forgetting a foreign key — which is exactly the bug that reached
+   * production. One reviewed routine driven by a declared plan is the safer
+   * shape, and merge-plan.ts stays readable to someone who does not know
+   * Prisma.
+   */
+  private async mergeTable(
     source: PrismaClient,
-    out: TableMergeResult[],
+    spec: TableSpec,
+    maps: Map<string, Map<string, string>>,
     dryRun: boolean,
-    hospitalIds: Map<string, string>,
-  ) {
-    const rows = await source.pharmacy.findMany();
-    const r = this.blank('Pharmacies', rows.length);
-    const map = new Map<string, string>();
-
-    for (const row of rows) {
-      const hospitalId = hospitalIds.get(row.hospitalId);
-      if (!hospitalId) {
-        this.note(r, 'Hospital not present in this database');
-        continue;
-      }
-
-      const live = await this.prisma.pharmacy.findFirst({
-        where: { hospitalId, code: row.code },
-      });
-      if (live) {
-        map.set(row.id, live.id);
-        r.alreadyPresent += 1;
-        continue;
-      }
-      if (dryRun) {
-        r.inserted += 1;
-        continue;
-      }
-      // parentPharmacyId is deliberately dropped: the parent may not be
-      // inserted yet, and the hierarchy is safer re-linked by hand than
-      // guessed at during a merge.
-      const { id, hospitalId: _h, parentPharmacyId: _p, ...data } = row as any;
-      const created = await this.prisma.pharmacy.create({ data: { ...data, hospitalId } });
-      map.set(row.id, created.id);
-      r.inserted += 1;
-    }
-
-    out.push(r);
-    return map;
-  }
-
-  // ── Medicines — natural key: (hospital, name, strength, form) ──────────────
-  private async mergeMedicines(
-    source: PrismaClient,
-    out: TableMergeResult[],
-    dryRun: boolean,
-    hospitalIds: Map<string, string>,
-  ) {
-    const rows = await source.medicine.findMany();
-    const r = this.blank('Medicines', rows.length);
-    const map = new Map<string, string>();
-
-    for (const row of rows) {
-      const hospitalId = hospitalIds.get(row.hospitalId);
-      if (!hospitalId) {
-        this.note(r, 'Hospital not present in this database');
-        continue;
-      }
-
-      // No unique constraint exists on Medicine, so identity is what makes it
-      // the same drug on a shelf: same hospital, name, strength and form.
-      const live = await this.prisma.medicine.findFirst({
-        where: {
-          hospitalId,
-          name: row.name,
-          strength: row.strength,
-          form: row.form,
-        },
-      });
-      if (live) {
-        map.set(row.id, live.id);
-        r.alreadyPresent += 1;
-        continue;
-      }
-      if (dryRun) {
-        r.inserted += 1;
-        continue;
-      }
-      const { id, hospitalId: _h, ...data } = row as any;
-      const created = await this.prisma.medicine.create({ data: { ...data, hospitalId } });
-      map.set(row.id, created.id);
-      r.inserted += 1;
-    }
-
-    out.push(r);
-    return map;
-  }
-
-  // ── Patients — natural key: MRN (already unique) ───────────────────────────
-  private async mergePatients(
-    source: PrismaClient,
-    out: TableMergeResult[],
-    dryRun: boolean,
-    hospitalIds: Map<string, string>,
     importedBy: string,
-  ) {
-    const rows = await source.patient.findMany();
-    const r = this.blank('Patients', rows.length);
+  ): Promise<TableMergeResult> {
+    const src = (source as any)[spec.model];
+    const live = (this.prisma as any)[spec.model];
+
+    const rows: any[] = await src.findMany();
+    const result = this.blank(spec.label, rows.length);
+    const idMap = new Map<string, string>();
 
     for (const row of rows) {
-      const hospitalId = hospitalIds.get(row.hospitalId);
-      if (!hospitalId) {
-        this.note(r, 'Hospital not present in this database');
+      const data: any = { ...row };
+      let blocked: string | null = null;
+
+      // Repoint every foreign key onto this database's row
+      for (const [column, mapKey] of Object.entries(spec.remap ?? {})) {
+        const original = row[column];
+        if (original == null) continue;
+
+        const translated = maps.get(mapKey)?.get(original);
+        if (translated) {
+          data[column] = translated;
+          continue;
+        }
+
+        if (spec.userFallback?.includes(column)) {
+          // Required, and whoever did it in the other system is not here —
+          // attribute it to the person running the restore rather than lose
+          // the record entirely.
+          data[column] = importedBy;
+        } else if (spec.nullable?.includes(column)) {
+          data[column] = null;
+        } else {
+          blocked = `${column} refers to a ${mapKey} that is not in this database`;
+          break;
+        }
+      }
+
+      if (blocked) {
+        this.note(result, blocked);
         continue;
       }
 
-      const live = await this.prisma.patient.findUnique({ where: { nrNumber: row.nrNumber } });
-      if (live) {
-        r.alreadyPresent += 1;
+      // Already here?
+      const existing =
+        spec.strategy === 'id'
+          ? await live.findUnique({ where: { id: row.id } })
+          : await live.findFirst({
+              where: Object.fromEntries(
+                (spec.naturalKey ?? []).map((k) => [k, data[k] ?? null]),
+              ),
+            });
+
+      if (existing) {
+        idMap.set(row.id, existing.id);
+        result.alreadyPresent += 1;
         continue;
       }
+
       if (dryRun) {
-        r.inserted += 1;
+        result.inserted += 1;
+        // A preview still has to translate ids, or every child would look
+        // blocked because its parent "does not exist yet".
+        idMap.set(row.id, row.id);
         continue;
       }
-      // registeredBy is a REQUIRED foreign key to User, and users are not
-      // merged — the id in the file belongs to a user of the other system and
-      // does not exist here, so carrying it over violates the constraint.
-      // It becomes the person running the restore, who is in truth the one
-      // bringing the record in, and is an id certain to exist.
-      //
-      // attendingDoctorId is nullable and is left unset rather than pointed at
-      // whichever local user happens to share that id.
-      const {
-        id, hospitalId: _h, attendingDoctorId: _d, registeredBy: _r, ...data
-      } = row as any;
-      await this.prisma.patient.create({
-        data: { ...data, hospitalId, registeredBy: importedBy },
-      });
-      r.inserted += 1;
+
+      // Transactional rows keep their id — it is their identity, and keeping
+      // it makes a second run find them rather than duplicate them. Reference
+      // rows take a fresh one, since the same thing already exists here under
+      // a different id.
+      if (spec.strategy === 'natural') delete data.id;
+
+      const created = await live.create({ data });
+      idMap.set(row.id, created.id);
+      result.inserted += 1;
     }
 
-    out.push(r);
-  }
-
-  // ── Stock batches — the inventory rows ─────────────────────────────────────
-  private async mergeStockBatches(
-    source: PrismaClient,
-    out: TableMergeResult[],
-    dryRun: boolean,
-    hospitalIds: Map<string, string>,
-    pharmacyIds: Map<string, string>,
-    medicineIds: Map<string, string>,
-  ) {
-    const rows = await source.stockBatch.findMany();
-    const r = this.blank('Stock batches', rows.length);
-
-    for (const row of rows) {
-      const hospitalId = hospitalIds.get(row.hospitalId);
-      const pharmacyId = pharmacyIds.get(row.pharmacyId);
-      const medicineId = medicineIds.get(row.medicineId);
-
-      if (!hospitalId) { this.note(r, 'Hospital not present in this database'); continue; }
-      if (!pharmacyId) { this.note(r, 'Pharmacy not present in this database'); continue; }
-      if (!medicineId) { this.note(r, 'Medicine not present and could not be added'); continue; }
-
-      // A batch is identified by where it sits and what is written on it.
-      const live = await this.prisma.stockBatch.findFirst({
-        where: {
-          hospitalId,
-          pharmacyId,
-          medicineId,
-          batchNo: row.batchNo,
-          expiryDate: row.expiryDate,
-        },
-      });
-      if (live) {
-        // Present already — quantities are NOT touched. This database's count
-        // reflects what it has issued; the file's does not.
-        r.alreadyPresent += 1;
-        continue;
-      }
-      if (dryRun) {
-        r.inserted += 1;
-        continue;
-      }
-
-      const {
-        id, hospitalId: _h, pharmacyId: _p, medicineId: _m, ...data
-      } = row as any;
-      await this.prisma.stockBatch.create({
-        data: { ...data, hospitalId, pharmacyId, medicineId },
-      });
-      r.inserted += 1;
-    }
-
-    out.push(r);
+    if (spec.mapKey) maps.set(spec.mapKey, idMap);
+    return result;
   }
 }
