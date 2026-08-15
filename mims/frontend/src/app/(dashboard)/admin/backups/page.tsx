@@ -9,6 +9,7 @@ import {
   Trash2,
   ShieldAlert,
   CheckCircle,
+  Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,6 +29,24 @@ import {
 } from '@/components/ui/table';
 import { useAuthStore } from '@/stores/auth.store';
 import api from '@/lib/api';
+
+interface TableMergeResult {
+  table: string;
+  inBackup: number;
+  alreadyPresent: number;
+  inserted: number;
+  skipped: number;
+  skipReasons: string[];
+}
+
+interface RestoreReport {
+  dryRun: boolean;
+  sourceFile: string;
+  safetyBackup?: string;
+  tables: TableMergeResult[];
+  totalInserted: number;
+  durationMs: number;
+}
 
 interface BackupManifest {
   filename: string;
@@ -62,6 +81,11 @@ export default function BackupsPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+
+  // --- Restore ---
+  const [file, setFile] = useState<File | null>(null);
+  const [report, setReport] = useState<RestoreReport | null>(null);
+  const [restoring, setRestoring] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -131,6 +155,48 @@ export default function BackupsPage() {
       setError('Failed to download the backup');
     } finally {
       setDownloading(null);
+    }
+  };
+
+  /**
+   * Preview first, apply second — deliberately two presses. The preview writes
+   * nothing and shows exactly what would be added, so nobody merges into a
+   * live database without having seen the numbers.
+   */
+  const runRestore = async (apply: boolean) => {
+    if (!file) return;
+    if (apply && !window.confirm(
+      `Add the missing records from ${file.name} to this database?\n\n` +
+      'Existing records are never changed or removed. A safety backup is taken first.',
+    )) return;
+
+    setError('');
+    setNotice('');
+    setRestoring(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await api.post(`/backups/restore${apply ? '?apply=true' : ''}`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 30 * 60 * 1000,
+      });
+      const result: RestoreReport = res.data;
+      setReport(result);
+      if (apply) {
+        setNotice(
+          `Added ${result.totalInserted} record(s).` +
+            (result.safetyBackup ? ` Safety backup taken: ${result.safetyBackup}` : ''),
+        );
+        await load();
+      }
+    } catch (err: any) {
+      if (err.code === 'ECONNABORTED' || /timeout/i.test(err.message ?? '')) {
+        setError('The restore took longer than the request allowed. Check the server log before retrying.');
+      } else {
+        setError(err.response?.data?.message || 'Restore failed');
+      }
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -216,6 +282,110 @@ export default function BackupsPage() {
             A backup contains every patient record in the system, unredacted. Treat the
             downloaded file as you would the database itself — downloads are logged.
           </p>
+        </CardContent>
+      </Card>
+
+      {/* ── Restore ─────────────────────────────────────────────────────── */}
+      <Card className="mb-6">
+        <CardHeader className="border-b bg-muted/40">
+          <CardTitle className="text-base">Restore Missing Records</CardTitle>
+          <CardDescription>
+            Upload a backup from another environment to bring across what this database is
+            missing. Existing records are never changed or removed — only missing ones are added.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="file"
+              accept=".gz"
+              onChange={(e) => {
+                setFile(e.target.files?.[0] ?? null);
+                setReport(null);
+                setError('');
+              }}
+              className="text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground"
+            />
+            <Button
+              variant="outline"
+              onClick={() => runRestore(false)}
+              disabled={!file || restoring}
+              className="gap-2"
+            >
+              {restoring && !report ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              Preview
+            </Button>
+          </div>
+
+          {report && (
+            <div className="rounded-lg border">
+              <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">
+                {report.dryRun ? 'Preview — nothing has been changed' : 'Applied'}
+                <span className="ml-2 font-normal text-muted-foreground">
+                  {report.sourceFile} · {(report.durationMs / 1000).toFixed(1)}s
+                </span>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Table</TableHead>
+                    <TableHead className="text-right">In file</TableHead>
+                    <TableHead className="text-right">Already here</TableHead>
+                    <TableHead className="text-right">
+                      {report.dryRun ? 'Would add' : 'Added'}
+                    </TableHead>
+                    <TableHead className="text-right">Skipped</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {report.tables.map((t) => (
+                    <TableRow key={t.table}>
+                      <TableCell className="font-medium">
+                        {t.table}
+                        {t.skipReasons.length > 0 && (
+                          <span className="block text-xs text-muted-foreground">
+                            {t.skipReasons.join('; ')}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{t.inBackup}</TableCell>
+                      <TableCell className="text-right tabular-nums text-muted-foreground">
+                        {t.alreadyPresent}
+                      </TableCell>
+                      <TableCell
+                        className={`text-right tabular-nums ${t.inserted > 0 ? 'font-semibold text-green-700' : ''}`}
+                      >
+                        {t.inserted}
+                      </TableCell>
+                      <TableCell
+                        className={`text-right tabular-nums ${t.skipped > 0 ? 'text-amber-700' : 'text-muted-foreground'}`}
+                      >
+                        {t.skipped}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {report.dryRun && (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-amber-50 px-4 py-3">
+                  <p className="text-sm text-amber-900">
+                    {report.totalInserted > 0
+                      ? `${report.totalInserted} record(s) would be added. A safety backup is taken before applying.`
+                      : 'Nothing to add — this database already has everything in the file.'}
+                  </p>
+                  <Button
+                    onClick={() => runRestore(true)}
+                    disabled={restoring || report.totalInserted === 0}
+                    className="gap-2"
+                  >
+                    {restoring && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Apply
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -4,10 +4,16 @@ import {
   Post,
   Delete,
   Param,
+  Query,
   Res,
   Request,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
 import { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
@@ -15,6 +21,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { BackupService } from './backup.service';
+import { RestoreService } from './restore.service';
 
 /**
  * A dump is the entire database in one file — every patient record in the
@@ -28,7 +35,10 @@ import { BackupService } from './backup.service';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.SUPER_ADMIN, UserRole.MASTER_ADMIN)
 export class BackupController {
-  constructor(private readonly backupService: BackupService) {}
+  constructor(
+    private readonly backupService: BackupService,
+    private readonly restoreService: RestoreService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Take a full database backup' })
@@ -64,5 +74,51 @@ export class BackupController {
   @ApiOperation({ summary: 'Delete a backup file' })
   remove(@Param('filename') filename: string) {
     return this.backupService.remove(filename);
+  }
+
+  /**
+   * Upload a backup and merge in what is missing.
+   *
+   * Defaults to a preview: nothing is written unless apply=true is passed
+   * explicitly, so the obvious call is the safe one and changing the database
+   * has to be asked for.
+   */
+  @Post('restore')
+  @ApiOperation({ summary: 'Merge missing records from an uploaded backup' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      // Straight to disk, never buffered in memory — a dump of a real database
+      // would not fit comfortably, and psql reads it from disk anyway.
+      storage: diskStorage({ destination: '/tmp' }),
+      limits: { fileSize: 2 * 1024 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (!file.originalname.endsWith('.sql.gz')) {
+          return cb(
+            new BadRequestException('Upload a .sql.gz backup produced by this system.'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  restore(
+    @UploadedFile() file: { path: string; originalname: string } | undefined,
+    @Query('apply') apply: string | undefined,
+    @Request() req: any,
+  ) {
+    if (!file) throw new BadRequestException('No backup file was uploaded.');
+
+    return this.restoreService.restore(
+      file.path,
+      file.originalname,
+      apply !== 'true',
+      {
+        id: req.user.id,
+        fullName: req.user.fullName,
+        email: req.user.email,
+        role: req.user.role,
+      },
+    );
   }
 }
