@@ -26,5 +26,24 @@ export interface RestoreReport {
   safetyBackup?: string;
   tables: TableMergeResult[];
   totalInserted: number;
+  /** References filled in on the second pass, once every table was placed */
+  relinked?: number;
   durationMs: number;
+}
+
+/**
+ * A foreign key that could not be filled when its row was written, because the
+ * table it points at is placed later in the order. Resolved in a second pass.
+ */
+export interface DeferredLink {
+  model: string;
+  column: string;
+  /** which id map holds the translation */
+  mapKey: string;
+  /** the id as it appears in the backup file */
+  sourceValue: string;
+  /** the row's id in the file, used to attach newId once it is created */
+  sourceRowId: string;
+  /** the id the row was actually given here */
+  newId?: string;
 }

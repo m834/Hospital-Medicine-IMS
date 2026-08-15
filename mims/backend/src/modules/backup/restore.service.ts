@@ -8,10 +8,11 @@ import { createGunzip } from 'zlib';
 import { PrismaService } from '../../database/prisma.service';
 import { OperationalException } from '../../common/exceptions/operational.exception';
 import { BackupService } from './backup.service';
-import { RestoreReport, TableMergeResult } from './restore.types';
+import { RestoreReport, TableMergeResult, DeferredLink } from './restore.types';
 import { toLibpqUrl } from './libpq-url.util';
 import { createPreambleFilter } from './sql-preamble-filter';
-import { MERGE_PLAN, TableSpec } from './merge-plan';
+import { TableSpec } from './merge-plan';
+import { buildMergePlan } from './plan-builder';
 
 /**
  * Merge-restore: bring rows that exist in a backup file but not in this
@@ -243,15 +244,29 @@ export class RestoreService {
 
       // Parents first: each step needs the earlier steps' id translations to
       // repoint foreign keys from the file's ids to this database's.
+      const plan = buildMergePlan();
+      this.logger.log(`Merging ${plan.length} tables`);
+
       const maps = new Map<string, Map<string, string>>();
-      for (const spec of MERGE_PLAN) {
-        tables.push(await this.mergeTable(source, spec, maps, dryRun, user.id));
+      // Links that could not be resolved when the row was written, because
+      // what they point at is placed later in the order.
+      const pending: DeferredLink[] = [];
+
+      for (const spec of plan) {
+        const result = await this.mergeTable(source, spec, maps, dryRun, user.id, pending);
+        // A schema of this size means most tables are empty in any given file;
+        // listing sixty untouched rows would bury the ones that matter.
+        if (result.inBackup > 0) tables.push(result);
       }
+
+      const relinked = dryRun ? 0 : await this.relink(pending, maps);
+      if (relinked > 0) this.logger.log(`Re-linked ${relinked} deferred reference(s)`);
 
       return {
         dryRun,
         sourceFile,
         safetyBackup,
+        relinked,
         tables,
         totalInserted: tables.reduce((sum, t) => sum + t.inserted, 0),
         durationMs: Date.now() - startedAt,
@@ -290,6 +305,44 @@ export class RestoreService {
   }
 
   /**
+   * Fill in the references that could not be resolved when their row was
+   * written. A user is placed before pharmacies exist, so their pharmacy is
+   * left empty and set here — without this every merged user would arrive
+   * with no pharmacy, no department and no ward, which for twenty pharmacies
+   * of staff is the difference between usable and not.
+   *
+   * A link that still cannot be resolved is left empty rather than guessed at.
+   */
+  private async relink(
+    pending: DeferredLink[],
+    maps: Map<string, Map<string, string>>,
+  ): Promise<number> {
+    let done = 0;
+
+    for (const link of pending) {
+      if (!link.newId) continue;
+
+      const target = maps.get(link.mapKey)?.get(link.sourceValue);
+      if (!target) continue;
+
+      try {
+        await (this.prisma as any)[link.model].update({
+          where: { id: link.newId },
+          data: { [link.column]: target },
+        });
+        done += 1;
+      } catch (err) {
+        // One unresolvable link must not undo a merge that otherwise worked
+        this.logger.warn(
+          `Could not re-link ${link.model}.${link.column}: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    return done;
+  }
+
+  /**
    * Merge one table according to its spec.
    *
    * Prisma's delegates are reached by name here, which gives up compile-time
@@ -306,6 +359,7 @@ export class RestoreService {
     maps: Map<string, Map<string, string>>,
     dryRun: boolean,
     importedBy: string,
+    pending: DeferredLink[],
   ): Promise<TableMergeResult> {
     const src = (source as any)[spec.model];
     const live = (this.prisma as any)[spec.model];
@@ -335,7 +389,11 @@ export class RestoreService {
           // the record entirely.
           data[column] = importedBy;
         } else if (spec.nullable?.includes(column)) {
+          // Empty for now. A user is placed before pharmacies exist, so their
+          // pharmacy cannot be resolved yet — note it and fill it in once
+          // everything is down, or every user would arrive unassigned.
           data[column] = null;
+          pending.push({ model: spec.model, column, mapKey, sourceValue: original, sourceRowId: row.id });
         } else {
           blocked = `${column} refers to a ${mapKey} that is not in this database`;
           break;
@@ -379,6 +437,10 @@ export class RestoreService {
 
       const created = await live.create({ data });
       idMap.set(row.id, created.id);
+      // Point any deferred link for this row at the id it actually got
+      for (const link of pending) {
+        if (link.model === spec.model && link.sourceRowId === row.id) link.newId = created.id;
+      }
       result.inserted += 1;
     }
 
