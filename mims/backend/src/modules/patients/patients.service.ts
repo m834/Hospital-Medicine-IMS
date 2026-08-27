@@ -220,7 +220,9 @@ export class PatientsService {
         nrNumber,
         fullName: createPatientDto.fullName,
         mobile: createPatientDto.mobile ?? null,
-        cnic: createPatientDto.cnic,
+        // Blank is stored as null, not '', so it never collides with another
+        // ID-less patient when the family key is looked up.
+        cnic: createPatientDto.cnic?.trim() || null,
         idType: createPatientDto.idType ?? 'CNIC',
         dob: createPatientDto.dob ? new Date(createPatientDto.dob) : null,
         age: createPatientDto.age ?? null,

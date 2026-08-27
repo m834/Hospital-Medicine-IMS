@@ -59,11 +59,14 @@ export class CreatePatientDto {
   idType?: PatientIdType;
 
   /**
-   * The identifier itself — always required, format-checked as a CNIC only when
-   * idType says so. See PatientIdNumberConstraint.
+   * The identifier itself — optional, and format-checked as a CNIC only when it
+   * is supplied and idType says so. See PatientIdNumberConstraint. A patient
+   * saved without one simply has no family key, so every registration under the
+   * same (blank) ID creates its own MRN.
    */
   @Validate(PatientIdNumberConstraint)
-  cnic: string;
+  @IsOptional()
+  cnic?: string;
 
   @IsString()
   @IsOptional()

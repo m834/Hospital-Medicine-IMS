@@ -36,15 +36,18 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import api from '@/lib/api';
+import { printPatientReceipt } from '@/lib/print-receipt';
+import { formatMRN } from '@/lib/mrn';
 
 const patientSchema = z.object({
-  // Only Full Name and the ID number are mandatory. The ID is the identity key:
-  // a matching ID records a new visit against the existing MRN.
+  // Full Name is the only mandatory field. The ID is optional, but when given it
+  // acts as the identity key: a matching ID records a new visit against the
+  // existing MRN instead of creating a second one.
   fullName: z.string().min(2, 'Full name is required'),
   // CNIC = Pakistani national ID (fixed format); OTHER = passport / foreign ID,
   // which has no single format and is accepted as entered.
   idType: z.enum(['CNIC', 'OTHER']),
-  cnic: z.string().min(1, 'ID number is required'),
+  cnic: z.string().optional(),
   age: z
     .string()
     .optional()
@@ -68,7 +71,7 @@ const patientSchema = z.object({
   // Format is only meaningful for a CNIC. Passports and foreign IDs vary by
   // country, so they are checked for a sane minimum length and nothing more.
   const value = (data.cnic ?? '').trim();
-  if (!value) return; // the per-field "required" rule already covers this
+  if (!value) return; // the ID is optional — nothing to check when left blank
 
   if (data.idType === 'CNIC') {
     if (!/^\d{5}-\d{7}-\d$/.test(value)) {
@@ -178,6 +181,8 @@ export default function RegisterPatientPage() {
   const [loadingBeds, setLoadingBeds] = useState(false);
   const [selectedFee, setSelectedFee] = useState<string>('');
   const [selectedBedRate, setSelectedBedRate] = useState<string>('');
+  // MRN of the patient just saved, shown above the (now empty) form
+  const [lastRegisteredMrn, setLastRegisteredMrn] = useState<string>('');
 
   const router = useRouter();
   const { user } = useAuthStore();
@@ -388,8 +393,25 @@ export default function RegisterPatientPage() {
       const response = await api.post('/patients', patientPayload, { params });
       const patient = response.data;
 
-      // On successful save, go straight to the patient page and auto-print
-      router.push(`/dashboard/patients/${patient.id}?autoprint=1`);
+      // Print from this page rather than navigating to the patient record:
+      // closing the print dialog then leaves the user back on an empty
+      // registration form, ready for the next patient.
+      printPatientReceipt(
+        {
+          ...patient,
+          // `department` is stored as an id; the slip needs the name.
+          departmentInfo: patient.departmentInfo ?? {
+            name: departments.find((d) => d.id === patient.department)?.name,
+          },
+        },
+        selectedHospital?.name || 'Hospital Medical Center',
+        user?.fullName,
+      );
+
+      setLastRegisteredMrn(formatMRN(patient.nrNumber));
+      form.reset();
+      setSelectedFee('');
+      setSelectedBedRate('');
     } catch (error: any) {
       console.error('Error registering patient:', error);
       alert(error.response?.data?.message || 'Failed to register patient');
@@ -413,16 +435,29 @@ export default function RegisterPatientPage() {
         </p>
       </div>
 
+      {/* Confirms the save that just happened — the form itself is back to blank
+          for the next patient. */}
+      {lastRegisteredMrn && (
+        <div className="mb-6 flex items-center gap-2 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
+          <CheckCircle className="h-4 w-4 shrink-0" />
+          <span>
+            Registered <span className="font-semibold">{lastRegisteredMrn}</span> and sent the slip
+            to the printer. Ready for the next patient.
+          </span>
+        </div>
+      )}
+
       {/* Form */}
       <Card>
         <CardHeader>
           <CardTitle>Patient Information</CardTitle>
           <CardDescription>
-            Only Full Name and the ID number are required — all other fields are optional. Switch
+            Full Name is the only required field — everything else is optional. Switch
             the ID toggle to <span className="font-medium">Other</span> for a passport or foreign
-            national ID. A matching ID records a new visit against the existing MRN. To register a
-            wife or child under the same ID holder, turn on <span className="font-medium">Guardian</span>
-            and pick Wife or Children — they each get their own MRN.
+            national ID. When an ID is entered, a matching ID records a new visit against the
+            existing MRN. To register a wife or child under the same ID holder, turn on{' '}
+            <span className="font-medium">Guardian</span> and pick Wife or Children — they each get
+            their own MRN.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -516,7 +551,7 @@ export default function RegisterPatientPage() {
                       return (
                         <FormItem>
                           <div className="flex items-center justify-between gap-2">
-                            <FormLabel>{isCnic ? 'CNIC *' : 'ID Number *'}</FormLabel>
+                            <FormLabel>{isCnic ? 'CNIC' : 'ID Number'}</FormLabel>
                             {/* Foreign patients carry passports and other national
                                 IDs that do not fit the CNIC format. */}
                             <div className="flex items-center gap-2">

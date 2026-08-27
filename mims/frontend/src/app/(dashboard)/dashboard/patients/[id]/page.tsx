@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import {
@@ -100,9 +100,6 @@ interface Visit {
 
 export default function PatientDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const searchParams = useSearchParams();
-  const shouldAutoPrint = searchParams.get('autoprint') === '1';
-  const hasAutoPrinted = useRef(false);
   const router = useRouter();
   const { user } = useAuthStore();
   const { selectedHospital } = useHospitalStore();
@@ -156,22 +153,6 @@ export default function PatientDetailPage() {
       fetchVisits();
     }
   }, [id, visitTypeFilter, departmentFilter, startDate, endDate]);
-
-  // Auto-print the patient slip when arriving here right after registration
-  useEffect(() => {
-    if (
-      shouldAutoPrint &&
-      !hasAutoPrinted.current &&
-      patient &&
-      !loading &&
-      !loadingVisits
-    ) {
-      hasAutoPrinted.current = true;
-      printPatientDetails();
-      // Drop the autoprint flag so refresh/back doesn't reprint
-      router.replace(`/dashboard/patients/${id}`);
-    }
-  }, [shouldAutoPrint, patient, loading, loadingVisits]);
 
   const fetchPatient = async () => {
     setLoading(true);

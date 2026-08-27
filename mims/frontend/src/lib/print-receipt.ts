@@ -5,6 +5,7 @@ export interface ReceiptPatient {
   nrNumber: string;
   fullName: string;
   gender?: string;
+  age?: number | string | null;
   mobile?: string | null;
   cnic?: string | null;
   registeredAt?: string;
@@ -14,40 +15,37 @@ export interface ReceiptPatient {
 }
 
 /**
- * Print a patient registration receipt using the shared A4 receipt pattern.
- * Only fields that actually have a value are rendered, so the grid has no gaps.
+ * Print a patient registration slip.
+ *
+ * The slip drops into a slot on a pre-printed A4 form, so the details go out as
+ * a single run of values — no "Label: value" pairs, no grid. Empty fields are
+ * dropped entirely so the line never carries a dangling separator.
  */
 export function printPatientReceipt(
   patient: ReceiptPatient,
 
   hospitalName: string,
-  printedBy?: string,
+  registeredBy?: string,
 ) {
-  const infoFields: { label: string; value?: string | null }[] = [
-    { label: 'Full Name', value: patient.fullName },
-    { label: 'MRN', value: formatMRN(patient.nrNumber) },
-    { label: 'Printed by', value: printedBy },
-    { label: 'Gender', value: patient.gender },
-    { label: 'Mobile', value: patient.mobile },
-    { label: 'CNIC', value: patient.cnic },
-    {
-      label: 'Registered',
-      value: patient.registeredAt
-        ? format(new Date(patient.registeredAt), 'dd/MM/yyyy')
-        : '',
-    },
-    { label: 'Visit Type', value: patient.visitType },
-    { label: 'Department', value: patient.departmentInfo?.name },
-    { label: 'Attending Doctor', value: patient.attendingDoctor?.fullName },
-  ];
-
-  const infoCells = infoFields
-    .filter((f) => f.value && String(f.value).trim() !== '')
-    .map(
-      (f) =>
-        `<div><div class="label">${f.label}</div><div class="value">${f.value}</div></div>`,
-    )
-    .join('');
+  const values = [
+    patient.fullName,
+    formatMRN(patient.nrNumber),
+    patient.gender,
+    patient.age != null && String(patient.age).trim() !== ''
+      ? `${patient.age} yrs`
+      : '',
+    patient.mobile,
+    patient.cnic,
+    patient.visitType,
+    patient.departmentInfo?.name,
+    patient.attendingDoctor?.fullName,
+    patient.registeredAt
+      ? format(new Date(patient.registeredAt), 'dd/MM/yyyy')
+      : '',
+    registeredBy,
+  ]
+    .filter((v) => v != null && String(v).trim() !== '')
+    .map((v) => String(v).trim());
 
   const receiptHTML = `
     <!DOCTYPE html>
@@ -57,19 +55,12 @@ export function printPatientReceipt(
           @page { size: A4; margin: 0; }
           * { box-sizing: border-box; }
           body { font-family: Arial, sans-serif; color: #111827; padding: 15mm 15mm 15mm 22mm; margin-top: 15%; }
-          h1, h2 { margin: 0 0 8px 0; }
-          .header { border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 16px; }
-          .meta { font-size: 12px; color: #374151; }
-          .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
-          .label { font-size: 13px; color: #6b7280; margin-bottom: 4px; }
-          .value { font-size: 15px; font-weight: 700; }
-          .printed-by { text-align: right; font-size: 11px; color: #374151; margin-bottom: 12px; }
+          .line { font-size: 14px; font-weight: 700; line-height: 1.4; }
+          .sep { font-weight: 400; color: #6b7280; padding: 0 6px; }
         </style>
       </head>
       <body>
-        <div class="grid">
-          ${infoCells}
-        </div>
+        <div class="line">${values.join('<span class="sep">|</span>')}</div>
       </body>
     </html>
   `;
