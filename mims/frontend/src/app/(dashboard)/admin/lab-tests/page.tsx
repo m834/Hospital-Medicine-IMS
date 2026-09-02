@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLabTests, useLabTestCategories, useCreateLabTest, useUpdateLabTest, useDeleteLabTest, useUpdateLabTestStatus } from "@/hooks/use-lab-tests";
 import { useDepartments, type Department } from "@/hooks/use-departments";
 import { useHospitalStore } from "@/stores/hospital.store";
+import { useAuthStore } from "@/stores/auth.store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +31,12 @@ const PREDEFINED_CATEGORIES = [
 
 export default function LabTestsPage() {
   const { selectedHospital } = useHospitalStore();
+  const { user } = useAuthStore();
+  // A user who belongs to a hospital always works in that hospital. Only a
+  // SUPER_ADMIN (who belongs to none) falls back to the header's selector —
+  // relying on the selector alone left every ordinary user with no hospital at
+  // all, so the test list came back empty.
+  const hospitalId = user?.hospitalId || selectedHospital?.id || "";
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("ACTIVE");
@@ -39,13 +46,13 @@ export default function LabTestsPage() {
   const [categorySelection, setCategorySelection] = useState("");
   const [customCategory, setCustomCategory] = useState("");
 
-  const { data: labTests, isLoading } = useLabTests(selectedHospital?.id || "", {
+  const { data: labTests, isLoading } = useLabTests(hospitalId, {
     status: selectedStatus === "all" ? undefined : selectedStatus,
     testCategory: selectedCategory === "all" ? undefined : selectedCategory,
   });
 
-  const { data: categories } = useLabTestCategories(selectedHospital?.id || "");
-  const { data: departments } = useDepartments({ hospitalId: selectedHospital?.id || "", isActive: true });
+  const { data: categories } = useLabTestCategories(hospitalId);
+  const { data: departments } = useDepartments({ hospitalId, isActive: true });
   const createMutation = useCreateLabTest();
   const updateMutation = useUpdateLabTest();
   const deleteMutation = useDeleteLabTest();
@@ -57,7 +64,7 @@ export default function LabTestsPage() {
   );
 
   const [formData, setFormData] = useState<CreateLabTestInput>({
-    hospitalId: selectedHospital?.id || "",
+    hospitalId,
     testCode: "",
     testName: "",
     testCategory: "",
@@ -76,13 +83,13 @@ export default function LabTestsPage() {
   );
 
   const handleCreate = async () => {
-    if (!selectedHospital || !formData.testCode || !formData.testName || !formData.testCategory) {
+    if (!hospitalId || !formData.testCode || !formData.testName || !formData.testCategory) {
       return;
     }
 
     await createMutation.mutateAsync({
       ...formData,
-      hospitalId: selectedHospital.id,
+      hospitalId,
     });
 
     setIsCreateDialogOpen(false);
@@ -131,7 +138,7 @@ export default function LabTestsPage() {
     setCategorySelection("");
     setCustomCategory("");
     setFormData({
-      hospitalId: selectedHospital?.id || "",
+      hospitalId,
       testCode: nextTestCode,
       testName: "",
       testCategory: "",
@@ -148,11 +155,11 @@ export default function LabTestsPage() {
     if (isCreateDialogOpen) {
       setFormData((prev) => ({
         ...prev,
-        hospitalId: selectedHospital?.id || "",
+        hospitalId,
         testCode: nextTestCode,
       }));
     }
-  }, [isCreateDialogOpen, nextTestCode, selectedHospital?.id]);
+  }, [isCreateDialogOpen, nextTestCode, hospitalId]);
 
   const openEditDialog = (test: LabTest) => {
     setSelectedTest(test);
@@ -183,7 +190,7 @@ export default function LabTestsPage() {
     return <Badge variant={variants[status] || "secondary"}>{status}</Badge>;
   };
 
-  if (!selectedHospital) {
+  if (!hospitalId) {
     return (
       <div className="p-6">
         <Card>

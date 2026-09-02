@@ -275,7 +275,9 @@ export default function NewLabOrderPageComponent() {
     setPatientSearchError("");
   };
 
-  const { data: labTests } = useLabTests(selectedHospital?.id || "", {
+  // Same rule as the patient lookup above: the logged-in user's hospital wins,
+  // and only a SUPER_ADMIN falls back to the header selector.
+  const { data: labTests } = useLabTests(user?.hospitalId || selectedHospital?.id || "", {
     status: "ACTIVE",
     testCategory: selectedCategory === "all" ? undefined : selectedCategory,
   });

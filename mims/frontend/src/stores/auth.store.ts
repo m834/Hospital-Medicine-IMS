@@ -50,6 +50,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem(AUTH_TOKENS.ACCESS_TOKEN);
+      // The super-admin's hospital selection is persisted, and nothing else
+      // clears it. Left behind, it becomes the hospital context for whoever
+      // logs in next on this browser.
+      localStorage.removeItem('hospital-storage');
     }
     set({ user: null, token: null, error: null, isLoading: false });
   },
