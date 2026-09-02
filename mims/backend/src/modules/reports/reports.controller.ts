@@ -1,4 +1,12 @@
-import { Controller, Get, Query, UseGuards, Request } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  ForbiddenException,
+  Get,
+  Query,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -7,6 +15,7 @@ import { DailyTransactionReportDto } from './dto/daily-transaction-report.dto';
 import { DateRangeReportDto } from './dto/date-range-report.dto';
 import { DetailedDailyReportDto, MedicineConsumptionDto } from './dto/detailed-daily-report.dto';
 import { FinancialSummaryDto } from './dto/financial-summary.dto';
+import { RegistrationReportDto } from './dto/registration-report.dto';
 
 @Controller('reports')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -179,5 +188,44 @@ export class ReportsController {
       ...query,
       hospitalId,
     });
+  }
+
+  /**
+   * Registration desk report: patient registrations and lab test revenue for a
+   * date range, broken down per registering staff member and grouped by their
+   * department. A single-day ("daily") report is the same range with
+   * startDate === endDate.
+   *
+   * Authorized roles: MASTER_ADMIN, SUPER_ADMIN, HOSPITAL_ADMIN,
+   * REGISTRATION_STAFF_MANAGER. The guard rejects everyone else at the
+   * endpoint, so hiding the menu entry is presentation only.
+   */
+  @Get('registration')
+  @Roles('MASTER_ADMIN', 'SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF_MANAGER')
+  async getRegistrationReport(@Query() query: RegistrationReportDto, @Request() req) {
+    return this.reportsService.getRegistrationReport({
+      ...query,
+      hospitalId: this.resolveHospitalId(req.user, query.hospitalId),
+    });
+  }
+
+  /**
+   * Resolve which hospital a report covers from the token, never from the query
+   * string alone. A user carrying a hospitalId is pinned to it; only a
+   * platform admin (who has none of their own) may name one.
+   */
+  private resolveHospitalId(user: { hospitalId?: string | null }, requested?: string) {
+    if (user?.hospitalId) {
+      if (requested && requested !== user.hospitalId) {
+        throw new ForbiddenException('Unauthorized to access this hospital data');
+      }
+      return user.hospitalId;
+    }
+
+    if (!requested) {
+      throw new BadRequestException('Hospital ID is required');
+    }
+
+    return requested;
   }
 }

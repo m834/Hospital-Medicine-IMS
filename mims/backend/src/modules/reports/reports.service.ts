@@ -1,9 +1,40 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
-import { PaymentStatus } from '@prisma/client';
+import { PaymentStatus, ReceiptType } from '@prisma/client';
 import { DailyTransactionReportDto } from './dto/daily-transaction-report.dto';
 import { DateRangeReportDto } from './dto/date-range-report.dto';
 import { FinancialReportPeriod, FinancialSummaryDto } from './dto/financial-summary.dto';
+import { RegistrationReportDto } from './dto/registration-report.dto';
+
+/** Bucket for staff with no department assigned, used as both label and group key. */
+const UNASSIGNED_DEPARTMENT = 'Unassigned';
+
+/** Money is summed as floats, so trim the drift before it reaches the client. */
+const round2 = (value: number) => Math.round(value * 100) / 100;
+
+interface RegistrationReportStaffRow {
+  staffId: string;
+  staffName: string;
+  role: string | null;
+  departmentId: string | null;
+  departmentName: string;
+  registrations: number;
+  labTestOrders: number;
+  labTestRevenue: number;
+  labTestCollected: number;
+  labTestOutstanding: number;
+}
+
+interface RegistrationReportDepartmentRow {
+  departmentId: string | null;
+  departmentName: string;
+  registrations: number;
+  labTestOrders: number;
+  labTestRevenue: number;
+  labTestCollected: number;
+  labTestOutstanding: number;
+  staff: RegistrationReportStaffRow[];
+}
 
 @Injectable()
 export class ReportsService {
@@ -1280,6 +1311,195 @@ export class ReportsService {
       detailedIssues,
       detailedTransfersOut,
       medicineConsumption,
+    };
+  }
+
+  /**
+   * Registration desk report: how many patients each staff member registered in
+   * the period, and the lab test charges raised for those patients.
+   *
+   * Both sections hang off the same staff dimension — `Patient.registeredBy`,
+   * the user a patient is registered against — so a staff member's registrations
+   * and their lab revenue are read off the same piece of work. Lab money is
+   * taken from LAB_TEST receipts only, which excludes registration fees,
+   * consultation, pharmacy and every other receipt type.
+   */
+  async getRegistrationReport(dto: RegistrationReportDto & { hospitalId: string }) {
+    const { hospitalId, departmentId } = dto;
+
+    const start = new Date(dto.startDate);
+    const end = new Date(dto.endDate);
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      throw new BadRequestException('startDate and endDate must be valid dates');
+    }
+
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+
+    if (start > end) {
+      throw new BadRequestException('startDate must be on or before endDate');
+    }
+
+    // A department filter narrows on the registering staff member's department,
+    // which is the department the rest of the report is grouped by.
+    const inDepartment = departmentId ? { registeredByUser: { departmentId } } : {};
+
+    const [registrationGroups, labReceipts] = await Promise.all([
+      this.prisma.patient.groupBy({
+        by: ['registeredBy'],
+        where: {
+          hospitalId,
+          registeredAt: { gte: start, lte: end },
+          ...inDepartment,
+        },
+        _count: { _all: true },
+      }),
+      this.prisma.receipt.findMany({
+        where: {
+          hospitalId,
+          receiptType: ReceiptType.LAB_TEST,
+          createdAt: { gte: start, lte: end },
+          ...(departmentId ? { patient: inDepartment } : {}),
+        },
+        select: {
+          totalAmount: true,
+          paidAmount: true,
+          patient: { select: { registeredBy: true } },
+        },
+      }),
+    ]);
+
+    const rows = new Map<string, RegistrationReportStaffRow>();
+
+    const rowFor = (staffId: string) => {
+      let row = rows.get(staffId);
+      if (!row) {
+        row = {
+          staffId,
+          staffName: 'Unknown user',
+          role: null,
+          departmentId: null,
+          departmentName: UNASSIGNED_DEPARTMENT,
+          registrations: 0,
+          labTestOrders: 0,
+          labTestRevenue: 0,
+          labTestCollected: 0,
+          labTestOutstanding: 0,
+        };
+        rows.set(staffId, row);
+      }
+      return row;
+    };
+
+    for (const group of registrationGroups) {
+      rowFor(group.registeredBy).registrations = group._count._all;
+    }
+
+    for (const receipt of labReceipts) {
+      const row = rowFor(receipt.patient.registeredBy);
+      row.labTestOrders += 1;
+      row.labTestRevenue += Number(receipt.totalAmount || 0);
+      row.labTestCollected += Number(receipt.paidAmount || 0);
+    }
+
+    // A staff member can show up with lab revenue but no registrations: the
+    // patient was registered on an earlier day and tested inside the period.
+    const staff = await this.prisma.user.findMany({
+      where: { id: { in: [...rows.keys()] } },
+      select: {
+        id: true,
+        fullName: true,
+        role: true,
+        department: { select: { id: true, name: true } },
+      },
+    });
+
+    for (const member of staff) {
+      const row = rowFor(member.id);
+      row.staffName = member.fullName;
+      row.role = member.role;
+      row.departmentId = member.department?.id ?? null;
+      row.departmentName = member.department?.name ?? UNASSIGNED_DEPARTMENT;
+    }
+
+    const staffRows = [...rows.values()]
+      .map((row) => ({
+        ...row,
+        labTestRevenue: round2(row.labTestRevenue),
+        labTestCollected: round2(row.labTestCollected),
+        labTestOutstanding: round2(row.labTestRevenue - row.labTestCollected),
+      }))
+      .sort(
+        (a, b) =>
+          b.registrations - a.registrations ||
+          b.labTestRevenue - a.labTestRevenue ||
+          a.staffName.localeCompare(b.staffName),
+      );
+
+    const departments = [...
+      staffRows
+        .reduce((acc, row) => {
+          const key = row.departmentId ?? UNASSIGNED_DEPARTMENT;
+          const bucket = acc.get(key) ?? {
+            departmentId: row.departmentId,
+            departmentName: row.departmentName,
+            registrations: 0,
+            labTestOrders: 0,
+            labTestRevenue: 0,
+            labTestCollected: 0,
+            labTestOutstanding: 0,
+            staff: [] as RegistrationReportStaffRow[],
+          };
+          bucket.registrations += row.registrations;
+          bucket.labTestOrders += row.labTestOrders;
+          bucket.labTestRevenue = round2(bucket.labTestRevenue + row.labTestRevenue);
+          bucket.labTestCollected = round2(bucket.labTestCollected + row.labTestCollected);
+          bucket.labTestOutstanding = round2(bucket.labTestOutstanding + row.labTestOutstanding);
+          bucket.staff.push(row);
+          acc.set(key, bucket);
+          return acc;
+        }, new Map<string, RegistrationReportDepartmentRow>())
+        .values(),
+    ].sort(
+      (a, b) =>
+        b.registrations - a.registrations ||
+        b.labTestRevenue - a.labTestRevenue ||
+        a.departmentName.localeCompare(b.departmentName),
+    );
+
+    const totals = staffRows.reduce(
+      (acc, row) => ({
+        registrations: acc.registrations + row.registrations,
+        labTestOrders: acc.labTestOrders + row.labTestOrders,
+        labTestRevenue: round2(acc.labTestRevenue + row.labTestRevenue),
+        labTestCollected: round2(acc.labTestCollected + row.labTestCollected),
+        labTestOutstanding: round2(acc.labTestOutstanding + row.labTestOutstanding),
+      }),
+      {
+        registrations: 0,
+        labTestOrders: 0,
+        labTestRevenue: 0,
+        labTestCollected: 0,
+        labTestOutstanding: 0,
+      },
+    );
+
+    return {
+      range: {
+        start: start.toISOString(),
+        end: end.toISOString(),
+        isSingleDay: dto.startDate === dto.endDate,
+      },
+      filters: {
+        departmentId: departmentId ?? null,
+      },
+      totals: {
+        ...totals,
+        staffCount: staffRows.length,
+      },
+      departments,
+      staff: staffRows,
     };
   }
 }

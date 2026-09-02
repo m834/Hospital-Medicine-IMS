@@ -217,6 +217,14 @@ const menuItems: MenuItem[] = [
     icon: DollarSign, 
     roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.AUDITOR] 
   },
+
+  // Registration Report - registration managers and admins only
+  {
+    label: 'Registration Report',
+    href: '/dashboard/reports/registration',
+    icon: UserRoundPlus,
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.REGISTRATION_STAFF_MANAGER]
+  },
   
   // Analytics - Admin only
   { 

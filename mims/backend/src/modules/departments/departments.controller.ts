@@ -43,6 +43,8 @@ export class DepartmentsController {
     UserRole.NURSE,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    // Needed by the department filter on the registration report
+    UserRole.REGISTRATION_STAFF_MANAGER,
   )
   findAll(@Query('hospitalId') hospitalId: string | undefined, @Request() req: any) {
     // If hospitalId is provided as query param, use it
