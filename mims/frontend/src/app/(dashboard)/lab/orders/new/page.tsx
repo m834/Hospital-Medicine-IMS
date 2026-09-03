@@ -52,108 +52,58 @@ interface SelectedTest {
   priority: "ROUTINE" | "URGENT" | "STAT";
 }
 
+/**
+ * On-screen twin of the printed slip: one block per test, each block being one
+ * A4 page on the pre-printed lab form. Kept deliberately identical to
+ * printLabReceipt so the preview cannot drift from what comes out of the tray.
+ */
 function LabSlip({
   orders,
   patientId,
-  hospitalName,
-  orderedByName,
-  clinicalNotes,
+  createdByName,
 }: {
   orders: LabOrder[];
   patientId: string;
-  hospitalName: string;
-  orderedByName: string;
-  clinicalNotes: string;
+  createdByName: string;
 }) {
-  const now = new Date();
-  const totalAmount = orders.reduce((sum, o) => sum + Number(o.labTest?.price || 0), 0);
-  const patient = orders[0]?.patient;
+  const printedOn = new Date().toLocaleDateString("en-GB");
 
   return (
-    <div className="font-sans text-sm text-black p-6 max-w-[600px] mx-auto">
-      {/* Header */}
-      <div className="text-center border-b-2 border-black pb-3 mb-4">
-        <h1 className="text-xl font-bold uppercase">{hospitalName}</h1>
-        <h2 className="text-base font-semibold mt-1">Laboratory Investigation Request</h2>
-        <p className="text-xs mt-1">Date: {now.toLocaleDateString()} &nbsp;|&nbsp; Time: {now.toLocaleTimeString()}</p>
-      </div>
+    <div className="divide-y">
+      {orders.map((order, index) => {
+        const patient = order.patient;
 
-      {/* Patient Info */}
-      <div className="grid grid-cols-2 gap-2 border border-gray-400 rounded p-3 mb-4 text-xs">
-        <div><span className="font-semibold">Patient MRN:</span> {formatMRN(patient?.nrNumber) || patientId}</div>
-        <div><span className="font-semibold">Patient Name:</span> {patient?.fullName || "—"}</div>
-        <div><span className="font-semibold">Gender:</span> {patient?.gender || "—"}</div>
-        <div><span className="font-semibold">Mobile:</span> {patient?.mobile || "—"}</div>
-        <div><span className="font-semibold">Referred By:</span> {orderedByName}</div>
-        <div><span className="font-semibold">Order Numbers:</span> {orders.map(o => o.orderNumber).join(", ")}</div>
-      </div>
+        const values = [
+          patient?.fullName,
+          formatMRN(patient?.nrNumber) || patientId,
+          createdByName,
+          printedOn,
+        ].filter((v) => v != null && String(v).trim() !== "");
 
-      {/* Tests */}
-      <table className="w-full border-collapse mb-4 text-xs">
-        <thead>
-          <tr className="bg-gray-100">
-            <th className="border border-gray-400 px-2 py-1 text-left">#</th>
-            <th className="border border-gray-400 px-2 py-1 text-left">Test Code</th>
-            <th className="border border-gray-400 px-2 py-1 text-left">Test Name</th>
-            <th className="border border-gray-400 px-2 py-1 text-left">Category</th>
-            <th className="border border-gray-400 px-2 py-1 text-left">Priority</th>
-            <th className="border border-gray-400 px-2 py-1 text-right">Amount (Rs.)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {orders.map((order, i) => (
-            <tr key={order.id}>
-              <td className="border border-gray-400 px-2 py-1">{i + 1}</td>
-              <td className="border border-gray-400 px-2 py-1">{order.labTest?.testCode}</td>
-              <td className="border border-gray-400 px-2 py-1 font-medium">{order.labTest?.testName}</td>
-              <td className="border border-gray-400 px-2 py-1">{order.labTest?.testCategory}</td>
-              <td className="border border-gray-400 px-2 py-1">
-                <span className={`font-semibold ${order.priority === "STAT" ? "text-red-600" : order.priority === "URGENT" ? "text-orange-600" : "text-green-700"}`}>
-                  {order.priority}
+        const test = [order.labTest?.testCode, order.labTest?.testName]
+          .filter((v) => v != null && String(v).trim() !== "")
+          .join(" — ");
+
+        return (
+          <div key={order.id} className="p-6 font-sans text-black">
+            <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+              Page {index + 1} of {orders.length}
+            </p>
+            <div className="text-sm font-bold leading-relaxed">
+              {values.map((value, i) => (
+                <span key={i}>
+                  {i > 0 && <span className="px-1.5 font-normal text-gray-500">|</span>}
+                  {value}
                 </span>
-              </td>
-              <td className="border border-gray-400 px-2 py-1 text-right">{Number(order.labTest?.price || 0).toFixed(2)}</td>
-            </tr>
-          ))}
-          <tr className="font-bold bg-gray-50">
-            <td colSpan={5} className="border border-gray-400 px-2 py-1 text-right">Total:</td>
-            <td className="border border-gray-400 px-2 py-1 text-right">Rs. {totalAmount.toFixed(2)}</td>
-          </tr>
-        </tbody>
-      </table>
-
-      {clinicalNotes && (
-        <div className="border border-gray-400 rounded p-2 mb-4 text-xs">
-          <span className="font-semibold">Clinical Notes: </span>{clinicalNotes}
-        </div>
-      )}
-
-      {/* Requirements */}
-      {orders.some(o => o.labTest?.requirements) && (
-        <div className="border border-gray-300 rounded p-2 mb-4 text-xs bg-yellow-50">
-          <p className="font-semibold mb-1">Special Requirements:</p>
-          {orders.filter(o => o.labTest?.requirements).map(o => (
-            <p key={o.id}>• {o.labTest?.testName}: {o.labTest?.requirements}</p>
-          ))}
-        </div>
-      )}
-
-      {/* Footer */}
-      <div className="flex justify-between mt-6 pt-4 border-t border-gray-400 text-xs">
-        <div className="text-center">
-          <div className="border-t border-black w-32 mt-8 mx-auto" />
-          <p>Patient / Guardian Signature</p>
-        </div>
-        <div className="text-center">
-          <div className="border-t border-black w-32 mt-8 mx-auto" />
-          <p>Lab Technician</p>
-        </div>
-        <div className="text-center">
-          <div className="border-t border-black w-32 mt-8 mx-auto" />
-          <p>Authorized By</p>
-        </div>
-      </div>
-      <p className="text-center text-xs text-gray-500 mt-3">— Please bring this slip when collecting your results —</p>
+              ))}
+            </div>
+            <div className="mt-1.5 flex justify-between gap-3 text-sm font-bold">
+              <span>{test}</span>
+              <span>Rs. {Number(order.labTest?.price || 0).toFixed(2)}</span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -346,9 +296,7 @@ export default function NewLabOrderPageComponent() {
     if (createdOrders.length === 0) return;
     printLabReceipt(createdOrders, {
       patientId: patientNrNumber,
-      hospitalName: selectedHospital?.name || user?.hospitalId || "Hospital",
-      printedBy: user?.fullName || user?.email || "Staff",
-      clinicalNotes,
+      createdBy: user?.fullName || user?.email || "Staff",
     });
   };
 
@@ -413,15 +361,16 @@ export default function NewLabOrderPageComponent() {
               <FileText className="h-4 w-4" />
               Lab Test Slip Preview
             </CardTitle>
+            <CardDescription>
+              One slip per test — {createdOrders.length} page(s) will print.
+            </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <div ref={printRef} className="border rounded-b-lg overflow-hidden">
               <LabSlip
                 orders={createdOrders}
                 patientId={patientNrNumber}
-                hospitalName={selectedHospital?.name || user?.hospitalId || "Hospital"}
-                orderedByName={user?.fullName || user?.email || "Staff"}
-                clinicalNotes={clinicalNotes}
+                createdByName={user?.fullName || user?.email || "Staff"}
               />
             </div>
           </CardContent>
