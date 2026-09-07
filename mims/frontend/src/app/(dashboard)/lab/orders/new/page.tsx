@@ -30,8 +30,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Search, Plus, Trash2, FileText, Printer, CheckCircle2, UserCheck, Loader2, X } from "lucide-react";
-import api from "@/lib/api";
+import api, { getErrorMessage } from "@/lib/api";
 import { printLabReceipt } from "@/lib/print-receipt";
+import { UserRole } from "@/lib/constants";
 import type { LabTest } from "@/hooks/use-lab-tests";
 import type { LabOrder } from "@/hooks/use-lab-orders";
 import { formatMRN } from '@/lib/mrn';
@@ -51,6 +52,18 @@ interface SelectedTest {
   test: LabTest;
   priority: "ROUTINE" | "URGENT" | "STAT";
 }
+
+/**
+ * Roles allowed to print a slip a second time. Mirrors SLIP_REPRINT_ROLES in
+ * lab-orders.service.ts, which is what actually enforces the rule — this copy
+ * only decides whether the button is worth offering.
+ */
+const SLIP_REPRINT_ROLES: string[] = [
+  UserRole.MASTER_ADMIN,
+  UserRole.SUPER_ADMIN,
+  UserRole.HOSPITAL_ADMIN,
+  UserRole.REGISTRATION_STAFF_MANAGER,
+];
 
 /**
  * On-screen twin of the printed slip: one block per test, each block being one
@@ -120,6 +133,9 @@ export default function NewLabOrderPageComponent() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [createdOrders, setCreatedOrders] = useState<LabOrder[]>([]);
   const [showSlip, setShowSlip] = useState(false);
+  const [hasPrinted, setHasPrinted] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [printError, setPrintError] = useState("");
   const printRef = useRef<HTMLDivElement>(null);
 
   // Patient search
@@ -245,6 +261,8 @@ export default function NewLabOrderPageComponent() {
 
   const totalPrice = selectedTests.reduce((sum, st) => sum + Number(st.test.price), 0);
 
+  const canReprintSlip = SLIP_REPRINT_ROLES.includes(user?.role || "");
+
   const handleAddTest = (test: LabTest, priority: "ROUTINE" | "URGENT" | "STAT" = "ROUTINE") => {
     if (!selectedTests.find((st) => st.test.id === test.id)) {
       setSelectedTests([...selectedTests, { test, priority }]);
@@ -292,17 +310,38 @@ export default function NewLabOrderPageComponent() {
     }
   };
 
-  const handlePrint = () => {
-    if (createdOrders.length === 0) return;
-    printLabReceipt(createdOrders, {
-      patientId: patientNrNumber,
-      createdBy: user?.fullName || user?.email || "Staff",
-    });
+  /**
+   * Claim the print on the server first: it counts the slip and refuses a
+   * second print to anyone but a manager or an admin. Only once it says yes
+   * does the print dialog open, so a refusal never reaches the printer.
+   */
+  const handlePrint = async () => {
+    if (createdOrders.length === 0 || printing) return;
+    setPrinting(true);
+    setPrintError("");
+    try {
+      await api.post("/lab-orders/print-slip", {
+        orderIds: createdOrders.map((order) => order.id),
+      });
+      setHasPrinted(true);
+      printLabReceipt(createdOrders, {
+        patientId: patientNrNumber,
+        createdBy: user?.fullName || user?.email || "Staff",
+      });
+    } catch (error: any) {
+      setPrintError(getErrorMessage(error));
+      // A 403 means the slip is already spent, so stop offering the button.
+      if (error?.response?.status === 403) setHasPrinted(true);
+    } finally {
+      setPrinting(false);
+    }
   };
 
   const handleNewOrder = () => {
     setCreatedOrders([]);
     setShowSlip(false);
+    setHasPrinted(false);
+    setPrintError("");
     setPatientNrNumber("");
     setSelectedTests([]);
     setClinicalNotes("");
@@ -339,11 +378,33 @@ export default function NewLabOrderPageComponent() {
           </div>
         </div>
 
+        {/* Print refusal, or anything else the server said about the print */}
+        {printError && (
+          <p className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <X className="mt-0.5 h-4 w-4 shrink-0" />
+            {printError}
+          </p>
+        )}
+
         {/* Action buttons */}
         <div className="flex gap-3">
-          <Button onClick={handlePrint} className="flex-1" size="lg">
-            <Printer className="mr-2 h-5 w-5" />
-            Print Lab Slip
+          <Button
+            onClick={handlePrint}
+            className="flex-1"
+            size="lg"
+            disabled={printing || (hasPrinted && !canReprintSlip)}
+            title={
+              hasPrinted && !canReprintSlip
+                ? "This slip has been printed. Only a registration staff manager, hospital admin or super admin can print it again."
+                : undefined
+            }
+          >
+            {printing ? (
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            ) : (
+              <Printer className="mr-2 h-5 w-5" />
+            )}
+            {printing ? "Printing..." : hasPrinted ? "Print Slip Again" : "Print Lab Slip"}
           </Button>
           <Button variant="outline" onClick={handleNewOrder} size="lg">
             <Plus className="mr-2 h-4 w-4" />
@@ -363,6 +424,10 @@ export default function NewLabOrderPageComponent() {
             </CardTitle>
             <CardDescription>
               One slip per test — {createdOrders.length} page(s) will print.
+              {hasPrinted &&
+                (canReprintSlip
+                  ? " Already printed; printing again is logged against your account."
+                  : " Already printed — a registration staff manager, hospital admin or super admin can print it again.")}
             </CardDescription>
           </CardHeader>
           <CardContent className="p-0">

@@ -1955,6 +1955,9 @@ model LabOrder {
   // Payment
   paymentStatus       String         @default("PENDING") @map("payment_status") // PENDING, PAID, WAIVED
   amountPaid          Float          @default(0) @map("amount_paid")
+  // Slip printing — a slip prints once; a reprint needs a manager or an admin
+  slipPrintCount      Int            @default(0) @map("slip_print_count")
+  slipLastPrintedAt   DateTime?      @map("slip_last_printed_at")
   // Metadata
   version             Int            @default(1)
   createdAt           DateTime       @default(now()) @map("created_at")

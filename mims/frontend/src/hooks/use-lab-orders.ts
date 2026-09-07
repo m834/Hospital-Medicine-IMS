@@ -30,6 +30,8 @@ export interface LabOrder {
   approvalNotes?: string;
   paymentStatus: string;
   amountPaid: number;
+  slipPrintCount: number;
+  slipLastPrintedAt?: string;
   version: number;
   createdAt: string;
   updatedAt: string;

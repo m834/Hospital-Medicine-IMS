@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateLabOrderDto } from './dto/create-lab-order.dto';
 import { UpdateLabOrderDto } from './dto/update-lab-order.dto';
@@ -7,6 +12,18 @@ import { EnterResultDto } from './dto/enter-result.dto';
 import { ApproveResultDto } from './dto/approve-result.dto';
 import { LabOrderStatus, TestPriority, ReceiptType, PaymentStatus, PaymentMethod, Prisma } from '@prisma/client';
 import { isUuid, mrnFilter } from '../../common/utils/mrn.util';
+
+/**
+ * Roles allowed to print a lab slip more than once. Everyone else gets the one
+ * print the slip is worth: it drops into a slot on a pre-printed A4 lab form,
+ * so a second copy burns a form and puts a duplicate slip into circulation.
+ */
+const SLIP_REPRINT_ROLES = new Set<string>([
+  'MASTER_ADMIN',
+  'SUPER_ADMIN',
+  'HOSPITAL_ADMIN',
+  'REGISTRATION_STAFF_MANAGER',
+]);
 
 @Injectable()
 export class LabOrdersService {
@@ -453,6 +470,100 @@ export class LabOrdersService {
         version: { increment: 1 },
       },
     });
+  }
+
+  /**
+   * Count a slip as printed, refusing a second print to anyone but a manager or
+   * an admin. Called before the browser opens its print dialog, so a cancelled
+   * dialog still counts — the alternative is trusting the client to report back
+   * after the fact, which cannot be enforced.
+   *
+   * All-or-nothing: an order of six tests either prints all six slips or none,
+   * so a partial refusal never leaves the desk holding half a set.
+   */
+  async recordSlipPrints(
+    orderIds: string[],
+    user: { id: string; role: string; hospitalId?: string | null },
+  ) {
+    if (!orderIds?.length) {
+      throw new BadRequestException('No lab orders given to print');
+    }
+
+    const ids = Array.from(new Set(orderIds));
+    const orders = await this.prisma.labOrder.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        hospitalId: true,
+        orderNumber: true,
+        slipPrintCount: true,
+        labTest: { select: { testName: true } },
+      },
+    });
+
+    if (orders.length !== ids.length) {
+      const found = new Set(orders.map((o) => o.id));
+      throw new NotFoundException(
+        `Lab order(s) not found: ${ids.filter((id) => !found.has(id)).join(', ')}`,
+      );
+    }
+
+    // A user tied to a hospital only ever prints that hospital's slips. Master
+    // and super admins carry no hospitalId and are not scoped.
+    if (user.hospitalId && orders.some((o) => o.hospitalId !== user.hospitalId)) {
+      throw new ForbiddenException(
+        'This lab slip belongs to another hospital',
+      );
+    }
+
+    const alreadyPrinted = orders.filter((o) => o.slipPrintCount > 0);
+    if (alreadyPrinted.length && !SLIP_REPRINT_ROLES.has(user.role)) {
+      throw new ForbiddenException(
+        `Slip ${alreadyPrinted
+          .map((o) => o.orderNumber)
+          .join(', ')} has already been printed. Only a registration staff manager, hospital admin or super admin can print it again.`,
+      );
+    }
+
+    const printedAt = new Date();
+
+    await this.prisma.$transaction([
+      this.prisma.labOrder.updateMany({
+        where: { id: { in: ids } },
+        data: {
+          slipPrintCount: { increment: 1 },
+          slipLastPrintedAt: printedAt,
+        },
+      }),
+      ...orders.map((order) =>
+        this.prisma.auditLog.create({
+          data: {
+            hospitalId: order.hospitalId,
+            userId: user.id,
+            action: order.slipPrintCount > 0 ? 'REPRINT' : 'PRINT',
+            module: 'Lab Orders',
+            entityType: 'LabOrder',
+            entityId: order.id,
+            description:
+              order.slipPrintCount > 0
+                ? `Reprinted lab slip ${order.orderNumber} (${order.labTest?.testName}) - print #${order.slipPrintCount + 1}`
+                : `Printed lab slip ${order.orderNumber} (${order.labTest?.testName})`,
+            beforeState: { slipPrintCount: order.slipPrintCount },
+            afterState: {
+              slipPrintCount: order.slipPrintCount + 1,
+              slipLastPrintedAt: printedAt,
+            },
+          },
+        }),
+      ),
+    ]);
+
+    return orders.map((order) => ({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      slipPrintCount: order.slipPrintCount + 1,
+      slipLastPrintedAt: printedAt,
+    }));
   }
 
   async getStatistics(hospitalId: string, startDate?: Date, endDate?: Date) {

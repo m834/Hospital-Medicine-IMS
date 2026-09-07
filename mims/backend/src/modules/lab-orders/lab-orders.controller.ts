@@ -19,7 +19,9 @@ import { UpdateLabOrderDto } from './dto/update-lab-order.dto';
 import { CollectSampleDto } from './dto/collect-sample.dto';
 import { EnterResultDto } from './dto/enter-result.dto';
 import { ApproveResultDto } from './dto/approve-result.dto';
+import { PrintSlipDto } from './dto/print-slip.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { LabOrderStatus, TestPriority } from '@prisma/client';
 
 @Controller('lab-orders')
@@ -71,6 +73,16 @@ export class LabOrdersController {
       startDate ? new Date(startDate) : undefined,
       endDate ? new Date(endDate) : undefined,
     );
+  }
+
+  /**
+   * Claim the one print a slip is allowed. Returns 403 when the slip has been
+   * printed already and the caller is not a manager or an admin, so the client
+   * must call this before it opens the print dialog.
+   */
+  @Post('print-slip')
+  recordSlipPrints(@Body() printSlipDto: PrintSlipDto, @CurrentUser() user: any) {
+    return this.labOrdersService.recordSlipPrints(printSlipDto.orderIds, user);
   }
 
   @Get('patient/:patientId')
