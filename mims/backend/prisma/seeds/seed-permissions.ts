@@ -328,6 +328,14 @@ const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'patients:read:all', 'patients:write:all',
   ],
   
+  // REGISTRATION_STAFF_MANAGER - Registration desk, plus the lab slips and the
+  // registration report the desk is measured on
+  REGISTRATION_STAFF_MANAGER: [
+    'patients:read:all', 'patients:write:all',
+    'lab:read:own_hospital',
+    'reports:read:own_hospital',
+  ],
+  
   // PHARMACY_STAFF - Basic pharmacy operations
   PHARMACY_STAFF: [
     'medicines:read:all',

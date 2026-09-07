@@ -309,23 +309,13 @@ export class HospitalsService {
       throw new BadRequestException('Cannot create SUPER_ADMIN users via hospital user endpoint');
     }
 
-    // Allowed hospital roles (exclude MASTER_ADMIN and SUPER_ADMIN)
-    const allowedRoles: UserRole[] = [
-      UserRole.HOSPITAL_ADMIN,
-      UserRole.DEPARTMENT_ADMIN,
-      UserRole.MAIN_PHARMACY_MANAGER,
-      UserRole.SUB_PHARMACY_MANAGER,
-      UserRole.DOCTOR,
-      UserRole.DOCTOR_ASSISTANT,
-      UserRole.REGISTRATION_STAFF,
-      UserRole.PHARMACY_STAFF,
-      UserRole.AUDITOR,
-      UserRole.LAB_TECHNICIAN,
-      UserRole.RADIOLOGIST,
-      UserRole.NURSE,
-      UserRole.BILLING_STAFF,
-      UserRole.RECEPTIONIST,
-    ];
+    // Every role except the two that are not hospital-scoped. Derived from the
+    // schema rather than listed, because a hand-written list silently drops any
+    // role added later — REGISTRATION_STAFF_MANAGER was rejected for months
+    // despite the form offering it, for exactly that reason.
+    const allowedRoles: UserRole[] = Object.values(UserRole).filter(
+      (role) => role !== UserRole.MASTER_ADMIN && role !== UserRole.SUPER_ADMIN,
+    );
 
     if (!allowedRoles.includes(createUserDto.role as UserRole)) {
       throw new BadRequestException(`Invalid role. Allowed roles: ${allowedRoles.join(', ')}`);
@@ -388,6 +378,7 @@ export class HospitalsService {
       UserRole.DOCTOR,
       UserRole.DOCTOR_ASSISTANT,
       UserRole.REGISTRATION_STAFF,
+      UserRole.REGISTRATION_STAFF_MANAGER,
       UserRole.AUDITOR,
       UserRole.LAB_TECHNICIAN,
       UserRole.RADIOLOGIST,
