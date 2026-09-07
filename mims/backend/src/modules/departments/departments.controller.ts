@@ -61,6 +61,7 @@ export class DepartmentsController {
     UserRole.HOSPITAL_ADMIN,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
     // Needed by the patient registration form
     UserRole.MAIN_PHARMACY_MANAGER,
     UserRole.SUB_PHARMACY_MANAGER,

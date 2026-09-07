@@ -38,6 +38,7 @@ export class TokensController {
     UserRole.DOCTOR,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
   )
   @ApiOperation({ summary: 'Get today tokens for a clinic' })
   @ApiParam({ name: 'clinicId', description: 'Clinic ID' })
@@ -57,6 +58,7 @@ export class TokensController {
     UserRole.DOCTOR,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
   )
   @ApiOperation({ summary: 'Get current token for a clinic' })
   @ApiParam({ name: 'clinicId', description: 'Clinic ID' })
@@ -76,6 +78,7 @@ export class TokensController {
     UserRole.DOCTOR,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
   )
   @ApiOperation({ summary: 'Get waiting tokens for a clinic' })
   @ApiParam({ name: 'clinicId', description: 'Clinic ID' })
@@ -124,6 +127,7 @@ export class TokensController {
     UserRole.HOSPITAL_ADMIN,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
   )
   @ApiOperation({ summary: 'Get next token number for a clinic' })
   @ApiParam({ name: 'clinicId', description: 'Clinic ID' })

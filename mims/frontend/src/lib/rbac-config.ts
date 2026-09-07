@@ -147,7 +147,7 @@ export const dashboardWidgets: DashboardWidget[] = [
     id: 'todays-registrations',
     title: "Today's Registrations",
     type: 'stats',
-    roles: [UserRole.SUPER_ADMIN, UserRole.REGISTRATION_STAFF, UserRole.HOSPITAL_ADMIN],
+    roles: [UserRole.SUPER_ADMIN, UserRole.REGISTRATION_STAFF, UserRole.REGISTRATION_STAFF_MANAGER, UserRole.HOSPITAL_ADMIN],
     priority: 6,
   },
 ];
@@ -211,7 +211,7 @@ export const quickActions: QuickAction[] = [
     href: '/dashboard/patients/register',
     icon: UserPlus,
     description: 'Register a new patient',
-    roles: [UserRole.SUPER_ADMIN, UserRole.REGISTRATION_STAFF, UserRole.HOSPITAL_ADMIN,  UserRole.MAIN_PHARMACY_MANAGER,
+    roles: [UserRole.SUPER_ADMIN, UserRole.REGISTRATION_STAFF, UserRole.REGISTRATION_STAFF_MANAGER, UserRole.HOSPITAL_ADMIN,  UserRole.MAIN_PHARMACY_MANAGER,
       UserRole.SUB_PHARMACY_MANAGER],
   },
   {

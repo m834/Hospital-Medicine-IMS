@@ -43,6 +43,7 @@ export class PatientVisitsController {
     UserRole.HOSPITAL_ADMIN,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
   )
   @ApiOperation({ summary: 'Create a new patient visit' })
   @ApiResponse({ status: 201, description: 'Patient visit created' })
@@ -63,6 +64,7 @@ export class PatientVisitsController {
     UserRole.DOCTOR,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
     UserRole.NURSE,
     // Needed by the patient detail page shown right after registration
     UserRole.MAIN_PHARMACY_MANAGER,
@@ -109,6 +111,7 @@ export class PatientVisitsController {
     UserRole.DOCTOR,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
     UserRole.NURSE,
   )
   @ApiOperation({ summary: 'Get patient visit details' })

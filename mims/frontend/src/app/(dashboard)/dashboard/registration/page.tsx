@@ -28,6 +28,17 @@ interface RecentPatient {
   registeredAt: string;
 }
 
+/**
+ * Both registration roles land on this page — ROLE_DASHBOARDS routes them here.
+ * A guard admitting only REGISTRATION_STAFF bounced the manager back to
+ * /dashboard, which routed it straight here again: an endless redirect that
+ * never rendered a dashboard. Keep this in step with ROLE_DASHBOARDS.
+ */
+const REGISTRATION_DASHBOARD_ROLES: string[] = [
+  UserRole.REGISTRATION_STAFF,
+  UserRole.REGISTRATION_STAFF_MANAGER,
+];
+
 export default function RegistrationDashboard() {
   const router = useRouter();
   const { user } = useAuthStore();
@@ -37,11 +48,12 @@ export default function RegistrationDashboard() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
-    if (!user || user.role !== UserRole.REGISTRATION_STAFF) {
+    if (!user || !REGISTRATION_DASHBOARD_ROLES.includes(user.role)) {
       router.push('/dashboard');
       return;
     }
     fetchDashboardData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, router]);
 
   const fetchDashboardData = useCallback(async () => {
@@ -83,7 +95,9 @@ export default function RegistrationDashboard() {
     }
   }, [user]);
 
-  const quickActions = getQuickActionsForRole(UserRole.REGISTRATION_STAFF);
+  // The manager's actions are a superset of the staff's, so pass the real role
+  // rather than pinning every visitor to REGISTRATION_STAFF's list.
+  const quickActions = getQuickActionsForRole(user?.role as UserRole);
 
   // Derived values
   const opdCount = stats?.byVisitType?.['OPD'] ?? stats?.byVisitType?.['opd'] ?? 0;

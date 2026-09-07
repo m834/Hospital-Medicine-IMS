@@ -66,6 +66,7 @@ export class ClinicsController {
     UserRole.DOCTOR,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
     // Needed by the patient registration form
     UserRole.MAIN_PHARMACY_MANAGER,
     UserRole.SUB_PHARMACY_MANAGER,
@@ -87,6 +88,7 @@ export class ClinicsController {
     UserRole.HOSPITAL_ADMIN,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
   )
   @ApiOperation({ summary: 'Get available clinics for today' })
   @ApiQuery({ name: 'hospitalId', required: true })
@@ -111,6 +113,7 @@ export class ClinicsController {
     UserRole.DOCTOR,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
   )
   @ApiOperation({ summary: 'Get clinics by doctor' })
   @ApiParam({ name: 'doctorId', description: 'Doctor ID' })
@@ -131,6 +134,7 @@ export class ClinicsController {
     UserRole.DOCTOR,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
   )
   @ApiOperation({ summary: 'Get clinics by department' })
   @ApiParam({ name: 'departmentId', description: 'Department ID' })
@@ -152,6 +156,7 @@ export class ClinicsController {
     UserRole.DOCTOR,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
   )
   @ApiOperation({ summary: 'Get clinic details' })
   @ApiParam({ name: 'id', description: 'Clinic ID' })

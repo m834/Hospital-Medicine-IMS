@@ -96,6 +96,7 @@ export class HospitalsController {
     UserRole.HOSPITAL_ADMIN,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
     // Needed to populate the attending-doctor list on patient registration
     UserRole.MAIN_PHARMACY_MANAGER,
     UserRole.SUB_PHARMACY_MANAGER,

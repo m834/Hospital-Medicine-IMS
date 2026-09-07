@@ -44,6 +44,7 @@ export class VisitsController {
     UserRole.HOSPITAL_ADMIN,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
   )
   @ApiOperation({ summary: 'Create a new visit' })
   @ApiResponse({ status: 201, description: 'Visit created' })
@@ -64,6 +65,7 @@ export class VisitsController {
     UserRole.DOCTOR,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
     UserRole.NURSE,
     UserRole.MAIN_PHARMACY_MANAGER,
     UserRole.SUB_PHARMACY_MANAGER,
@@ -87,6 +89,7 @@ export class VisitsController {
     UserRole.DOCTOR,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
   )
   @ApiOperation({ summary: 'Get today visits' })
   async findToday(@Query('clinicId') clinicId: string) {
@@ -126,6 +129,7 @@ export class VisitsController {
     UserRole.DOCTOR,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
   )
   @ApiOperation({ summary: 'Get clinic queue for today' })
   @ApiParam({ name: 'clinicId', description: 'Clinic ID' })
@@ -146,6 +150,7 @@ export class VisitsController {
     UserRole.DOCTOR,
     UserRole.RECEPTIONIST,
     UserRole.REGISTRATION_STAFF,
+    UserRole.REGISTRATION_STAFF_MANAGER,
     UserRole.NURSE,
   )
   @ApiOperation({ summary: 'Get visit details' })
