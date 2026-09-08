@@ -37,24 +37,36 @@ export class LabOrdersController {
     return this.labOrdersService.create(createLabOrderDto);
   }
 
+  /**
+   * The current user is passed through because the list is scoped by role:
+   * registration staff see only the orders they placed, everyone else sees the
+   * hospital's. An orderedById in the query is honoured only for the latter.
+   */
   @Get()
   findAll(
+    @CurrentUser() user: any,
     @Query('hospitalId') hospitalId: string,
     @Query('patientId') patientId?: string,
     @Query('visitId') visitId?: string,
     @Query('status') status?: LabOrderStatus,
     @Query('priority') priority?: TestPriority,
+    @Query('orderedById') orderedById?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    return this.labOrdersService.findAll(hospitalId, {
-      patientId,
-      visitId,
-      status,
-      priority,
-      startDate: startDate ? new Date(startDate) : undefined,
-      endDate: endDate ? new Date(endDate) : undefined,
-    });
+    return this.labOrdersService.findAll(
+      hospitalId,
+      {
+        patientId,
+        visitId,
+        status,
+        priority,
+        orderedById,
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+      },
+      user,
+    );
   }
 
   @Get('pending')

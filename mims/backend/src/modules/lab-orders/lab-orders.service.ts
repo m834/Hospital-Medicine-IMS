@@ -25,6 +25,14 @@ const SLIP_REPRINT_ROLES = new Set<string>([
   'REGISTRATION_STAFF_MANAGER',
 ]);
 
+/**
+ * Roles whose lab order lists show only their own orders. A registration staff
+ * member works one desk: the list is their own day's work, not the whole
+ * hospital's. Everyone else — admins, managers, lab staff, doctors — sees all
+ * of it, so the lab can still work the full queue.
+ */
+const SELF_SCOPED_LIST_ROLES = new Set<string>(['REGISTRATION_STAFF']);
+
 @Injectable()
 export class LabOrdersService {
   constructor(private prisma: PrismaService) {}
@@ -178,17 +186,31 @@ export class LabOrdersService {
     return `REC-${dateStr}-${sequence.toString().padStart(4, '0')}`;
   }
 
-  async findAll(hospitalId: string, filters?: {
-    patientId?: string;
-    visitId?: string;
-    status?: LabOrderStatus;
-    priority?: TestPriority;
-    startDate?: Date;
-    endDate?: Date;
-  }) {
+  async findAll(
+    hospitalId: string,
+    filters?: {
+      patientId?: string;
+      visitId?: string;
+      status?: LabOrderStatus;
+      priority?: TestPriority;
+      orderedById?: string;
+      startDate?: Date;
+      endDate?: Date;
+    },
+    user?: { id: string; role: string },
+  ) {
+    // Who the list belongs to is settled by the token, never by the query
+    // string: a self-scoped role is pinned to its own orders whatever it asks
+    // for, and only the roles that see everything may name another user.
+    const orderedById =
+      user && SELF_SCOPED_LIST_ROLES.has(user.role)
+        ? user.id
+        : filters?.orderedById;
+
     return this.prisma.labOrder.findMany({
       where: {
         hospitalId,
+        ...(orderedById && { orderedById }),
         ...(filters?.patientId && { patientId: filters.patientId }),
         ...(filters?.visitId && { visitId: filters.visitId }),
         ...(filters?.status && { status: filters.status }),

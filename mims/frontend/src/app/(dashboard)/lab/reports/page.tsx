@@ -25,6 +25,10 @@ export default function LabReportsPage() {
   const hospitalId = selectedHospital?.id || user?.hospitalId;
   const isMasterOrSuper = user?.role === UserRole.MASTER_ADMIN || user?.role === UserRole.SUPER_ADMIN;
 
+  // Registration staff get their own orders only — the server scopes the list
+  // off the token, so this only says out loud what they are already seeing.
+  const isOwnOrdersOnly = user?.role === UserRole.REGISTRATION_STAFF;
+
   const { data: approvedOrders, isLoading } = useLabOrders(hospitalId || "", {
     status: "APPROVED",
     startDate,
@@ -66,7 +70,11 @@ export default function LabReportsPage() {
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Lab Reports</h1>
-        <p className="text-muted-foreground">View and download approved lab test reports</p>
+        <p className="text-muted-foreground">
+          {isOwnOrdersOnly
+            ? "View and download approved reports for the lab tests you ordered"
+            : "View and download approved lab test reports"}
+        </p>
       </div>
 
       {/* Stats */}
