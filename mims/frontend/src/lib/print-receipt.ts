@@ -172,7 +172,17 @@ export function printLabReceipt(
   printReceiptHtml(receiptHTML);
 }
 
-/** Render the given HTML in a hidden iframe and trigger the print dialog. */
+/**
+ * Render the given HTML in a hidden iframe and send it to the printer.
+ *
+ * On an ordinary browser this opens the print dialog. On the reception
+ * machines, where Chrome runs with --kiosk-printing, there is no dialog: the
+ * slip goes straight to the default printer as one copy. That path is the
+ * reason for the teardown below — kiosk printing returns from print() at once
+ * and spools in the background, so tearing the iframe down on a short timer
+ * can empty the page out from under the job. Wait for afterprint instead, with
+ * a generous timeout for the browsers that never fire it.
+ */
 function printReceiptHtml(html: string) {
   const printFrame = document.createElement('iframe');
   printFrame.style.cssText =
@@ -186,11 +196,21 @@ function printReceiptHtml(html: string) {
     frameDoc.close();
 
     printFrame.onload = () => {
+      const frameWindow = printFrame.contentWindow;
+      if (!frameWindow) return;
+
+      let removed = false;
+      const removeFrame = () => {
+        if (removed) return;
+        removed = true;
+        printFrame.remove();
+      };
+
+      frameWindow.addEventListener('afterprint', () => setTimeout(removeFrame, 500));
+
       setTimeout(() => {
-        printFrame.contentWindow?.print();
-        setTimeout(() => {
-          document.body.removeChild(printFrame);
-        }, 100);
+        frameWindow.print();
+        setTimeout(removeFrame, 10000);
       }, 250);
     };
   }
