@@ -29,7 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Search, Plus, Trash2, FileText, Printer, CheckCircle2, UserCheck, Loader2, X } from "lucide-react";
+import { Search, Plus, Trash2, FileText, Printer, AlertTriangle, UserCheck, Loader2, X } from "lucide-react";
 import api, { getErrorMessage } from "@/lib/api";
 import { printLabReceipt } from "@/lib/print-receipt";
 import { UserRole } from "@/lib/constants";
@@ -136,6 +136,10 @@ export default function NewLabOrderPageComponent() {
   const [hasPrinted, setHasPrinted] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [printError, setPrintError] = useState("");
+  // The order numbers of the slips that just went to the printer, shown on the
+  // empty form as the receipt for the last patient.
+  const [lastPrinted, setLastPrinted] = useState<string[]>([]);
+  const [formError, setFormError] = useState("");
   const printRef = useRef<HTMLDivElement>(null);
 
   // Patient search
@@ -248,7 +252,7 @@ export default function NewLabOrderPageComponent() {
     testCategory: selectedCategory === "all" ? undefined : selectedCategory,
   });
 
-  const createOrderMutation = useCreateLabOrder();
+  const createOrderMutation = useCreateLabOrder({ silent: true });
 
   const categories = Array.from(
     new Set(labTests?.map((test) => test.testCategory).filter(Boolean) || [])
@@ -282,14 +286,27 @@ export default function NewLabOrderPageComponent() {
     );
   };
 
+  /**
+   * One click: create the orders, send the slips to the printer, and hand the
+   * desk an empty form for the next patient. Nothing to confirm and nothing to
+   * dismiss in between — the reception machines print silently (Chrome runs
+   * there with --kiosk-printing), so the slip is out of the tray before the
+   * form has finished clearing.
+   *
+   * The preview screen below is the exception path only: it appears when the
+   * print itself fails, so the orders are not stranded without a slip.
+   */
   const handleSubmit = async () => {
     if (!patientNrNumber || selectedTests.length === 0 || !user) {
-      alert("Please enter patient NR number and select at least one test");
+      setFormError("Search for a patient and add at least one test before creating the order.");
       return;
     }
 
+    setFormError("");
+    setLastPrinted([]);
+    const results: LabOrder[] = [];
+
     try {
-      const results: LabOrder[] = [];
       // Prefer the resolved UUID; fall back to nrNumber (service will resolve it)
       const resolvedPatientId = foundPatient?.id || patientNrNumber;
       for (const selectedTest of selectedTests) {
@@ -303,32 +320,47 @@ export default function NewLabOrderPageComponent() {
         });
         results.push(order as LabOrder);
       }
-      setCreatedOrders(results);
-      setShowSlip(true);
     } catch (error) {
       console.error("Failed to create orders:", error);
+      setFormError(getErrorMessage(error) || "Failed to create the lab order. Please try again.");
+      // Some of the set may have been created before the failure; hold them on
+      // the slip screen rather than losing their slips.
+      if (results.length > 0) {
+        setCreatedOrders(results);
+        setShowSlip(true);
+      }
+      return;
     }
+
+    await printAndClear(results);
   };
 
   /**
    * Claim the print on the server first: it counts the slip and refuses a
    * second print to anyone but a manager or an admin. Only once it says yes
-   * does the print dialog open, so a refusal never reaches the printer.
+   * does anything reach the printer, so a refusal never prints.
    */
-  const handlePrint = async () => {
-    if (createdOrders.length === 0 || printing) return;
+  const printAndClear = async (orders: LabOrder[]) => {
+    if (orders.length === 0) return;
     setPrinting(true);
     setPrintError("");
     try {
       await api.post("/lab-orders/print-slip", {
-        orderIds: createdOrders.map((order) => order.id),
+        orderIds: orders.map((order) => order.id),
       });
-      setHasPrinted(true);
-      printLabReceipt(createdOrders, {
+      printLabReceipt(orders, {
         patientId: patientNrNumber,
         createdBy: user?.fullName || user?.email || "Staff",
       });
+      setLastPrinted(orders.map((order) => order.orderNumber));
+      resetForm();
+      setCreatedOrders([]);
+      setShowSlip(false);
+      setHasPrinted(false);
     } catch (error: any) {
+      // The slip did not print. Show it so it can be retried by hand.
+      setCreatedOrders(orders);
+      setShowSlip(true);
       setPrintError(getErrorMessage(error));
       // A 403 means the slip is already spent, so stop offering the button.
       if (error?.response?.status === 403) setHasPrinted(true);
@@ -337,11 +369,14 @@ export default function NewLabOrderPageComponent() {
     }
   };
 
-  const handleNewOrder = () => {
-    setCreatedOrders([]);
-    setShowSlip(false);
-    setHasPrinted(false);
-    setPrintError("");
+  /** Retry from the slip screen after a failed print. */
+  const handlePrint = async () => {
+    if (createdOrders.length === 0 || printing) return;
+    await printAndClear(createdOrders);
+  };
+
+  /** Empty the form for the next patient, leaving any print status in place. */
+  const resetForm = () => {
     setPatientNrNumber("");
     setSelectedTests([]);
     setClinicalNotes("");
@@ -349,6 +384,16 @@ export default function NewLabOrderPageComponent() {
     setPatientSearchQuery("");
     setPatientSearchError("");
     setSearchType("mrn");
+    setFormError("");
+  };
+
+  const handleNewOrder = () => {
+    setCreatedOrders([]);
+    setShowSlip(false);
+    setHasPrinted(false);
+    setPrintError("");
+    setLastPrinted([]);
+    resetForm();
   };
 
   if (!selectedHospital && !user?.hospitalId) {
@@ -363,16 +408,18 @@ export default function NewLabOrderPageComponent() {
     );
   }
 
-  // ── SUCCESS: show printable slip ──────────────────────────────────────────
+  // ── RECOVERY: the order exists but its slip did not print ─────────────────
+  // The normal path never lands here: it prints and clears the form. This is
+  // what staff see when the printer or the server refused the slip, so the
+  // order is not left without one.
   if (showSlip && createdOrders.length > 0) {
     return (
       <div className="space-y-4 p-6 max-w-3xl mx-auto">
-        {/* Success banner */}
-        <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg p-4">
-          <CheckCircle2 className="h-6 w-6 text-green-600 shrink-0" />
+        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <AlertTriangle className="h-6 w-6 text-amber-600 shrink-0" />
           <div>
-            <p className="font-semibold text-green-800">Lab order created successfully!</p>
-            <p className="text-sm text-green-700">
+            <p className="font-semibold text-amber-900">Order created — the slip did not print</p>
+            <p className="text-sm text-amber-800">
               {createdOrders.length} test(s) ordered. Order numbers: {createdOrders.map(o => o.orderNumber).join(", ")}
             </p>
           </div>
@@ -404,7 +451,7 @@ export default function NewLabOrderPageComponent() {
             ) : (
               <Printer className="mr-2 h-5 w-5" />
             )}
-            {printing ? "Printing..." : hasPrinted ? "Print Slip Again" : "Print Lab Slip"}
+            {printing ? "Printing..." : hasPrinted ? "Print Slip Again" : "Retry Print"}
           </Button>
           <Button variant="outline" onClick={handleNewOrder} size="lg">
             <Plus className="mr-2 h-4 w-4" />
@@ -450,6 +497,27 @@ export default function NewLabOrderPageComponent() {
         <h1 className="text-3xl font-bold">Create Lab Order</h1>
         <p className="text-muted-foreground">Create a new lab order for a patient</p>
       </div>
+
+      {/* The last patient's slips, so the desk can see what just printed
+          without anything to dismiss. */}
+      {lastPrinted.length > 0 && (
+        <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 p-3">
+          <Printer className="mt-0.5 h-5 w-5 shrink-0 text-green-600" />
+          <p className="text-sm text-green-800">
+            <span className="font-semibold">
+              {lastPrinted.length} slip{lastPrinted.length > 1 ? "s" : ""} sent to the printer
+            </span>{" "}
+            — {lastPrinted.join(", ")}. Ready for the next patient.
+          </p>
+        </div>
+      )}
+
+      {formError && (
+        <p className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <X className="mt-0.5 h-4 w-4 shrink-0" />
+          {formError}
+        </p>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left: Patient and Order Info */}
@@ -682,11 +750,24 @@ export default function NewLabOrderPageComponent() {
               <div className="space-y-2">
                 <Button
                   onClick={handleSubmit}
-                  disabled={selectedTests.length === 0 || !patientNrNumber || createOrderMutation.isPending}
+                  disabled={
+                    selectedTests.length === 0 ||
+                    !patientNrNumber ||
+                    createOrderMutation.isPending ||
+                    printing
+                  }
                   className="w-full"
                 >
-                  <FileText className="mr-2 h-4 w-4" />
-                  {createOrderMutation.isPending ? "Creating..." : "Create Order & Print Slip"}
+                  {createOrderMutation.isPending || printing ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Printer className="mr-2 h-4 w-4" />
+                  )}
+                  {createOrderMutation.isPending
+                    ? "Creating..."
+                    : printing
+                    ? "Printing..."
+                    : "Create Order & Print Slip"}
                 </Button>
                 <Button
                   variant="outline"

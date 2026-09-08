@@ -171,7 +171,12 @@ export function useLabOrderStats(hospitalId: string) {
   });
 }
 
-export function useCreateLabOrder() {
+/**
+ * @param options.silent suppresses the success toast. The lab order desk
+ * creates an order and prints its slip in one click, and reports the outcome on
+ * the form itself — a toast per test would stack up behind the printer.
+ */
+export function useCreateLabOrder(options?: { silent?: boolean }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -187,9 +192,10 @@ export function useCreateLabOrder() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["labOrders", variables.hospitalId] });
       queryClient.invalidateQueries({ queryKey: ["labOrderStats", variables.hospitalId] });
-      toast({ title: "Lab order created successfully" });
+      if (!options?.silent) toast({ title: "Lab order created successfully" });
     },
     onError: (error: Error) => {
+      if (options?.silent) return;
       toast({
         title: "Failed to create lab order",
         description: error.message,
