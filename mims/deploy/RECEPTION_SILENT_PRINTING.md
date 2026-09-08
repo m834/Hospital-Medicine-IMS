@@ -9,6 +9,22 @@ no copy count.
 
 This is a per-machine setup step. Nothing in the app changes.
 
+## Setup — the quick way
+
+Copy `setup-kiosk-printing.ps1` (next to this file) onto the reception machine
+and run it once:
+
+```
+powershell -ExecutionPolicy Bypass -File .\setup-kiosk-printing.ps1
+```
+
+It finds Chrome, reports which printer is currently the Windows default, creates
+the two desktop shortcuts, and offers to close any running Chrome (the step that
+otherwise makes it look like nothing changed). Pass `-BaseUrl "http://<address>"`
+if the machines reach MIMS on a LAN address rather than the public one.
+
+The manual steps below are the same thing done by hand.
+
 ## Setup (Windows, once per reception machine)
 
 1. **Confirm the slip printer is the Windows default.**
