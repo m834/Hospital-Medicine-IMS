@@ -12,6 +12,14 @@ export class RegistrationReportDto {
   @IsUUID()
   departmentId?: string;
 
+  /**
+   * Narrows to one registration staff member. Ignored for a caller who is
+   * pinned to their own row — the controller takes their id from the token.
+   */
+  @IsOptional()
+  @IsUUID()
+  staffId?: string;
+
   /** Only a SUPER_ADMIN/MASTER_ADMIN (who has no hospital of their own) may name one. */
   @IsOptional()
   @IsString()

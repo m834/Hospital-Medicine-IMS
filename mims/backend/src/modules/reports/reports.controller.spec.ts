@@ -28,12 +28,13 @@ describe('ReportsController — registration report access', () => {
   const requiredRoles = () =>
     reflector.get<string[]>(ROLES_KEY, ReportsController.prototype.getRegistrationReport);
 
-  it('is restricted to the registration manager and admins', () => {
+  it('is open to the registration desk and the admins above it', () => {
     expect(requiredRoles()).toEqual([
       'MASTER_ADMIN',
       'SUPER_ADMIN',
       'HOSPITAL_ADMIN',
       'REGISTRATION_STAFF_MANAGER',
+      'REGISTRATION_STAFF',
     ]);
   });
 
@@ -43,11 +44,55 @@ describe('ReportsController — registration report access', () => {
       getHandler: () => ReportsController.prototype.getRegistrationReport,
       getClass: () => ReportsController,
       switchToHttp: () => ({
-        getRequest: () => ({ user: { role: 'REGISTRATION_STAFF' } }),
+        getRequest: () => ({ user: { role: 'LAB_TECHNICIAN' } }),
       }),
     };
 
     expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+  });
+
+  // Registration staff share the manager's report; what differs is whose rows
+  // they get, and that is settled by the token rather than the query string.
+  it('pins a registration staff member to their own id', async () => {
+    await controller.getRegistrationReport(query, {
+      user: { id: 'user-1', hospitalId: 'hospital-1', role: 'REGISTRATION_STAFF' },
+    });
+
+    expect(mockReportsService.getRegistrationReport).toHaveBeenCalledWith(
+      expect.objectContaining({ staffId: 'user-1' }),
+    );
+  });
+
+  it('ignores a staffId a registration staff member asks for', async () => {
+    await controller.getRegistrationReport(
+      { ...query, staffId: 'colleague-9' },
+      { user: { id: 'user-1', hospitalId: 'hospital-1', role: 'REGISTRATION_STAFF' } },
+    );
+
+    expect(mockReportsService.getRegistrationReport).toHaveBeenCalledWith(
+      expect.objectContaining({ staffId: 'user-1' }),
+    );
+  });
+
+  it('leaves the whole desk in view for a manager who names nobody', async () => {
+    await controller.getRegistrationReport(query, {
+      user: { id: 'manager-1', hospitalId: 'hospital-1', role: 'REGISTRATION_STAFF_MANAGER' },
+    });
+
+    expect(mockReportsService.getRegistrationReport).toHaveBeenCalledWith(
+      expect.objectContaining({ staffId: undefined }),
+    );
+  });
+
+  it('lets a manager narrow the report to one staff member', async () => {
+    await controller.getRegistrationReport(
+      { ...query, staffId: 'user-1' },
+      { user: { id: 'manager-1', hospitalId: 'hospital-1', role: 'REGISTRATION_STAFF_MANAGER' } },
+    );
+
+    expect(mockReportsService.getRegistrationReport).toHaveBeenCalledWith(
+      expect.objectContaining({ staffId: 'user-1' }),
+    );
   });
 
   it('pins the report to the hospital on the token, ignoring an absent query param', async () => {

@@ -17,6 +17,13 @@ import { DetailedDailyReportDto, MedicineConsumptionDto } from './dto/detailed-d
 import { FinancialSummaryDto } from './dto/financial-summary.dto';
 import { RegistrationReportDto } from './dto/registration-report.dto';
 
+/**
+ * Roles that only ever see their own row of the registration report. A
+ * registration staff member sees their own day's work; their manager and the
+ * admins above them see the whole desk.
+ */
+const SELF_SCOPED_REPORT_ROLES = new Set<string>(['REGISTRATION_STAFF']);
+
 @Controller('reports')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ReportsController {
@@ -197,16 +204,37 @@ export class ReportsController {
    * startDate === endDate.
    *
    * Authorized roles: MASTER_ADMIN, SUPER_ADMIN, HOSPITAL_ADMIN,
-   * REGISTRATION_STAFF_MANAGER. The guard rejects everyone else at the
-   * endpoint, so hiding the menu entry is presentation only.
+   * REGISTRATION_STAFF_MANAGER see the whole desk and may narrow to one staff
+   * member; REGISTRATION_STAFF get the same report scoped to themselves. The
+   * guard rejects everyone else at the endpoint, so hiding the menu entry is
+   * presentation only.
    */
   @Get('registration')
-  @Roles('MASTER_ADMIN', 'SUPER_ADMIN', 'HOSPITAL_ADMIN', 'REGISTRATION_STAFF_MANAGER')
+  @Roles(
+    'MASTER_ADMIN',
+    'SUPER_ADMIN',
+    'HOSPITAL_ADMIN',
+    'REGISTRATION_STAFF_MANAGER',
+    'REGISTRATION_STAFF',
+  )
   async getRegistrationReport(@Query() query: RegistrationReportDto, @Request() req) {
     return this.reportsService.getRegistrationReport({
       ...query,
       hospitalId: this.resolveHospitalId(req.user, query.hospitalId),
+      staffId: this.resolveStaffId(req.user, query.staffId),
     });
+  }
+
+  /**
+   * Which staff member the report covers. A self-scoped role is pinned to their
+   * own id off the token, so a staffId in the query string cannot point the
+   * report at a colleague; everyone else may name one or see the whole desk.
+   */
+  private resolveStaffId(
+    user: { id: string; role: string },
+    requested?: string,
+  ) {
+    return SELF_SCOPED_REPORT_ROLES.has(user?.role) ? user.id : requested;
   }
 
   /**

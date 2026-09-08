@@ -145,6 +145,109 @@ describe('ReportsService.getRegistrationReport', () => {
     expect(report.departments[0].departmentName).toBe('Unassigned');
   });
 
+  /**
+   * user.findMany serves two purposes here: the desk roster behind the staff
+   * filter (asked for by role) and the names for the rows. Answer them apart so
+   * a test can tell which one it is looking at.
+   */
+  const mockUsers = (roster: any[], rowNames: any[]) => {
+    mockPrismaService.user.findMany.mockImplementation((args: any) =>
+      Promise.resolve(args?.where?.role ? roster : rowNames),
+    );
+  };
+
+  it('narrows both halves of the report to one staff member', async () => {
+    mockPrismaService.patient.groupBy.mockResolvedValue([
+      { registeredBy: 'staff-1', _count: { _all: 2 } },
+    ]);
+    mockPrismaService.receipt.findMany.mockResolvedValue([]);
+    mockUsers([], [
+      { id: 'staff-1', fullName: 'Ayesha Khan', role: 'REGISTRATION_STAFF', department: null },
+    ]);
+
+    const report = await service.getRegistrationReport({ ...baseDto, staffId: 'staff-1' });
+
+    expect(mockPrismaService.patient.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ registeredBy: 'staff-1' }),
+      }),
+    );
+    expect(mockPrismaService.receipt.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient: expect.objectContaining({ registeredBy: 'staff-1' }),
+        }),
+      }),
+    );
+    expect(report.filters.staffId).toBe('staff-1');
+    expect(report.staff).toHaveLength(1);
+  });
+
+  it('combines the staff and department filters rather than dropping one', async () => {
+    mockPrismaService.patient.groupBy.mockResolvedValue([]);
+    mockPrismaService.receipt.findMany.mockResolvedValue([]);
+    mockUsers([], []);
+
+    await service.getRegistrationReport({
+      ...baseDto,
+      staffId: 'staff-1',
+      departmentId: 'dept-1',
+    });
+
+    expect(mockPrismaService.patient.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          registeredBy: 'staff-1',
+          registeredByUser: { departmentId: 'dept-1' },
+        }),
+      }),
+    );
+  });
+
+  // Otherwise picking a staff member with a quiet day would empty the very
+  // dropdown that picked them.
+  it('offers the whole desk roster even when nobody registered anyone', async () => {
+    mockPrismaService.patient.groupBy.mockResolvedValue([]);
+    mockPrismaService.receipt.findMany.mockResolvedValue([]);
+    mockUsers(
+      [
+        { id: 'staff-2', fullName: 'Bilal Ahmed', role: 'REGISTRATION_STAFF' },
+        { id: 'staff-1', fullName: 'Ayesha Khan', role: 'REGISTRATION_STAFF' },
+      ],
+      [],
+    );
+
+    const report = await service.getRegistrationReport({ ...baseDto, staffId: 'staff-1' });
+
+    expect(report.staff).toHaveLength(0);
+    expect(report.staffOptions.map((option) => option.fullName)).toEqual([
+      'Ayesha Khan',
+      'Bilal Ahmed',
+    ]);
+  });
+
+  it('adds a registrar who holds no desk role to the picker', async () => {
+    mockPrismaService.patient.groupBy.mockResolvedValue([
+      { registeredBy: 'admin-1', _count: { _all: 1 } },
+    ]);
+    mockPrismaService.receipt.findMany.mockResolvedValue([]);
+    mockUsers(
+      [{ id: 'staff-1', fullName: 'Ayesha Khan', role: 'REGISTRATION_STAFF' }],
+      [
+        {
+          id: 'admin-1',
+          fullName: 'Hospital Admin',
+          role: 'HOSPITAL_ADMIN',
+          department: null,
+        },
+      ],
+    );
+
+    const report = await service.getRegistrationReport(baseDto);
+
+    expect(report.staffOptions.map((option) => option.id)).toEqual(['staff-1', 'admin-1']);
+  });
+
   it('marks a single-day range so the UI can label it as a daily report', async () => {
     mockPrismaService.patient.groupBy.mockResolvedValue([]);
     mockPrismaService.receipt.findMany.mockResolvedValue([]);

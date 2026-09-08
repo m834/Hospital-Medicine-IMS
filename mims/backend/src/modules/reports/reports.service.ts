@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
-import { PaymentStatus, ReceiptType } from '@prisma/client';
+import { PaymentStatus, ReceiptType, UserRole } from '@prisma/client';
 import { DailyTransactionReportDto } from './dto/daily-transaction-report.dto';
 import { DateRangeReportDto } from './dto/date-range-report.dto';
 import { FinancialReportPeriod, FinancialSummaryDto } from './dto/financial-summary.dto';
@@ -8,6 +8,17 @@ import { RegistrationReportDto } from './dto/registration-report.dto';
 
 /** Bucket for staff with no department assigned, used as both label and group key. */
 const UNASSIGNED_DEPARTMENT = 'Unassigned';
+
+/**
+ * Roles that work the registration desk. Used only to populate the report's
+ * staff filter — attribution itself always runs through Patient.registeredBy,
+ * whatever role the registrar holds.
+ */
+const REGISTRATION_DESK_ROLES: UserRole[] = [
+  UserRole.REGISTRATION_STAFF,
+  UserRole.REGISTRATION_STAFF_MANAGER,
+  UserRole.RECEPTIONIST,
+];
 
 /** Money is summed as floats, so trim the drift before it reaches the client. */
 const round2 = (value: number) => Math.round(value * 100) / 100;
@@ -1324,8 +1335,10 @@ export class ReportsService {
    * taken from LAB_TEST receipts only, which excludes registration fees,
    * consultation, pharmacy and every other receipt type.
    */
-  async getRegistrationReport(dto: RegistrationReportDto & { hospitalId: string }) {
-    const { hospitalId, departmentId } = dto;
+  async getRegistrationReport(
+    dto: RegistrationReportDto & { hospitalId: string; staffId?: string },
+  ) {
+    const { hospitalId, departmentId, staffId } = dto;
 
     const start = new Date(dto.startDate);
     const end = new Date(dto.endDate);
@@ -1341,17 +1354,23 @@ export class ReportsService {
       throw new BadRequestException('startDate must be on or before endDate');
     }
 
-    // A department filter narrows on the registering staff member's department,
-    // which is the department the rest of the report is grouped by.
-    const inDepartment = departmentId ? { registeredByUser: { departmentId } } : {};
+    // Both filters land on the patient: the department is the registering staff
+    // member's own (the one the report groups by), and the staff filter is that
+    // same person. Lab revenue follows the patient's registrar, so filtering the
+    // patient filters both halves of the report the same way.
+    const patientFilter = {
+      ...(staffId ? { registeredBy: staffId } : {}),
+      ...(departmentId ? { registeredByUser: { departmentId } } : {}),
+    };
+    const hasPatientFilter = Object.keys(patientFilter).length > 0;
 
-    const [registrationGroups, labReceipts] = await Promise.all([
+    const [registrationGroups, labReceipts, staffOptions] = await Promise.all([
       this.prisma.patient.groupBy({
         by: ['registeredBy'],
         where: {
           hospitalId,
           registeredAt: { gte: start, lte: end },
-          ...inDepartment,
+          ...patientFilter,
         },
         _count: { _all: true },
       }),
@@ -1360,13 +1379,25 @@ export class ReportsService {
           hospitalId,
           receiptType: ReceiptType.LAB_TEST,
           createdAt: { gte: start, lte: end },
-          ...(departmentId ? { patient: inDepartment } : {}),
+          ...(hasPatientFilter ? { patient: patientFilter } : {}),
         },
         select: {
           totalAmount: true,
           paidAmount: true,
           patient: { select: { registeredBy: true } },
         },
+      }),
+      // The desk roster for the staff filter. It is deliberately independent of
+      // the current filters, so picking a staff member with a quiet day does not
+      // empty the dropdown that picked them.
+      this.prisma.user.findMany({
+        where: {
+          hospitalId,
+          role: { in: REGISTRATION_DESK_ROLES },
+          ...(departmentId ? { departmentId } : {}),
+        },
+        select: { id: true, fullName: true, role: true },
+        orderBy: { fullName: 'asc' },
       }),
     ]);
 
@@ -1493,7 +1524,16 @@ export class ReportsService {
       },
       filters: {
         departmentId: departmentId ?? null,
+        staffId: staffId ?? null,
       },
+      // Anyone who registered a patient in the period but holds no desk role —
+      // an admin covering the counter, say — still belongs in the picker.
+      staffOptions: [
+        ...staffOptions,
+        ...staffRows
+          .filter((row) => !staffOptions.some((option) => option.id === row.staffId))
+          .map((row) => ({ id: row.staffId, fullName: row.staffName, role: row.role })),
+      ].sort((a, b) => a.fullName.localeCompare(b.fullName)),
       totals: {
         ...totals,
         staffCount: staffRows.length,

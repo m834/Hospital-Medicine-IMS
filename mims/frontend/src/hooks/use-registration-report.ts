@@ -26,6 +26,12 @@ export interface RegistrationReportDepartmentRow {
   staff: RegistrationReportStaffRow[];
 }
 
+export interface RegistrationReportStaffOption {
+  id: string;
+  fullName: string;
+  role: string | null;
+}
+
 export interface RegistrationReport {
   range: {
     start: string;
@@ -34,7 +40,10 @@ export interface RegistrationReport {
   };
   filters: {
     departmentId: string | null;
+    staffId: string | null;
   };
+  /** The desk roster behind the staff filter, independent of the current filters. */
+  staffOptions: RegistrationReportStaffOption[];
   totals: {
     registrations: number;
     labTestOrders: number;
@@ -52,6 +61,11 @@ export interface RegistrationReportParams {
   startDate?: string;
   endDate?: string;
   departmentId?: string;
+  /**
+   * Ignored by the backend for a registration staff member, who is pinned to
+   * their own id off the token.
+   */
+  staffId?: string;
 }
 
 async function fetchRegistrationReport(params: RegistrationReportParams) {
@@ -63,6 +77,7 @@ async function fetchRegistrationReport(params: RegistrationReportParams) {
       // platform admin, who has no hospital of their own.
       ...(params.hospitalId ? { hospitalId: params.hospitalId } : {}),
       ...(params.departmentId ? { departmentId: params.departmentId } : {}),
+      ...(params.staffId ? { staffId: params.staffId } : {}),
     },
   });
 
@@ -80,6 +95,7 @@ export function useRegistrationReport(params: RegistrationReportParams) {
       params.startDate,
       params.endDate,
       params.departmentId ?? null,
+      params.staffId ?? null,
     ],
     queryFn: () => fetchRegistrationReport(params),
     enabled: !!token && !!params.hospitalId && !!params.startDate && !!params.endDate,

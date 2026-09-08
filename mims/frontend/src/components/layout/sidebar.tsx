@@ -218,12 +218,12 @@ const menuItems: MenuItem[] = [
     roles: [UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.AUDITOR] 
   },
 
-  // Registration Report - registration managers and admins only
+  // Registration Report - the whole desk for managers and admins, own row for staff
   {
     label: 'Registration Report',
     href: '/dashboard/reports/registration',
     icon: UserRoundPlus,
-    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.REGISTRATION_STAFF_MANAGER]
+    roles: [UserRole.MASTER_ADMIN, UserRole.SUPER_ADMIN, UserRole.HOSPITAL_ADMIN, UserRole.REGISTRATION_STAFF_MANAGER, UserRole.REGISTRATION_STAFF]
   },
   
   // Analytics - Admin only

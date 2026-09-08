@@ -33,13 +33,75 @@ const ALLOWED_ROLES: UserRole[] = [
   UserRole.SUPER_ADMIN,
   UserRole.HOSPITAL_ADMIN,
   UserRole.REGISTRATION_STAFF_MANAGER,
+  UserRole.REGISTRATION_STAFF,
 ];
 
+/**
+ * Roles that see only their own row. The backend pins them to their own id off
+ * the token, so this only decides which filters are worth showing.
+ */
+const SELF_SCOPED_ROLES: UserRole[] = [UserRole.REGISTRATION_STAFF];
+
 const ALL_DEPARTMENTS = 'ALL';
+const ALL_STAFF = 'ALL';
 
-type ReportMode = 'DAILY' | 'RANGE';
+type ReportMode = 'TODAY' | 'YESTERDAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'DAY' | 'RANGE';
 
-const today = () => new Date().toISOString().split('T')[0];
+const MODE_LABELS: Record<ReportMode, string> = {
+  TODAY: 'Today',
+  YESTERDAY: 'Yesterday',
+  THIS_WEEK: 'This week',
+  THIS_MONTH: 'This month',
+  DAY: 'A specific day',
+  RANGE: 'Date range',
+};
+
+/**
+ * Local calendar date, not UTC: at the desk in Karachi an ISO/UTC "today" still
+ * reads as yesterday until 5am, which would quietly report the wrong day.
+ */
+const toISODate = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+    date.getDate(),
+  ).padStart(2, '0')}`;
+
+const today = () => toISODate(new Date());
+
+const daysAgo = (count: number) => {
+  const date = new Date();
+  date.setDate(date.getDate() - count);
+  return date;
+};
+
+/** Monday, the first working day of the week at the desk. */
+const startOfWeek = () => {
+  const date = new Date();
+  const weekday = (date.getDay() + 6) % 7; // Sunday is 0; make Monday 0
+  date.setDate(date.getDate() - weekday);
+  return date;
+};
+
+const startOfMonth = () => {
+  const date = new Date();
+  date.setDate(1);
+  return date;
+};
+
+/** The date range a preset stands for. DAY and RANGE come from the pickers. */
+const rangeForMode = (mode: ReportMode): { from: string; to: string } | null => {
+  switch (mode) {
+    case 'TODAY':
+      return { from: today(), to: today() };
+    case 'YESTERDAY':
+      return { from: toISODate(daysAgo(1)), to: toISODate(daysAgo(1)) };
+    case 'THIS_WEEK':
+      return { from: toISODate(startOfWeek()), to: today() };
+    case 'THIS_MONTH':
+      return { from: toISODate(startOfMonth()), to: today() };
+    default:
+      return null;
+  }
+};
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-PK', { style: 'currency', currency: 'PKR' }).format(value || 0);
@@ -60,12 +122,16 @@ export default function RegistrationReportPage() {
   const hospitalId = user?.hospitalId || selectedHospital?.id;
 
   const hasAccess = !!user && ALLOWED_ROLES.includes(user.role as UserRole);
+  // A registration staff member gets their own row and nothing else, so the
+  // filters that pick other people are not worth showing them.
+  const isSelfScoped = !!user && SELF_SCOPED_ROLES.includes(user.role as UserRole);
 
-  const [mode, setMode] = useState<ReportMode>('DAILY');
+  const [mode, setMode] = useState<ReportMode>('TODAY');
   const [day, setDay] = useState(today);
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
   const [departmentId, setDepartmentId] = useState<string>(ALL_DEPARTMENTS);
+  const [staffId, setStaffId] = useState<string>(ALL_STAFF);
 
   useEffect(() => {
     if (user && !hasAccess) {
@@ -73,13 +139,14 @@ export default function RegistrationReportPage() {
     }
   }, [user, hasAccess, router]);
 
-  // A daily report is the same range collapsed onto one day.
-  const from = mode === 'DAILY' ? day : startDate;
-  const to = mode === 'DAILY' ? day : endDate;
+  // A preset resolves to a range; a single day is that range collapsed onto one.
+  const preset = rangeForMode(mode);
+  const from = preset ? preset.from : mode === 'DAY' ? day : startDate;
+  const to = preset ? preset.to : mode === 'DAY' ? day : endDate;
 
   const invalidRange = !!from && !!to && from > to;
 
-  const { data: departmentsData } = useDepartments({ hospitalId });
+  const { data: departmentsData } = useDepartments({ hospitalId: isSelfScoped ? undefined : hospitalId });
   const departments: Department[] = Array.isArray(departmentsData) ? departmentsData : [];
 
   const { data, isLoading, isError, error } = useRegistrationReport({
@@ -87,7 +154,10 @@ export default function RegistrationReportPage() {
     startDate: from,
     endDate: to,
     departmentId: departmentId === ALL_DEPARTMENTS ? undefined : departmentId,
+    staffId: staffId === ALL_STAFF ? undefined : staffId,
   });
+
+  const staffOptions = data?.staffOptions ?? [];
 
   const rangeLabel = useMemo(() => {
     if (!data) return null;
@@ -103,33 +173,41 @@ export default function RegistrationReportPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Registration Report</h1>
+        <h1 className="text-2xl font-bold">
+          {isSelfScoped ? 'My Registration Report' : 'Registration Report'}
+        </h1>
         <p className="text-sm text-muted-foreground">
-          Patient registrations and lab test revenue per registration staff member, grouped by
-          department.
+          {isSelfScoped
+            ? 'The patients you registered and the lab tests charged against them.'
+            : 'Patient registrations and lab test revenue per registration staff member, grouped by department.'}
         </p>
       </div>
 
       <div className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-end">
         <div className="space-y-2">
-          <label className="text-sm font-medium">Report Type</label>
+          <label className="text-sm font-medium">Period</label>
           <Select value={mode} onValueChange={(value) => setMode(value as ReportMode)}>
             <SelectTrigger className="w-44">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="DAILY">Daily</SelectItem>
-              <SelectItem value="RANGE">Date Range</SelectItem>
+              {(Object.keys(MODE_LABELS) as ReportMode[]).map((value) => (
+                <SelectItem key={value} value={value}>
+                  {MODE_LABELS[value]}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
 
-        {mode === 'DAILY' ? (
+        {mode === 'DAY' && (
           <div className="space-y-2">
             <label className="text-sm font-medium">Date</label>
             <DateInput value={day} onChange={setDay} className="w-44" />
           </div>
-        ) : (
+        )}
+
+        {mode === 'RANGE' && (
           <>
             <div className="space-y-2">
               <label className="text-sm font-medium">From</label>
@@ -142,22 +220,43 @@ export default function RegistrationReportPage() {
           </>
         )}
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Department</label>
-          <Select value={departmentId} onValueChange={setDepartmentId}>
-            <SelectTrigger className="w-60">
-              <SelectValue placeholder="All departments" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_DEPARTMENTS}>All departments</SelectItem>
-              {departments.map((department) => (
-                <SelectItem key={department.id} value={department.id}>
-                  {department.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {!isSelfScoped && (
+          <>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Department</label>
+              <Select value={departmentId} onValueChange={setDepartmentId}>
+                <SelectTrigger className="w-60">
+                  <SelectValue placeholder="All departments" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_DEPARTMENTS}>All departments</SelectItem>
+                  {departments.map((department) => (
+                    <SelectItem key={department.id} value={department.id}>
+                      {department.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Staff Member</label>
+              <Select value={staffId} onValueChange={setStaffId}>
+                <SelectTrigger className="w-60">
+                  <SelectValue placeholder="All staff" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_STAFF}>All staff</SelectItem>
+                  {staffOptions.map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.fullName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        )}
 
         <Button variant="outline" onClick={() => window.print()} className="md:ml-auto">
           Print
@@ -212,17 +311,19 @@ export default function RegistrationReportPage() {
             </p>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-indigo-500 bg-indigo-50/30">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Staff Members</CardTitle>
-            <Users className="h-4 w-4 text-indigo-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {isLoading ? '...' : (data?.totals.staffCount ?? 0).toLocaleString()}
-            </div>
-          </CardContent>
-        </Card>
+        {!isSelfScoped && (
+          <Card className="border-l-4 border-l-indigo-500 bg-indigo-50/30">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Staff Members</CardTitle>
+              <Users className="h-4 w-4 text-indigo-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {isLoading ? '...' : (data?.totals.staffCount ?? 0).toLocaleString()}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {isError && (
@@ -234,7 +335,9 @@ export default function RegistrationReportPage() {
       {!isLoading && data && data.departments.length === 0 && (
         <Card>
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            No registrations or lab tests were recorded for this period.
+            {isSelfScoped
+              ? 'You registered no patients in this period.'
+              : 'No registrations or lab tests were recorded for this period.'}
           </CardContent>
         </Card>
       )}
