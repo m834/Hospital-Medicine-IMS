@@ -51,6 +51,10 @@ export default function LabTestsPage() {
     testCategory: selectedCategory === "all" ? undefined : selectedCategory,
   });
 
+  // Unfiltered, so a code already used by an inactive/discontinued test (or
+  // one in a different category) still counts as taken.
+  const { data: allLabTests } = useLabTests(hospitalId);
+
   const { data: categories } = useLabTestCategories(hospitalId);
   const { data: departments } = useDepartments({ hospitalId, isActive: true });
   const createMutation = useCreateLabTest();
@@ -59,8 +63,8 @@ export default function LabTestsPage() {
   const updateStatusMutation = useUpdateLabTestStatus();
 
   const nextTestCode = useMemo(
-    () => generateNextCode(labTests?.map((test) => test.testCode) || [], "LAB"),
-    [labTests]
+    () => generateNextCode(allLabTests?.map((test) => test.testCode) || [], "LAB"),
+    [allLabTests]
   );
 
   const [formData, setFormData] = useState<CreateLabTestInput>({

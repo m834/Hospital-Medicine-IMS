@@ -4,6 +4,7 @@
  */
 
 import { AUTH_TOKENS, API_BASE_URL } from './constants';
+import { useAuthStore } from '@/stores/auth.store';
 
 export interface AuthResponse {
   accessToken: string;
@@ -102,6 +103,8 @@ export function storeAuthTokens(authResponse: AuthResponse): void {
 
   // Keep the middleware's cookie in step with the token
   setAuthCookie(authResponse.accessToken);
+
+  useAuthStore.setState({ token: authResponse.accessToken });
 }
 
 /**
@@ -117,6 +120,8 @@ export function clearAuthTokens(): void {
   // Leaving the cookie behind would let middleware wave the user through to a
   // dashboard that immediately bounces them back out.
   clearAuthCookie();
+
+  useAuthStore.setState({ token: null });
 }
 
 /**
@@ -299,6 +304,8 @@ export async function refreshAccessToken(): Promise<string | null> {
 
         // Renew the middleware cookie against the new token
         setAuthCookie(data.accessToken);
+
+        useAuthStore.setState({ token: data.accessToken });
       }
 
       if (data.refreshToken) {
