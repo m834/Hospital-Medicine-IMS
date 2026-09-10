@@ -56,7 +56,7 @@ export function printPatientReceipt(
           * { box-sizing: border-box; }
           body { font-family: Arial, sans-serif; color: #111827; padding: 15mm 15mm 15mm 22mm; margin-top: 15%; }
           .line { font-size: 14px; font-weight: 700; line-height: 1.4; }
-          .sep { font-weight: 400; color: #6b7280; padding: 0 6px; }
+          .sep { font-weight: 400; color: #6b7280; padding: 0 14px; }
         </style>
       </head>
       <body>
@@ -153,7 +153,7 @@ export function printLabReceipt(
           .slip { padding: 46.5mm calc(15mm + 8px) 15mm calc(22mm + 8px); }
           .break { page-break-after: always; }
           .line { font-size: 14px; font-weight: 700; line-height: 1.4; }
-          .sep { font-weight: 400; color: #6b7280; padding: 0 6px; }
+          .sep { font-weight: 400; color: #6b7280; padding: 0 14px; }
           .test {
             display: flex;
             justify-content: space-between;
