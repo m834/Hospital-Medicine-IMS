@@ -5,13 +5,7 @@ export interface ReceiptPatient {
   nrNumber: string;
   fullName: string;
   gender?: string;
-  age?: number | string | null;
-  mobile?: string | null;
-  cnic?: string | null;
   registeredAt?: string;
-  visitType?: string;
-  departmentInfo?: { name?: string } | null;
-  attendingDoctor?: { fullName?: string } | null;
 }
 
 /**
@@ -27,18 +21,15 @@ export function printPatientReceipt(
   hospitalName: string,
   registeredBy?: string,
 ) {
-  const values = [
+  const leftValues = [
     patient.fullName,
     formatMRN(patient.nrNumber),
     patient.gender,
-    patient.age != null && String(patient.age).trim() !== ''
-      ? `${patient.age} yrs`
-      : '',
-    patient.mobile,
-    patient.cnic,
-    patient.visitType,
-    patient.departmentInfo?.name,
-    patient.attendingDoctor?.fullName,
+  ]
+    .filter((v) => v != null && String(v).trim() !== '')
+    .map((v) => String(v).trim());
+
+  const rightValues = [
     patient.registeredAt
       ? format(new Date(patient.registeredAt), 'dd/MM/yyyy')
       : '',
@@ -51,16 +42,27 @@ export function printPatientReceipt(
     <!DOCTYPE html>
     <html>
       <head>
+        <meta charset="utf-8">
         <style>
           @page { size: A4; margin: 0; }
           * { box-sizing: border-box; }
           body { font-family: Arial, sans-serif; color: #111827; padding: 15mm 15mm 15mm 22mm; margin-top: 15%; }
-          .line { font-size: 14px; font-weight: 700; line-height: 1.4; }
+          .line {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1.4;
+          }
           .sep { font-weight: 400; color: #6b7280; padding: 0 14px; }
         </style>
       </head>
       <body>
-        <div class="line">${values.join('<span class="sep">|</span>')}</div>
+        <div class="line">
+          <span>${leftValues.join('<span class="sep">|</span>')}</span>
+          <span>${rightValues.join('<span class="sep">|</span>')}</span>
+        </div>
       </body>
     </html>
   `;
@@ -109,12 +111,14 @@ export function printLabReceipt(
     .map((order, i) => {
       const patient = order.patient;
 
-      const values = [
+      const leftValues = [
         patient?.fullName,
         formatMRN(patient?.nrNumber) || opts.patientId,
-        opts.createdBy,
-        printedOn,
       ]
+        .filter((v) => v != null && String(v).trim() !== '')
+        .map((v) => String(v).trim());
+
+      const rightValues = [printedOn, opts.createdBy]
         .filter((v) => v != null && String(v).trim() !== '')
         .map((v) => String(v).trim());
 
@@ -127,7 +131,10 @@ export function printLabReceipt(
 
       return `
         <div class="slip${isLast ? '' : ' break'}">
-          <div class="line">${values.join('<span class="sep">|</span>')}</div>
+          <div class="line">
+            <span>${leftValues.join('<span class="sep">|</span>')}</span>
+            <span>${rightValues.join('<span class="sep">|</span>')}</span>
+          </div>
           <div class="test">
             <span>${test}</span>
             <span>Rs. ${Number(order.labTest?.price || 0).toFixed(2)}</span>
@@ -140,6 +147,7 @@ export function printLabReceipt(
     <!DOCTYPE html>
     <html>
       <head>
+        <meta charset="utf-8">
         <style>
           @page { size: A4; margin: 0; }
           * { box-sizing: border-box; }
@@ -152,13 +160,20 @@ export function printLabReceipt(
              browser — same landing point to within 0.01mm. */
           .slip { padding: 46.5mm calc(15mm + 8px) 15mm calc(22mm + 8px); }
           .break { page-break-after: always; }
-          .line { font-size: 14px; font-weight: 700; line-height: 1.4; }
+          .line {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1.4;
+          }
           .sep { font-weight: 400; color: #6b7280; padding: 0 14px; }
           .test {
             display: flex;
             justify-content: space-between;
             gap: 12px;
-            margin-top: 6px;
+            margin-top: 16px;
             font-size: 14px;
             font-weight: 700;
           }
