@@ -9,7 +9,6 @@ import { useAuthStore } from "@/stores/auth.store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Search, Plus, Trash2, FileText, Printer, AlertTriangle, UserCheck, Loader2, X } from "lucide-react";
+import { Search, Plus, Trash2, FileText, Printer, AlertTriangle, UserCheck, Loader2, X, ArrowLeft } from "lucide-react";
 import api, { getErrorMessage } from "@/lib/api";
 import { printLabReceipt } from "@/lib/print-receipt";
 import { UserRole } from "@/lib/constants";
@@ -246,10 +245,11 @@ export default function NewLabOrderPageComponent() {
   };
 
   // Same rule as the patient lookup above: the logged-in user's hospital wins,
-  // and only a SUPER_ADMIN falls back to the header selector.
+  // and only a SUPER_ADMIN falls back to the header selector. Fetched once,
+  // unfiltered by category, so the category cards below always show the full
+  // set — filtering by category and search both happen client-side.
   const { data: labTests } = useLabTests(user?.hospitalId || selectedHospital?.id || "", {
     status: "ACTIVE",
-    testCategory: selectedCategory === "all" ? undefined : selectedCategory,
   });
 
   const createOrderMutation = useCreateLabOrder({ silent: true });
@@ -258,7 +258,12 @@ export default function NewLabOrderPageComponent() {
     new Set(labTests?.map((test) => test.testCategory).filter(Boolean) || [])
   );
 
-  const filteredTests = labTests?.filter((test) =>
+  const testsInSelectedCategory =
+    selectedCategory !== "all"
+      ? labTests?.filter((test) => test.testCategory === selectedCategory)
+      : [];
+
+  const filteredTests = testsInSelectedCategory?.filter((test) =>
     test.testName.toLowerCase().includes(patientSearch.toLowerCase()) ||
     test.testCode.toLowerCase().includes(patientSearch.toLowerCase())
   );
@@ -795,19 +800,63 @@ export default function NewLabOrderPageComponent() {
         </div>
       </div>
 
-      {/* Test Selector Dialog */}
-      <Dialog open={isTestSelectorOpen} onOpenChange={setIsTestSelectorOpen}>
+      {/* Test Selector Dialog: pick a category card first, then a test
+          within it — the client doesn't want every test listed at once. */}
+      <Dialog
+        open={isTestSelectorOpen}
+        onOpenChange={(open) => {
+          setIsTestSelectorOpen(open);
+          if (!open) {
+            setSelectedCategory("all");
+            setPatientSearch("");
+          }
+        }}
+      >
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Select Lab Tests</DialogTitle>
             <DialogDescription>
-              Choose tests to add to this order
+              {selectedCategory === "all"
+                ? "Choose a category to see its tests"
+                : `Tests in ${selectedCategory}`}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            {/* Search and Filter */}
-            <div className="space-y-3">
+          {selectedCategory === "all" ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {categories.length > 0 ? (
+                categories.map((cat) => {
+                  const countInCategory =
+                    labTests?.filter((t) => t.testCategory === cat).length || 0;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setSelectedCategory(cat || "")}
+                      className="flex flex-col items-center justify-center gap-1 rounded-lg border p-4 text-center hover:border-primary hover:bg-slate-50 transition-colors"
+                    >
+                      <span className="font-medium text-sm">{cat || "Uncategorized"}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {countInCategory} test{countInCategory === 1 ? "" : "s"}
+                      </span>
+                    </button>
+                  );
+                })
+              ) : (
+                <p className="col-span-full text-center py-8 text-muted-foreground">
+                  No test categories available
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setSelectedCategory("all")}>
+                  <ArrowLeft className="mr-1 h-4 w-4" />
+                  Back to categories
+                </Button>
+              </div>
+
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -818,61 +867,39 @@ export default function NewLabOrderPageComponent() {
                 />
               </div>
 
-              <div>
-                <Label htmlFor="category" className="text-xs">
-                  Category
-                </Label>
-                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Categories</SelectItem>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat} value={cat || "uncategorized"}>
-                        {cat || "Uncategorized"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+                {filteredTests && filteredTests.length > 0 ? (
+                  filteredTests.map((test) => (
+                    <div
+                      key={test.id}
+                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50"
+                    >
+                      <div className="flex-1">
+                        <p className="font-medium text-sm">{test.testName}</p>
+                        <div className="flex gap-2 text-xs text-muted-foreground">
+                          <span>{test.testCode}</span>
+                          <span>•</span>
+                          <span>Rs. {test.price}</span>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          handleAddTest(test);
+                          setPatientSearch("");
+                        }}
+                        disabled={selectedTests.some((st) => st.test.id === test.id)}
+                      >
+                        {selectedTests.some((st) => st.test.id === test.id) ? "Added" : "Add"}
+                      </Button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-center py-8 text-muted-foreground">No tests found</p>
+                )}
               </div>
             </div>
-
-            {/* Tests List */}
-            <div className="space-y-2 max-h-[50vh] overflow-y-auto">
-              {filteredTests && filteredTests.length > 0 ? (
-                filteredTests.map((test) => (
-                  <div
-                    key={test.id}
-                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50"
-                  >
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">{test.testName}</p>
-                      <div className="flex gap-2 text-xs text-muted-foreground">
-                        <span>{test.testCode}</span>
-                        {test.testCategory && <span>•</span>}
-                        {test.testCategory && <span>{test.testCategory}</span>}
-                        <span>•</span>
-                        <span>Rs. {test.price}</span>
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        handleAddTest(test);
-                        setPatientSearch("");
-                      }}
-                      disabled={selectedTests.some((st) => st.test.id === test.id)}
-                    >
-                      {selectedTests.some((st) => st.test.id === test.id) ? "Added" : "Add"}
-                    </Button>
-                  </div>
-                ))
-              ) : (
-                <p className="text-center py-8 text-muted-foreground">No tests found</p>
-              )}
-            </div>
-          </div>
+          )}
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsTestSelectorOpen(false)}>
