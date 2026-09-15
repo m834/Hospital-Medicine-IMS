@@ -85,32 +85,54 @@ function LabSlip({
       {orders.map((order, index) => {
         const patient = order.patient;
 
-        const values = [
+        const leftValues = [
           patient?.fullName,
           formatMRN(patient?.nrNumber) || patientId,
-          createdByName,
-          printedOn,
         ].filter((v) => v != null && String(v).trim() !== "");
+
+        const rightValues = [printedOn, createdByName].filter(
+          (v) => v != null && String(v).trim() !== ""
+        );
 
         const test = [order.labTest?.testCode, order.labTest?.testName]
           .filter((v) => v != null && String(v).trim() !== "")
           .join(" — ");
+
+        const orderIdFragment = order.id ? order.id.slice(-5).toUpperCase() : "";
 
         return (
           <div key={order.id} className="p-6 font-sans text-black">
             <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">
               Page {index + 1} of {orders.length}
             </p>
-            <div className="text-sm font-bold leading-relaxed">
-              {values.map((value, i) => (
-                <span key={i}>
-                  {i > 0 && <span className="px-1.5 font-normal text-gray-500">|</span>}
-                  {value}
-                </span>
-              ))}
+            <div className="flex justify-between gap-4 text-sm font-bold leading-relaxed">
+              <span>
+                {leftValues.map((value, i) => (
+                  <span key={i}>
+                    {i > 0 && <span className="px-1.5 font-normal text-gray-500">|</span>}
+                    {value}
+                  </span>
+                ))}
+              </span>
+              <span>
+                {rightValues.map((value, i) => (
+                  <span key={i}>
+                    {i > 0 && <span className="px-1.5 font-normal text-gray-500">|</span>}
+                    {value}
+                  </span>
+                ))}
+              </span>
             </div>
-            <div className="mt-1.5 flex justify-between gap-3 text-sm font-bold">
-              <span>{test}</span>
+            <div className="mt-4 flex justify-between gap-3 text-sm font-bold">
+              <span>
+                {test}
+                {orderIdFragment && (
+                  <>
+                    <span className="px-1.5 font-normal text-gray-500">|</span>
+                    <span className="text-base">ID: {orderIdFragment}</span>
+                  </>
+                )}
+              </span>
               <span>Rs. {Number(order.labTest?.price || 0).toFixed(2)}</span>
             </div>
           </div>
