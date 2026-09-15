@@ -31,7 +31,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, Loader2, UserPlus, CheckCircle, Printer } from 'lucide-react';
+import { ArrowLeft, Loader2, UserPlus, CheckCircle, Printer, Save } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
@@ -359,7 +359,7 @@ export default function RegisterPatientPage() {
     ? doctors.filter(doc => doc.departmentId === selectedDepartmentId)
     : doctors;
 
-  const onSubmit = async (data: PatientFormData) => {
+  const registerPatient = async (data: PatientFormData, print: boolean) => {
     setSubmitting(true);
     try {
       if (!currentHospitalId) {
@@ -386,27 +386,29 @@ export default function RegisterPatientPage() {
       };
 
       // For SUPER_ADMIN, pass hospitalId as query param
-      const params = user?.role === 'SUPER_ADMIN' && selectedHospital?.id 
+      const params = user?.role === 'SUPER_ADMIN' && selectedHospital?.id
         ? { hospitalId: currentHospitalId }
         : {};
 
       const response = await api.post('/patients', patientPayload, { params });
       const patient = response.data;
 
-      // Print from this page rather than navigating to the patient record:
-      // closing the print dialog then leaves the user back on an empty
-      // registration form, ready for the next patient.
-      printPatientReceipt(
-        {
-          ...patient,
-          // `department` is stored as an id; the slip needs the name.
-          departmentInfo: patient.departmentInfo ?? {
-            name: departments.find((d) => d.id === patient.department)?.name,
+      if (print) {
+        // Print from this page rather than navigating to the patient record:
+        // closing the print dialog then leaves the user back on an empty
+        // registration form, ready for the next patient.
+        printPatientReceipt(
+          {
+            ...patient,
+            // `department` is stored as an id; the slip needs the name.
+            departmentInfo: patient.departmentInfo ?? {
+              name: departments.find((d) => d.id === patient.department)?.name,
+            },
           },
-        },
-        selectedHospital?.name || 'Hospital Medical Center',
-        user?.fullName,
-      );
+          selectedHospital?.name || 'Hospital Medical Center',
+          user?.fullName,
+        );
+      }
 
       setLastRegisteredMrn(formatMRN(patient.nrNumber));
       form.reset();
@@ -419,6 +421,9 @@ export default function RegisterPatientPage() {
       setSubmitting(false);
     }
   };
+
+  const onSubmit = (data: PatientFormData) => registerPatient(data, true);
+  const onSaveOnly = (data: PatientFormData) => registerPatient(data, false);
 
   return (
     <div className="container mx-auto p-6 max-w-4xl">
@@ -963,16 +968,13 @@ export default function RegisterPatientPage() {
               </div>
 
               {/* Submit */}
-              <div className="flex justify-end gap-4 pt-4">
+              <div className="flex justify-between gap-4 pt-4">
                 <Button
                   type="button"
-                  variant="outline"
-                  onClick={() => router.back()}
+                  variant="secondary"
+                  onClick={form.handleSubmit(onSaveOnly)}
                   disabled={submitting}
                 >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={submitting}>
                   {submitting ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -980,11 +982,35 @@ export default function RegisterPatientPage() {
                     </>
                   ) : (
                     <>
-                      <Printer className="h-4 w-4 mr-2" />
-                      Save and Print
+                      <Save className="h-4 w-4 mr-2" />
+                      Save
                     </>
                   )}
                 </Button>
+
+                <div className="flex gap-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => router.back()}
+                    disabled={submitting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={submitting}>
+                    {submitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Printer className="h-4 w-4 mr-2" />
+                        Save and Print
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </form>
           </Form>
