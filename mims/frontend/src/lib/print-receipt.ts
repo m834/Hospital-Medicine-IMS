@@ -127,9 +127,12 @@ export function printLabReceipt(
         .filter((v) => v != null && String(v).trim() !== '')
         .join(' — ');
 
-      // Last 5 characters of the order's own id — enough to tell slips
-      // apart at a glance, and traceable back to the exact order record.
-      const orderIdFragment = order.id ? order.id.slice(-5).toUpperCase() : '';
+      // LB-<year>-<day>-<month>-<last 5 chars of the order's own id> — the
+      // date makes it human-readable at a glance, the id fragment keeps it
+      // traceable back to the exact order record.
+      const orderIdFragment = order.id
+        ? `LB-${format(new Date(), 'yyyy-dd-MM')}-${order.id.slice(-5).toUpperCase()}`
+        : '';
 
       // The final slip must not break, or the printer ejects a blank page.
       const isLast = i === orders.length - 1;
@@ -141,7 +144,7 @@ export function printLabReceipt(
             <span>${rightValues.join('<span class="sep">|</span>')}</span>
           </div>
           <div class="test">
-            <span>${test}${orderIdFragment ? `<span class="sep">|</span><span class="order-id">ID: ${orderIdFragment}</span>` : ''}</span>
+            <span>${test}${orderIdFragment ? `<span class="sep">|</span><span class="order-id">${orderIdFragment}</span>` : ''}</span>
             <span>Rs. ${Number(order.labTest?.price || 0).toFixed(2)}</span>
           </div>
         </div>`;

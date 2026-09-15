@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { useLabTests } from "@/hooks/use-lab-tests";
 import { useLabOrders, useCreateLabOrder } from "@/hooks/use-lab-orders";
@@ -98,7 +99,9 @@ function LabSlip({
           .filter((v) => v != null && String(v).trim() !== "")
           .join(" — ");
 
-        const orderIdFragment = order.id ? order.id.slice(-5).toUpperCase() : "";
+        const orderIdFragment = order.id
+          ? `LB-${format(new Date(), "yyyy-dd-MM")}-${order.id.slice(-5).toUpperCase()}`
+          : "";
 
         return (
           <div key={order.id} className="p-6 font-sans text-black">
@@ -129,7 +132,7 @@ function LabSlip({
                 {orderIdFragment && (
                   <>
                     <span className="px-1.5 font-normal text-gray-500">|</span>
-                    <span className="text-base">ID: {orderIdFragment}</span>
+                    <span className="text-base">{orderIdFragment}</span>
                   </>
                 )}
               </span>
