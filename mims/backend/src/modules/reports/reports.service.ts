@@ -23,6 +23,13 @@ const REGISTRATION_DESK_ROLES: UserRole[] = [
 /** Money is summed as floats, so trim the drift before it reaches the client. */
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
+/** One test line inside a staff member's row: CBC x2 - 100. */
+interface RegistrationReportTestRow {
+  testName: string;
+  orders: number;
+  revenue: number;
+}
+
 interface RegistrationReportStaffRow {
   staffId: string;
   staffName: string;
@@ -34,6 +41,7 @@ interface RegistrationReportStaffRow {
   labTestRevenue: number;
   labTestCollected: number;
   labTestOutstanding: number;
+  tests: RegistrationReportTestRow[];
 }
 
 interface RegistrationReportDepartmentRow {
@@ -1326,14 +1334,44 @@ export class ReportsService {
   }
 
   /**
+   * The lab test id a LAB_TEST receipt was raised for. `LabOrdersService.create`
+   * writes `{"labOrderId","labTestId"}` into the receipt's notes; anything else
+   * in that column (hand-written notes, older receipts) yields null.
+   */
+  private readLabTestId(notes: string | null): string | null {
+    if (!notes) return null;
+
+    try {
+      const parsed = JSON.parse(notes);
+      return typeof parsed?.labTestId === 'string' ? parsed.labTestId : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Fallback test name for receipts whose notes carry no id: the description is
+   * written as `Lab Test - <name>`, so the name is what follows the dash.
+   */
+  private readLabTestName(description: string | null): string | null {
+    const name = description?.replace(/^\s*Lab Test\s*-\s*/i, '').trim();
+    return name ? name : null;
+  }
+
+  /**
    * Registration desk report: how many patients each staff member registered in
-   * the period, and the lab test charges raised for those patients.
+   * the period, and the lab test charges each of them raised.
    *
-   * Both sections hang off the same staff dimension — `Patient.registeredBy`,
-   * the user a patient is registered against — so a staff member's registrations
-   * and their lab revenue are read off the same piece of work. Lab money is
-   * taken from LAB_TEST receipts only, which excludes registration fees,
-   * consultation, pharmacy and every other receipt type.
+   * The two sections hang off two different staff dimensions, on purpose:
+   * registrations follow `Patient.registeredBy`, lab money follows
+   * `Receipt.generatedById` — the user who actually created the lab order.
+   * Attributing lab money by the patient's registrar (as this report used to)
+   * hid every charge raised for a returning patient: the money landed on
+   * whoever first registered them, months earlier, and a staff member filtered
+   * to their own row saw ₨0 for tests they had just booked.
+   *
+   * Lab money is taken from LAB_TEST receipts only, which excludes registration
+   * fees, consultation, pharmacy and every other receipt type.
    */
   async getRegistrationReport(
     dto: RegistrationReportDto & { hospitalId: string; staffId?: string },
@@ -1354,15 +1392,18 @@ export class ReportsService {
       throw new BadRequestException('startDate must be on or before endDate');
     }
 
-    // Both filters land on the patient: the department is the registering staff
-    // member's own (the one the report groups by), and the staff filter is that
-    // same person. Lab revenue follows the patient's registrar, so filtering the
-    // patient filters both halves of the report the same way.
+    // Each half filters on its own staff dimension. Registrations narrow by the
+    // patient's registrar; lab money narrows by the user who raised the charge.
+    // Both resolve the department through that same user's own departmentId.
     const patientFilter = {
       ...(staffId ? { registeredBy: staffId } : {}),
       ...(departmentId ? { registeredByUser: { departmentId } } : {}),
     };
-    const hasPatientFilter = Object.keys(patientFilter).length > 0;
+
+    const receiptStaffFilter = {
+      ...(staffId ? { generatedById: staffId } : {}),
+      ...(departmentId ? { generatedBy: { departmentId } } : {}),
+    };
 
     const [registrationGroups, labReceipts, staffOptions] = await Promise.all([
       this.prisma.patient.groupBy({
@@ -1379,12 +1420,14 @@ export class ReportsService {
           hospitalId,
           receiptType: ReceiptType.LAB_TEST,
           createdAt: { gte: start, lte: end },
-          ...(hasPatientFilter ? { patient: patientFilter } : {}),
+          ...receiptStaffFilter,
         },
         select: {
           totalAmount: true,
           paidAmount: true,
-          patient: { select: { registeredBy: true } },
+          generatedById: true,
+          description: true,
+          notes: true,
         },
       }),
       // The desk roster for the staff filter. It is deliberately independent of
@@ -1401,7 +1444,31 @@ export class ReportsService {
       }),
     ]);
 
+    // Test names for the per-staff breakdown. `LabOrdersService.create` stores
+    // the lab test id in the receipt's notes; the name is resolved from the
+    // lab_tests table so a test renamed since the order still reads correctly.
+    const labTestIds = [
+      ...new Set(
+        labReceipts
+          .map((receipt) => this.readLabTestId(receipt.notes))
+          .filter((id): id is string => !!id),
+      ),
+    ];
+
+    const labTestNames = new Map(
+      labTestIds.length
+        ? (
+            await this.prisma.labTest.findMany({
+              where: { id: { in: labTestIds } },
+              select: { id: true, testName: true },
+            })
+          ).map((test) => [test.id, test.testName])
+        : [],
+    );
+
     const rows = new Map<string, RegistrationReportStaffRow>();
+    // staffId -> test name -> that staff member's tally for the test.
+    const testRows = new Map<string, Map<string, RegistrationReportTestRow>>();
 
     const rowFor = (staffId: string) => {
       let row = rows.get(staffId);
@@ -1417,6 +1484,7 @@ export class ReportsService {
           labTestRevenue: 0,
           labTestCollected: 0,
           labTestOutstanding: 0,
+          tests: [],
         };
         rows.set(staffId, row);
       }
@@ -1428,14 +1496,32 @@ export class ReportsService {
     }
 
     for (const receipt of labReceipts) {
-      const row = rowFor(receipt.patient.registeredBy);
+      const row = rowFor(receipt.generatedById);
+      const revenue = Number(receipt.totalAmount || 0);
+
       row.labTestOrders += 1;
-      row.labTestRevenue += Number(receipt.totalAmount || 0);
+      row.labTestRevenue += revenue;
       row.labTestCollected += Number(receipt.paidAmount || 0);
+
+      const testName =
+        labTestNames.get(this.readLabTestId(receipt.notes) ?? '') ??
+        this.readLabTestName(receipt.description) ??
+        'Unnamed test';
+
+      let byTest = testRows.get(receipt.generatedById);
+      if (!byTest) {
+        byTest = new Map<string, RegistrationReportTestRow>();
+        testRows.set(receipt.generatedById, byTest);
+      }
+
+      const test = byTest.get(testName) ?? { testName, orders: 0, revenue: 0 };
+      test.orders += 1;
+      test.revenue += revenue;
+      byTest.set(testName, test);
     }
 
-    // A staff member can show up with lab revenue but no registrations: the
-    // patient was registered on an earlier day and tested inside the period.
+    // A staff member can show up with lab revenue but no registrations of their
+    // own: they booked tests for patients the desk registered earlier.
     const staff = await this.prisma.user.findMany({
       where: { id: { in: [...rows.keys()] } },
       select: {
@@ -1460,6 +1546,15 @@ export class ReportsService {
         labTestRevenue: round2(row.labTestRevenue),
         labTestCollected: round2(row.labTestCollected),
         labTestOutstanding: round2(row.labTestRevenue - row.labTestCollected),
+        // Biggest earner first, so the row reads as "what made up this money".
+        tests: [...(testRows.get(row.staffId)?.values() ?? [])]
+          .map((test) => ({ ...test, revenue: round2(test.revenue) }))
+          .sort(
+            (a, b) =>
+              b.revenue - a.revenue ||
+              b.orders - a.orders ||
+              a.testName.localeCompare(b.testName),
+          ),
       }))
       .sort(
         (a, b) =>

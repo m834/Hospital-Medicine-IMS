@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -25,7 +25,7 @@ import { useHospitalStore } from '@/stores/hospital.store';
 import { useDepartments, Department } from '@/hooks/use-departments';
 import { useRegistrationReport } from '@/hooks/use-registration-report';
 import { UserRole, ROLE_LABELS } from '@/lib/constants';
-import { FlaskConical, UserPlus, Users, Wallet } from 'lucide-react';
+import { ChevronDown, ChevronRight, FlaskConical, UserPlus, Users, Wallet } from 'lucide-react';
 
 /** Mirrors the @Roles list on GET /reports/registration. */
 const ALLOWED_ROLES: UserRole[] = [
@@ -132,6 +132,14 @@ export default function RegistrationReportPage() {
   const [endDate, setEndDate] = useState(today);
   const [departmentId, setDepartmentId] = useState<string>(ALL_DEPARTMENTS);
   const [staffId, setStaffId] = useState<string>(ALL_STAFF);
+  // Which staff rows have their test breakdown open. Collapsed by default so
+  // the table still reads as a summary on a busy day.
+  const [openStaff, setOpenStaff] = useState<string[]>([]);
+
+  const toggleStaff = (id: string) =>
+    setOpenStaff((open) =>
+      open.includes(id) ? open.filter((openId) => openId !== id) : [...open, id],
+    );
 
   useEffect(() => {
     if (user && !hasAccess) {
@@ -366,29 +374,87 @@ export default function RegistrationReportPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {department.staff.map((row) => (
-                    <TableRow key={row.staffId}>
-                      <TableCell className="font-medium">{row.staffName}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {row.role ? ROLE_LABELS[row.role as UserRole] ?? row.role : '—'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {row.registrations.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {row.labTestOrders.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(row.labTestRevenue)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(row.labTestCollected)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(row.labTestOutstanding)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {department.staff.map((row) => {
+                    const isOpen = openStaff.includes(row.staffId);
+                    const hasTests = row.tests.length > 0;
+
+                    return (
+                      <Fragment key={row.staffId}>
+                        <TableRow>
+                          <TableCell className="font-medium">
+                            {hasTests ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleStaff(row.staffId)}
+                                aria-expanded={isOpen}
+                                className="flex items-center gap-1 text-left hover:underline"
+                              >
+                                {isOpen ? (
+                                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                )}
+                                {row.staffName}
+                              </button>
+                            ) : (
+                              <span className="pl-5">{row.staffName}</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {row.role ? ROLE_LABELS[row.role as UserRole] ?? row.role : '—'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {row.registrations.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {row.labTestOrders.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(row.labTestRevenue)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(row.labTestCollected)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(row.labTestOutstanding)}
+                          </TableCell>
+                        </TableRow>
+
+                        {isOpen && (
+                          <TableRow className="bg-muted/40 hover:bg-muted/40">
+                            <TableCell colSpan={7} className="py-2">
+                              <div className="pl-5">
+                                <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
+                                  Tests charged
+                                </p>
+                                <ul className="space-y-1 text-sm">
+                                  {row.tests.map((test) => (
+                                    <li
+                                      key={test.testName}
+                                      className="flex max-w-md justify-between gap-4"
+                                    >
+                                      <span>
+                                        {test.testName}
+                                        {test.orders > 1 && (
+                                          <span className="text-muted-foreground">
+                                            {' '}
+                                            × {test.orders}
+                                          </span>
+                                        )}
+                                      </span>
+                                      <span className="tabular-nums">
+                                        {formatCurrency(test.revenue)}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                   <TableRow className="font-semibold">
                     <TableCell colSpan={2}>Department total</TableCell>
                     <TableCell className="text-right">

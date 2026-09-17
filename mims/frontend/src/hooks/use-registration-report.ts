@@ -2,6 +2,13 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
 
+/** One test line inside a staff member's row: CBC x2 — 100. */
+export interface RegistrationReportTestRow {
+  testName: string;
+  orders: number;
+  revenue: number;
+}
+
 export interface RegistrationReportStaffRow {
   staffId: string;
   staffName: string;
@@ -13,6 +20,8 @@ export interface RegistrationReportStaffRow {
   labTestRevenue: number;
   labTestCollected: number;
   labTestOutstanding: number;
+  /** What the lab money was made of, biggest earner first. */
+  tests: RegistrationReportTestRow[];
 }
 
 export interface RegistrationReportDepartmentRow {
