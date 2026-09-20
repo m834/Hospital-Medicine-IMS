@@ -9,6 +9,25 @@ import { RegistrationReportDto } from './dto/registration-report.dto';
 /** Bucket for staff with no department assigned, used as both label and group key. */
 const UNASSIGNED_DEPARTMENT = 'Unassigned';
 
+/** Bucket for lab tests whose category was left blank. */
+const UNCATEGORISED_TEST = 'Uncategorised';
+
+/**
+ * How many patients the drill-down list carries. A desk can register a few
+ * hundred patients a month; past that the list stops being something a manager
+ * reads, so it is capped and the response says it was.
+ */
+const PATIENT_LIST_LIMIT = 500;
+
+/**
+ * Local calendar date, not UTC: at the desk in Karachi a UTC day boundary
+ * would file the early-morning rush under the previous day.
+ */
+const toLocalISODate = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+    date.getDate(),
+  ).padStart(2, '0')}`;
+
 /**
  * Roles that work the registration desk. Used only to populate the report's
  * staff filter — attribution itself always runs through Patient.registeredBy,
@@ -28,6 +47,33 @@ interface RegistrationReportTestRow {
   testName: string;
   orders: number;
   revenue: number;
+}
+
+/** A test category — X-Ray, Hematology — and the tests that make it up. */
+interface RegistrationReportCategoryRow {
+  category: string;
+  orders: number;
+  revenue: number;
+  tests: RegistrationReportTestRow[];
+}
+
+/** One patient in the drill-down under the Registered Patients tab. */
+interface RegistrationReportPatientRow {
+  id: string;
+  nrNumber: string;
+  fullName: string;
+  registeredAt: string;
+  visitType: string | null;
+  staffId: string;
+  staffName: string;
+}
+
+/** One day of the range, for the trend table under a week/month report. */
+interface RegistrationReportDayRow {
+  date: string;
+  registrations: number;
+  labTestOrders: number;
+  labTestRevenue: number;
 }
 
 interface RegistrationReportStaffRow {
@@ -1405,15 +1451,25 @@ export class ReportsService {
       ...(departmentId ? { generatedBy: { departmentId } } : {}),
     };
 
-    const [registrationGroups, labReceipts, staffOptions] = await Promise.all([
-      this.prisma.patient.groupBy({
-        by: ['registeredBy'],
+    const [registeredPatients, labReceipts, staffOptions] = await Promise.all([
+      // Registrations are read as rows rather than a groupBy count: the same
+      // rows serve the per-staff tally, the day-by-day trend and the patient
+      // list the manager drills into, so one query answers all three.
+      this.prisma.patient.findMany({
         where: {
           hospitalId,
           registeredAt: { gte: start, lte: end },
           ...patientFilter,
         },
-        _count: { _all: true },
+        select: {
+          id: true,
+          nrNumber: true,
+          fullName: true,
+          registeredAt: true,
+          visitType: true,
+          registeredBy: true,
+        },
+        orderBy: { registeredAt: 'desc' },
       }),
       this.prisma.receipt.findMany({
         where: {
@@ -1428,6 +1484,7 @@ export class ReportsService {
           generatedById: true,
           description: true,
           notes: true,
+          createdAt: true,
         },
       }),
       // The desk roster for the staff filter. It is deliberately independent of
@@ -1455,20 +1512,37 @@ export class ReportsService {
       ),
     ];
 
-    const labTestNames = new Map(
+    const labTests = new Map<string, { testName: string; testCategory: string }>(
       labTestIds.length
         ? (
             await this.prisma.labTest.findMany({
               where: { id: { in: labTestIds } },
-              select: { id: true, testName: true },
+              select: { id: true, testName: true, testCategory: true },
             })
-          ).map((test) => [test.id, test.testName])
+          ).map((test) => [
+            test.id,
+            { testName: test.testName, testCategory: test.testCategory },
+          ])
         : [],
     );
 
     const rows = new Map<string, RegistrationReportStaffRow>();
     // staffId -> test name -> that staff member's tally for the test.
     const testRows = new Map<string, Map<string, RegistrationReportTestRow>>();
+    // Report-wide category tally: category -> test name -> tally.
+    const categoryRows = new Map<string, Map<string, RegistrationReportTestRow>>();
+    // Day of the range -> that day's numbers, for the trend table.
+    const dayRows = new Map<string, RegistrationReportDayRow>();
+
+    const dayFor = (date: Date) => {
+      const key = toLocalISODate(date);
+      let day = dayRows.get(key);
+      if (!day) {
+        day = { date: key, registrations: 0, labTestOrders: 0, labTestRevenue: 0 };
+        dayRows.set(key, day);
+      }
+      return day;
+    };
 
     const rowFor = (staffId: string) => {
       let row = rows.get(staffId);
@@ -1491,8 +1565,9 @@ export class ReportsService {
       return row;
     };
 
-    for (const group of registrationGroups) {
-      rowFor(group.registeredBy).registrations = group._count._all;
+    for (const patient of registeredPatients) {
+      rowFor(patient.registeredBy).registrations += 1;
+      dayFor(patient.registeredAt).registrations += 1;
     }
 
     for (const receipt of labReceipts) {
@@ -1503,10 +1578,14 @@ export class ReportsService {
       row.labTestRevenue += revenue;
       row.labTestCollected += Number(receipt.paidAmount || 0);
 
+      const day = dayFor(receipt.createdAt);
+      day.labTestOrders += 1;
+      day.labTestRevenue += revenue;
+
+      const labTest = labTests.get(this.readLabTestId(receipt.notes) ?? '');
       const testName =
-        labTestNames.get(this.readLabTestId(receipt.notes) ?? '') ??
-        this.readLabTestName(receipt.description) ??
-        'Unnamed test';
+        labTest?.testName ?? this.readLabTestName(receipt.description) ?? 'Unnamed test';
+      const category = labTest?.testCategory?.trim() || UNCATEGORISED_TEST;
 
       let byTest = testRows.get(receipt.generatedById);
       if (!byTest) {
@@ -1518,6 +1597,17 @@ export class ReportsService {
       test.orders += 1;
       test.revenue += revenue;
       byTest.set(testName, test);
+
+      let byCategory = categoryRows.get(category);
+      if (!byCategory) {
+        byCategory = new Map<string, RegistrationReportTestRow>();
+        categoryRows.set(category, byCategory);
+      }
+
+      const categoryTest = byCategory.get(testName) ?? { testName, orders: 0, revenue: 0 };
+      categoryTest.orders += 1;
+      categoryTest.revenue += revenue;
+      byCategory.set(testName, categoryTest);
     }
 
     // A staff member can show up with lab revenue but no registrations of their
@@ -1594,6 +1684,62 @@ export class ReportsService {
         a.departmentName.localeCompare(b.departmentName),
     );
 
+    // Report-wide category breakdown for the Lab Tests tab. It follows the same
+    // filters as the staff rows, so picking one staff member narrows it to that
+    // person's work rather than showing the whole desk beside their row.
+    const categories: RegistrationReportCategoryRow[] = [...categoryRows.entries()]
+      .map(([category, tests]) => {
+        const testRowsForCategory = [...tests.values()]
+          .map((test) => ({ ...test, revenue: round2(test.revenue) }))
+          .sort(
+            (a, b) =>
+              b.revenue - a.revenue ||
+              b.orders - a.orders ||
+              a.testName.localeCompare(b.testName),
+          );
+
+        return {
+          category,
+          orders: testRowsForCategory.reduce((sum, test) => sum + test.orders, 0),
+          revenue: round2(testRowsForCategory.reduce((sum, test) => sum + test.revenue, 0)),
+          tests: testRowsForCategory,
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.revenue - a.revenue || b.orders - a.orders || a.category.localeCompare(b.category),
+      );
+
+    // Every day of the range, quiet days included, so a week reads as a week
+    // rather than as a list of the days that happened to have work.
+    const daily: RegistrationReportDayRow[] = [];
+    for (
+      const cursor = new Date(start);
+      cursor <= end;
+      cursor.setDate(cursor.getDate() + 1)
+    ) {
+      const key = toLocalISODate(cursor);
+      const day = dayRows.get(key);
+      daily.push({
+        date: key,
+        registrations: day?.registrations ?? 0,
+        labTestOrders: day?.labTestOrders ?? 0,
+        labTestRevenue: round2(day?.labTestRevenue ?? 0),
+      });
+    }
+
+    const patients: RegistrationReportPatientRow[] = registeredPatients
+      .slice(0, PATIENT_LIST_LIMIT)
+      .map((patient) => ({
+        id: patient.id,
+        nrNumber: patient.nrNumber,
+        fullName: patient.fullName,
+        registeredAt: patient.registeredAt.toISOString(),
+        visitType: patient.visitType ?? null,
+        staffId: patient.registeredBy,
+        staffName: rows.get(patient.registeredBy)?.staffName ?? 'Unknown user',
+      }));
+
     const totals = staffRows.reduce(
       (acc, row) => ({
         registrations: acc.registrations + row.registrations,
@@ -1635,6 +1781,10 @@ export class ReportsService {
       },
       departments,
       staff: staffRows,
+      categories,
+      daily,
+      patients,
+      patientsTruncated: registeredPatients.length > PATIENT_LIST_LIMIT,
     };
   }
 }

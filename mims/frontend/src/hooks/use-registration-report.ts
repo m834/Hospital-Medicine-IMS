@@ -35,6 +35,33 @@ export interface RegistrationReportDepartmentRow {
   staff: RegistrationReportStaffRow[];
 }
 
+/** A test category — X-Ray, Hematology — and the tests that make it up. */
+export interface RegistrationReportCategoryRow {
+  category: string;
+  orders: number;
+  revenue: number;
+  tests: RegistrationReportTestRow[];
+}
+
+/** One patient in the Registered Patients drill-down. */
+export interface RegistrationReportPatientRow {
+  id: string;
+  nrNumber: string;
+  fullName: string;
+  registeredAt: string;
+  visitType: string | null;
+  staffId: string;
+  staffName: string;
+}
+
+/** One day of the range, for the trend table. */
+export interface RegistrationReportDayRow {
+  date: string;
+  registrations: number;
+  labTestOrders: number;
+  labTestRevenue: number;
+}
+
 export interface RegistrationReportStaffOption {
   id: string;
   fullName: string;
@@ -63,6 +90,13 @@ export interface RegistrationReport {
   };
   departments: RegistrationReportDepartmentRow[];
   staff: RegistrationReportStaffRow[];
+  /** Test categories across the whole report, biggest earner first. */
+  categories: RegistrationReportCategoryRow[];
+  /** Every day of the range, quiet days included. */
+  daily: RegistrationReportDayRow[];
+  /** The patients behind the registration count, newest first, capped at 500. */
+  patients: RegistrationReportPatientRow[];
+  patientsTruncated: boolean;
 }
 
 export interface RegistrationReportParams {
@@ -108,5 +142,13 @@ export function useRegistrationReport(params: RegistrationReportParams) {
     ],
     queryFn: () => fetchRegistrationReport(params),
     enabled: !!token && !!params.hospitalId && !!params.startDate && !!params.endDate,
+    // The desk report is read while the desk is working, so it refreshes itself
+    // rather than waiting to be reloaded: every minute, and again whenever the
+    // manager comes back to the tab.
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    // Keep the previous period on screen while the next one loads, so changing
+    // a filter does not blank the page.
+    placeholderData: (previous: RegistrationReport | undefined) => previous,
   });
 }

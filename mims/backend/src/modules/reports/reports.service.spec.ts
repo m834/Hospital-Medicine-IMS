@@ -8,7 +8,7 @@ describe('ReportsService.getRegistrationReport', () => {
   let service: ReportsService;
 
   const mockPrismaService = {
-    patient: { groupBy: jest.fn() },
+    patient: { findMany: jest.fn() },
     receipt: { findMany: jest.fn() },
     user: { findMany: jest.fn() },
     labTest: { findMany: jest.fn() },
@@ -34,6 +34,20 @@ describe('ReportsService.getRegistrationReport', () => {
     endDate: '2026-09-01',
   };
 
+  /**
+   * Patient rows in the shape the report selects them. `registeredAt` defaults
+   * to a time inside baseDto's day so the trend table has somewhere to put it.
+   */
+  const registered = (registeredBy: string, count: number, at = '2026-09-01T09:00:00') =>
+    Array.from({ length: count }, (_, index) => ({
+      id: `patient-${registeredBy}-${index}`,
+      nrNumber: `MRN-${registeredBy}-${index}`,
+      fullName: `Patient ${registeredBy} ${index}`,
+      registeredAt: new Date(at),
+      visitType: 'OPD',
+      registeredBy,
+    }));
+
   /** A LAB_TEST receipt in the shape the report selects it. */
   const labReceipt = (overrides: Partial<Record<string, any>> = {}) => ({
     totalAmount: 0,
@@ -41,13 +55,14 @@ describe('ReportsService.getRegistrationReport', () => {
     generatedById: 'staff-1',
     description: null,
     notes: null,
+    createdAt: new Date('2026-09-01T10:00:00'),
     ...overrides,
   });
 
   it('attributes registrations to the registrar and lab charges to the order creator', async () => {
-    mockPrismaService.patient.groupBy.mockResolvedValue([
-      { registeredBy: 'staff-1', _count: { _all: 3 } },
-      { registeredBy: 'staff-2', _count: { _all: 1 } },
+    mockPrismaService.patient.findMany.mockResolvedValue([
+      ...registered('staff-1', 3),
+      ...registered('staff-2', 1),
     ]);
     mockPrismaService.receipt.findMany.mockResolvedValue([
       labReceipt({ totalAmount: 500, paidAmount: 500, generatedById: 'staff-1' }),
@@ -103,7 +118,7 @@ describe('ReportsService.getRegistrationReport', () => {
   });
 
   it('counts only LAB_TEST receipts over the full day, and only the requested hospital', async () => {
-    mockPrismaService.patient.groupBy.mockResolvedValue([]);
+    mockPrismaService.patient.findMany.mockResolvedValue([]);
     mockPrismaService.receipt.findMany.mockResolvedValue([]);
     mockPrismaService.user.findMany.mockResolvedValue([]);
 
@@ -117,19 +132,19 @@ describe('ReportsService.getRegistrationReport', () => {
     expect(receiptWhere.generatedById).toBeUndefined();
     expect(receiptWhere.generatedBy).toBeUndefined();
 
-    const patientWhere = mockPrismaService.patient.groupBy.mock.calls[0][0].where;
+    const patientWhere = mockPrismaService.patient.findMany.mock.calls[0][0].where;
     expect(patientWhere.hospitalId).toBe('hospital-1');
     expect(patientWhere.registeredByUser).toBeUndefined();
   });
 
   it('narrows each section by its own staff member’s department', async () => {
-    mockPrismaService.patient.groupBy.mockResolvedValue([]);
+    mockPrismaService.patient.findMany.mockResolvedValue([]);
     mockPrismaService.receipt.findMany.mockResolvedValue([]);
     mockPrismaService.user.findMany.mockResolvedValue([]);
 
     await service.getRegistrationReport({ ...baseDto, departmentId: 'dept-1' });
 
-    expect(mockPrismaService.patient.groupBy.mock.calls[0][0].where.registeredByUser).toEqual({
+    expect(mockPrismaService.patient.findMany.mock.calls[0][0].where.registeredByUser).toEqual({
       departmentId: 'dept-1',
     });
     expect(mockPrismaService.receipt.findMany.mock.calls[0][0].where.generatedBy).toEqual({
@@ -138,7 +153,7 @@ describe('ReportsService.getRegistrationReport', () => {
   });
 
   it('keeps a staff member who took lab money but registered nobody in the period', async () => {
-    mockPrismaService.patient.groupBy.mockResolvedValue([]);
+    mockPrismaService.patient.findMany.mockResolvedValue([]);
     mockPrismaService.receipt.findMany.mockResolvedValue([
       labReceipt({ totalAmount: 400, paidAmount: 400, generatedById: 'staff-9' }),
     ]);
@@ -170,9 +185,7 @@ describe('ReportsService.getRegistrationReport', () => {
   };
 
   it('narrows both halves of the report to one staff member', async () => {
-    mockPrismaService.patient.groupBy.mockResolvedValue([
-      { registeredBy: 'staff-1', _count: { _all: 2 } },
-    ]);
+    mockPrismaService.patient.findMany.mockResolvedValue(registered('staff-1', 2));
     mockPrismaService.receipt.findMany.mockResolvedValue([]);
     mockUsers([], [
       { id: 'staff-1', fullName: 'Ayesha Khan', role: 'REGISTRATION_STAFF', department: null },
@@ -180,7 +193,7 @@ describe('ReportsService.getRegistrationReport', () => {
 
     const report = await service.getRegistrationReport({ ...baseDto, staffId: 'staff-1' });
 
-    expect(mockPrismaService.patient.groupBy).toHaveBeenCalledWith(
+    expect(mockPrismaService.patient.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ registeredBy: 'staff-1' }),
       }),
@@ -195,7 +208,7 @@ describe('ReportsService.getRegistrationReport', () => {
   });
 
   it('combines the staff and department filters rather than dropping one', async () => {
-    mockPrismaService.patient.groupBy.mockResolvedValue([]);
+    mockPrismaService.patient.findMany.mockResolvedValue([]);
     mockPrismaService.receipt.findMany.mockResolvedValue([]);
     mockUsers([], []);
 
@@ -205,7 +218,7 @@ describe('ReportsService.getRegistrationReport', () => {
       departmentId: 'dept-1',
     });
 
-    expect(mockPrismaService.patient.groupBy).toHaveBeenCalledWith(
+    expect(mockPrismaService.patient.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           registeredBy: 'staff-1',
@@ -218,7 +231,7 @@ describe('ReportsService.getRegistrationReport', () => {
   // Otherwise picking a staff member with a quiet day would empty the very
   // dropdown that picked them.
   it('offers the whole desk roster even when nobody registered anyone', async () => {
-    mockPrismaService.patient.groupBy.mockResolvedValue([]);
+    mockPrismaService.patient.findMany.mockResolvedValue([]);
     mockPrismaService.receipt.findMany.mockResolvedValue([]);
     mockUsers(
       [
@@ -238,9 +251,7 @@ describe('ReportsService.getRegistrationReport', () => {
   });
 
   it('adds a registrar who holds no desk role to the picker', async () => {
-    mockPrismaService.patient.groupBy.mockResolvedValue([
-      { registeredBy: 'admin-1', _count: { _all: 1 } },
-    ]);
+    mockPrismaService.patient.findMany.mockResolvedValue(registered('admin-1', 1));
     mockPrismaService.receipt.findMany.mockResolvedValue([]);
     mockUsers(
       [{ id: 'staff-1', fullName: 'Ayesha Khan', role: 'REGISTRATION_STAFF' }],
@@ -260,7 +271,7 @@ describe('ReportsService.getRegistrationReport', () => {
   });
 
   it('marks a single-day range so the UI can label it as a daily report', async () => {
-    mockPrismaService.patient.groupBy.mockResolvedValue([]);
+    mockPrismaService.patient.findMany.mockResolvedValue([]);
     mockPrismaService.receipt.findMany.mockResolvedValue([]);
     mockPrismaService.user.findMany.mockResolvedValue([]);
 
@@ -277,7 +288,7 @@ describe('ReportsService.getRegistrationReport', () => {
    * every charge the person who booked the test had just raised.
    */
   it('credits a test booked for a patient someone else registered to whoever booked it', async () => {
-    mockPrismaService.patient.groupBy.mockResolvedValue([]);
+    mockPrismaService.patient.findMany.mockResolvedValue([]);
     mockPrismaService.receipt.findMany.mockResolvedValue([
       labReceipt({ totalAmount: 100, generatedById: 'lab-desk-1' }),
     ]);
@@ -299,7 +310,7 @@ describe('ReportsService.getRegistrationReport', () => {
   });
 
   it('breaks a staff member’s lab money down per test, biggest earner first', async () => {
-    mockPrismaService.patient.groupBy.mockResolvedValue([]);
+    mockPrismaService.patient.findMany.mockResolvedValue([]);
     mockPrismaService.receipt.findMany.mockResolvedValue([
       labReceipt({
         totalAmount: 50,
@@ -336,7 +347,7 @@ describe('ReportsService.getRegistrationReport', () => {
 
   // Older receipts predate the ids in notes; the description still names the test.
   it('falls back to the receipt description when notes carry no test id', async () => {
-    mockPrismaService.patient.groupBy.mockResolvedValue([]);
+    mockPrismaService.patient.findMany.mockResolvedValue([]);
     mockPrismaService.receipt.findMany.mockResolvedValue([
       labReceipt({ totalAmount: 75, generatedById: 'staff-1', description: 'Lab Test - Urine R/E' }),
       labReceipt({ totalAmount: 25, generatedById: 'staff-1', notes: 'hand written note' }),
@@ -354,11 +365,125 @@ describe('ReportsService.getRegistrationReport', () => {
     ]);
   });
 
+  it('groups lab money by test category, biggest category first', async () => {
+    mockPrismaService.patient.findMany.mockResolvedValue([]);
+    mockPrismaService.receipt.findMany.mockResolvedValue([
+      labReceipt({ totalAmount: 50, notes: JSON.stringify({ labTestId: 'test-cbc' }) }),
+      labReceipt({ totalAmount: 50, notes: JSON.stringify({ labTestId: 'test-cbc' }) }),
+      labReceipt({ totalAmount: 30, notes: JSON.stringify({ labTestId: 'test-lft' }) }),
+      labReceipt({ totalAmount: 400, notes: JSON.stringify({ labTestId: 'test-xray' }) }),
+    ]);
+    mockPrismaService.labTest.findMany.mockResolvedValue([
+      { id: 'test-cbc', testName: 'CBC', testCategory: 'Hematology' },
+      { id: 'test-lft', testName: 'LFT', testCategory: 'Hematology' },
+      { id: 'test-xray', testName: 'X-Ray Chest', testCategory: 'Radiology' },
+    ]);
+    mockUsers([], [
+      { id: 'staff-1', fullName: 'Ayesha Khan', role: 'REGISTRATION_STAFF', department: null },
+    ]);
+
+    const report = await service.getRegistrationReport(baseDto);
+
+    expect(report.categories).toEqual([
+      {
+        category: 'Radiology',
+        orders: 1,
+        revenue: 400,
+        tests: [{ testName: 'X-Ray Chest', orders: 1, revenue: 400 }],
+      },
+      {
+        category: 'Hematology',
+        orders: 3,
+        revenue: 130,
+        tests: [
+          { testName: 'CBC', orders: 2, revenue: 100 },
+          { testName: 'LFT', orders: 1, revenue: 30 },
+        ],
+      },
+    ]);
+  });
+
+  it('files a test with no category of its own under Uncategorised', async () => {
+    mockPrismaService.patient.findMany.mockResolvedValue([]);
+    mockPrismaService.receipt.findMany.mockResolvedValue([
+      labReceipt({ totalAmount: 20, notes: JSON.stringify({ labTestId: 'test-blank' }) }),
+    ]);
+    mockPrismaService.labTest.findMany.mockResolvedValue([
+      { id: 'test-blank', testName: 'Sugar Random', testCategory: '  ' },
+    ]);
+    mockUsers([], [
+      { id: 'staff-1', fullName: 'Ayesha Khan', role: 'REGISTRATION_STAFF', department: null },
+    ]);
+
+    const report = await service.getRegistrationReport(baseDto);
+
+    expect(report.categories[0].category).toBe('Uncategorised');
+  });
+
+  it('reports every day of the range, quiet days included', async () => {
+    mockPrismaService.patient.findMany.mockResolvedValue([
+      ...registered('staff-1', 2, '2026-09-01T09:00:00'),
+      ...registered('staff-1', 1, '2026-09-03T18:30:00'),
+    ]);
+    mockPrismaService.receipt.findMany.mockResolvedValue([
+      labReceipt({ totalAmount: 100, createdAt: new Date('2026-09-03T11:00:00') }),
+    ]);
+    mockUsers([], [
+      { id: 'staff-1', fullName: 'Ayesha Khan', role: 'REGISTRATION_STAFF', department: null },
+    ]);
+
+    const report = await service.getRegistrationReport({ ...baseDto, endDate: '2026-09-03' });
+
+    expect(report.daily).toEqual([
+      { date: '2026-09-01', registrations: 2, labTestOrders: 0, labTestRevenue: 0 },
+      { date: '2026-09-02', registrations: 0, labTestOrders: 0, labTestRevenue: 0 },
+      { date: '2026-09-03', registrations: 1, labTestOrders: 1, labTestRevenue: 100 },
+    ]);
+  });
+
+  it('lists the patients behind the registration count, newest first', async () => {
+    mockPrismaService.patient.findMany.mockResolvedValue(registered('staff-1', 2));
+    mockPrismaService.receipt.findMany.mockResolvedValue([]);
+    mockUsers([], [
+      { id: 'staff-1', fullName: 'Ayesha Khan', role: 'REGISTRATION_STAFF', department: null },
+    ]);
+
+    const report = await service.getRegistrationReport(baseDto);
+
+    expect(mockPrismaService.patient.findMany.mock.calls[0][0].orderBy).toEqual({
+      registeredAt: 'desc',
+    });
+    expect(report.patientsTruncated).toBe(false);
+    expect(report.patients).toHaveLength(2);
+    expect(report.patients[0]).toMatchObject({
+      nrNumber: 'MRN-staff-1-0',
+      fullName: 'Patient staff-1 0',
+      visitType: 'OPD',
+      staffId: 'staff-1',
+      staffName: 'Ayesha Khan',
+    });
+  });
+
+  it('caps the patient list and says so rather than returning a month of rows', async () => {
+    mockPrismaService.patient.findMany.mockResolvedValue(registered('staff-1', 501));
+    mockPrismaService.receipt.findMany.mockResolvedValue([]);
+    mockUsers([], [
+      { id: 'staff-1', fullName: 'Ayesha Khan', role: 'REGISTRATION_STAFF', department: null },
+    ]);
+
+    const report = await service.getRegistrationReport(baseDto);
+
+    expect(report.patients).toHaveLength(500);
+    expect(report.patientsTruncated).toBe(true);
+    // The count itself is not capped — it is read off every row.
+    expect(report.totals.registrations).toBe(501);
+  });
+
   it('rejects a range that ends before it starts', async () => {
     await expect(
       service.getRegistrationReport({ ...baseDto, startDate: '2026-09-10', endDate: '2026-09-01' }),
     ).rejects.toBeInstanceOf(BadRequestException);
 
-    expect(mockPrismaService.patient.groupBy).not.toHaveBeenCalled();
+    expect(mockPrismaService.patient.findMany).not.toHaveBeenCalled();
   });
 });
