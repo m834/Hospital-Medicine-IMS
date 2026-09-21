@@ -83,7 +83,7 @@ export default function LabPage() {
       },
       {
         value: "reports",
-        label: "Reports",
+        label: "Lab Revenue",
         icon: FileCheck,
         roles: [
           UserRole.MASTER_ADMIN,

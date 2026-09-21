@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useLabOrders, downloadLabResultPdf } from "@/hooks/use-lab-orders";
 import { useHospitalStore } from "@/stores/hospital.store";
 import { useAuthStore } from "@/stores/auth.store";
@@ -11,8 +11,24 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
-import { Search, Download, FileText, Calendar, User, TestTube } from "lucide-react";
+import { Search, Download, FileText, Calendar, User, TestTube, Printer } from "lucide-react";
 import { formatMRN, matchesMRN } from '@/lib/mrn';
+import { useLabRevenue } from "@/hooks/use-lab-revenue";
+import { printLabRevenueReport } from "@/lib/print-lab-revenue";
+
+/** Two decimals, grouped — the same figures the printed report carries. */
+const formatMoney = (value: number) =>
+  new Intl.NumberFormat('en-PK', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value || 0);
+
+const prettyDate = (value: string) =>
+  new Date(value).toLocaleDateString('en-PK', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 
 export default function LabReportsPage() {
   const { selectedHospital } = useHospitalStore();
@@ -34,6 +50,22 @@ export default function LabReportsPage() {
     startDate,
     endDate,
   });
+
+  // Revenue counts every order in the range, not just the approved ones: the
+  // charge is raised when the slip is created, so filtering by status here
+  // would under-report the money that was actually taken.
+  const { data: revenue, isLoading: revenueLoading } = useLabRevenue({
+    hospitalId,
+    startDate,
+    endDate,
+  });
+
+  const revenuePeriodLabel = useMemo(() => {
+    if (!startDate || !endDate) return 'All dates';
+    return startDate === endDate
+      ? prettyDate(startDate)
+      : `${prettyDate(startDate)} – ${prettyDate(endDate)}`;
+  }, [startDate, endDate]);
 
   const filteredOrders = approvedOrders?.filter((order) =>
     order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -142,6 +174,124 @@ export default function LabReportsPage() {
               />
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Lab Revenue: every order in the range, grouped by category. The print
+          button sends a document of its own — see print-lab-revenue.ts. */}
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between space-y-0">
+          <div>
+            <CardTitle>Lab Revenue</CardTitle>
+            <CardDescription>
+              {revenuePeriodLabel}
+              {isOwnOrdersOnly ? ' · your own orders' : ''}
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!revenue || revenueLoading}
+            onClick={() =>
+              revenue && printLabRevenueReport(revenue, selectedHospital?.name || 'Hospital')
+            }
+          >
+            <Printer className="mr-2 h-4 w-4" />
+            Print
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {revenueLoading ? (
+            <p className="py-6 text-center text-muted-foreground">Loading lab revenue...</p>
+          ) : !revenue || revenue.categories.length === 0 ? (
+            <p className="py-6 text-center text-muted-foreground">
+              No lab tests were created in this period.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-xs uppercase text-muted-foreground">
+                    <th className="py-2 text-left font-medium">Test Name</th>
+                    <th className="py-2 text-right font-medium">Quantity</th>
+                    <th className="py-2 text-right font-medium">Test Price</th>
+                    <th className="py-2 text-right font-medium">Total Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {revenue.categories.map((category) => (
+                    <Fragment key={category.category}>
+                      <tr>
+                        <td
+                          colSpan={4}
+                          className="pt-4 text-xs font-semibold uppercase tracking-wide text-foreground"
+                        >
+                          {category.category}
+                        </td>
+                      </tr>
+                      {category.tests.map((test) => (
+                        <tr key={`${category.category}-${test.testName}-${test.unitPrice}`}>
+                          <td className="py-1.5 pl-4">{test.testName}</td>
+                          <td className="py-1.5 text-right">{test.quantity}</td>
+                          <td className="py-1.5 text-right">{formatMoney(test.unitPrice)}</td>
+                          <td className="py-1.5 text-right">{formatMoney(test.total)}</td>
+                        </tr>
+                      ))}
+                      <tr className="border-y font-semibold">
+                        <td className="py-1.5">{category.category} subtotal</td>
+                        <td className="py-1.5 text-right">{category.quantity}</td>
+                        <td />
+                        <td className="py-1.5 text-right">{formatMoney(category.subtotal)}</td>
+                      </tr>
+                    </Fragment>
+                  ))}
+                  <tr className="border-t-2 border-double text-base font-bold">
+                    <td className="py-2">GRAND TOTAL</td>
+                    <td className="py-2 text-right">{revenue.totalQuantity}</td>
+                    <td />
+                    <td className="py-2 text-right">{formatMoney(revenue.grandTotal)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Tests by Resource</CardTitle>
+          <CardDescription>Tests created by each resource in this period.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!revenue || revenue.resources.length === 0 ? (
+            <p className="py-6 text-center text-muted-foreground">
+              No tests were created in this period.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-xs uppercase text-muted-foreground">
+                    <th className="py-2 text-left font-medium">Resource</th>
+                    <th className="py-2 text-right font-medium">Tests Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {revenue.resources.map((resource) => (
+                    <tr key={resource.resourceId}>
+                      <td className="py-1.5">{resource.resourceName}</td>
+                      <td className="py-1.5 text-right">{resource.tests}</td>
+                    </tr>
+                  ))}
+                  <tr className="border-t font-semibold">
+                    <td className="py-1.5">Total</td>
+                    <td className="py-1.5 text-right">{revenue.totalQuantity}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
 

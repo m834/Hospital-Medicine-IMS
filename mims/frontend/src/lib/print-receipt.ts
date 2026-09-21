@@ -207,7 +207,7 @@ export function printLabReceipt(
  * can empty the page out from under the job. Wait for afterprint instead, with
  * a generous timeout for the browsers that never fire it.
  */
-function printReceiptHtml(html: string) {
+export function printReceiptHtml(html: string) {
   const printFrame = document.createElement('iframe');
   printFrame.style.cssText =
     'position:fixed;right:0;bottom:0;width:0;height:0;border:none;';

@@ -74,6 +74,25 @@ export class LabOrdersController {
     return this.labOrdersService.getPendingOrders(hospitalId);
   }
 
+  /**
+   * Lab revenue for a date range, grouped by category. Registration staff get
+   * the same report scoped to their own orders, exactly as the list above is.
+   */
+  @Get('revenue')
+  getRevenueReport(
+    @Query('hospitalId') hospitalId: string,
+    @CurrentUser() user: any,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.labOrdersService.getRevenueReport(
+      hospitalId,
+      startDate ? new Date(startDate) : undefined,
+      endDate ? new Date(endDate) : undefined,
+      user,
+    );
+  }
+
   @Get('statistics')
   getStatistics(
     @Query('hospitalId') hospitalId: string,

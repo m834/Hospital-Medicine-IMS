@@ -33,6 +33,28 @@ const SLIP_REPRINT_ROLES = new Set<string>([
  */
 const SELF_SCOPED_LIST_ROLES = new Set<string>(['REGISTRATION_STAFF']);
 
+/** Bucket for lab tests whose category was left blank in the catalogue. */
+const UNCATEGORISED_LAB_TEST = 'Uncategorised';
+
+/** Money is summed as floats, so trim the drift before it reaches the client. */
+const round2 = (value: number) => Math.round(value * 100) / 100;
+
+/** One test line in the revenue report: a test at one price. */
+interface LabRevenueTestRow {
+  testName: string;
+  unitPrice: number;
+  quantity: number;
+  total: number;
+}
+
+/** One staff member and how many tests they created in the range. */
+interface LabRevenueResourceRow {
+  resourceId: string;
+  resourceName: string;
+  role: string | null;
+  tests: number;
+}
+
 @Injectable()
 export class LabOrdersService {
   constructor(private prisma: PrismaService) {}
@@ -648,4 +670,143 @@ export class LabOrdersService {
       topTests: byCategory,
     };
   }
+
+  /**
+   * Lab revenue for a date range, grouped by test category.
+   *
+   * Every lab order in the range counts — one order is one slip is one receipt,
+   * so no status filter: revenue is raised when the slip is created, not when
+   * the result is approved. Quantity is therefore a count of orders; there is
+   * no quantity column on a lab order.
+   *
+   * The unit price comes from the receipt raised with the order, so a test
+   * repriced since it was ordered still reports what was actually charged. A
+   * test ordered at two different prices inside one range lands on two rows,
+   * which keeps Quantity x Test Price = Total Price true on every line. Orders
+   * with no receipt fall back to the catalogue price.
+   */
+  async getRevenueReport(
+    hospitalId: string,
+    startDate?: Date,
+    endDate?: Date,
+    user?: { id: string; role: string },
+  ) {
+    // Same rule as the order list: a self-scoped role reports on its own work
+    // whatever it asks for.
+    const orderedById =
+      user && SELF_SCOPED_LIST_ROLES.has(user.role) ? user.id : undefined;
+
+    // The dates arrive as plain days (2026-09-21), which parse to midnight —
+    // without widening, an end date would cut the day off before the desk had
+    // opened. Same normalisation the registration report uses.
+    let dateRange: { createdAt?: { gte: Date; lte: Date } } = {};
+    if (startDate && endDate) {
+      const from = new Date(startDate);
+      const to = new Date(endDate);
+      from.setHours(0, 0, 0, 0);
+      to.setHours(23, 59, 59, 999);
+
+      if (from > to) {
+        throw new BadRequestException('startDate must be on or before endDate');
+      }
+
+      dateRange = { createdAt: { gte: from, lte: to } };
+    }
+
+    const [orders, receipts] = await Promise.all([
+      this.prisma.labOrder.findMany({
+        where: { hospitalId, ...(orderedById && { orderedById }), ...dateRange },
+        select: {
+          id: true,
+          orderedById: true,
+          labTest: { select: { testName: true, testCategory: true, price: true } },
+          orderedBy: { select: { id: true, fullName: true, role: true } },
+        },
+      }),
+      this.prisma.receipt.findMany({
+        where: { hospitalId, receiptType: ReceiptType.LAB_TEST, ...dateRange },
+        select: { totalAmount: true, notes: true },
+      }),
+    ]);
+
+    // The receipt carries its lab order id in notes; that is the only link
+    // between the two rows.
+    const chargedByOrderId = new Map<string, number>();
+    for (const receipt of receipts) {
+      const labOrderId = this.readLabOrderId(receipt.notes);
+      if (labOrderId) chargedByOrderId.set(labOrderId, Number(receipt.totalAmount || 0));
+    }
+
+    // category -> "test name @ unit price" -> row
+    const categories = new Map<string, Map<string, LabRevenueTestRow>>();
+    const resources = new Map<string, LabRevenueResourceRow>();
+
+    for (const order of orders) {
+      const category = order.labTest.testCategory?.trim() || UNCATEGORISED_LAB_TEST;
+      const testName = order.labTest.testName;
+      const unitPrice = chargedByOrderId.get(order.id) ?? Number(order.labTest.price || 0);
+
+      let byTest = categories.get(category);
+      if (!byTest) {
+        byTest = new Map<string, LabRevenueTestRow>();
+        categories.set(category, byTest);
+      }
+
+      const key = `${testName}@${unitPrice}`;
+      const row = byTest.get(key) ?? { testName, unitPrice, quantity: 0, total: 0 };
+      row.quantity += 1;
+      row.total = round2(row.total + unitPrice);
+      byTest.set(key, row);
+
+      const resource = resources.get(order.orderedById) ?? {
+        resourceId: order.orderedById,
+        resourceName: order.orderedBy?.fullName ?? 'Unknown user',
+        role: order.orderedBy?.role ?? null,
+        tests: 0,
+      };
+      resource.tests += 1;
+      resources.set(order.orderedById, resource);
+    }
+
+    const categoryRows = [...categories.entries()]
+      .map(([category, byTest]) => {
+        const tests = [...byTest.values()].sort(
+          (a, b) => b.total - a.total || a.testName.localeCompare(b.testName),
+        );
+
+        return {
+          category,
+          tests,
+          quantity: tests.reduce((sum, test) => sum + test.quantity, 0),
+          subtotal: round2(tests.reduce((sum, test) => sum + test.total, 0)),
+        };
+      })
+      .sort((a, b) => b.subtotal - a.subtotal || a.category.localeCompare(b.category));
+
+    return {
+      range: {
+        start: startDate ? startDate.toISOString() : null,
+        end: endDate ? endDate.toISOString() : null,
+      },
+      categories: categoryRows,
+      grandTotal: round2(categoryRows.reduce((sum, row) => sum + row.subtotal, 0)),
+      totalQuantity: categoryRows.reduce((sum, row) => sum + row.quantity, 0),
+      resources: [...resources.values()].sort(
+        (a, b) => b.tests - a.tests || a.resourceName.localeCompare(b.resourceName),
+      ),
+    };
+  }
+
+  /** The lab order id a LAB_TEST receipt was raised for, or null. */
+  private readLabOrderId(notes: string | null): string | null {
+    if (!notes) return null;
+
+    try {
+      const parsed = JSON.parse(notes);
+      return typeof parsed?.labOrderId === 'string' ? parsed.labOrderId : null;
+    } catch {
+      return null;
+    }
+  }
+
 }
