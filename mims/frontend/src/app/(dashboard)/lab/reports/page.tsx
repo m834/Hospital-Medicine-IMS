@@ -193,7 +193,7 @@ export default function LabReportsPage() {
             size="sm"
             disabled={!revenue || revenueLoading}
             onClick={() =>
-              revenue && printLabRevenueReport(revenue, selectedHospital?.name || 'Hospital')
+              revenue && printLabRevenueReport(revenue, selectedHospital?.name)
             }
           >
             <Printer className="mr-2 h-4 w-4" />

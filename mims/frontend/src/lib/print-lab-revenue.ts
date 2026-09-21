@@ -35,7 +35,10 @@ const periodLabel = (range: LabRevenueReport['range']) => {
   return from === to ? from : `${from} – ${to}`;
 };
 
-export function printLabRevenueReport(report: LabRevenueReport, hospitalName: string) {
+export function printLabRevenueReport(
+  report: LabRevenueReport,
+  hospitalName: string | null | undefined,
+) {
   const categoryBlocks = report.categories
     .map(
       (category) => `
@@ -115,9 +118,9 @@ export function printLabRevenueReport(report: LabRevenueReport, hospitalName: st
         </style>
       </head>
       <body>
-        <h1>${escapeHtml(hospitalName)}</h1>
+        <h1>${hospitalName ? escapeHtml(hospitalName) : 'Lab Revenue Report'}</h1>
         <div class="meta">
-          Lab Revenue Report &nbsp;|&nbsp; Period: ${escapeHtml(periodLabel(report.range))}
+          ${hospitalName ? 'Lab Revenue Report &nbsp;|&nbsp; ' : ''}Period: ${escapeHtml(periodLabel(report.range))}
           &nbsp;|&nbsp; Printed: ${escapeHtml(prettyDate(new Date().toISOString()))}
         </div>
 

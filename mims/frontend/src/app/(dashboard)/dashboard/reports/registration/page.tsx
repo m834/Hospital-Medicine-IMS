@@ -36,6 +36,7 @@ import {
   LabRevenueTrendChart,
   RegistrationTrendChart,
 } from './charts';
+import { printRegistrationLabReport } from '@/lib/print-registration-report';
 
 /** Mirrors the @Roles list on GET /reports/registration. */
 const ALLOWED_ROLES: UserRole[] = [
@@ -393,7 +394,21 @@ export default function RegistrationReportPage() {
           </>
         )}
 
-        <Button variant="outline" onClick={() => window.print()} className="md:ml-auto">
+        {/* Prints its own document — the two lab tables and the grand total,
+            no charts and nothing else off the screen. */}
+        <Button
+          variant="outline"
+          disabled={!data}
+          onClick={() =>
+            data &&
+            printRegistrationLabReport(
+              data,
+              selectedHospital?.name,
+              { staffName: selectedStaffName },
+            )
+          }
+          className="md:ml-auto"
+        >
           Print
         </Button>
       </div>
