@@ -5,7 +5,7 @@ import { useHospitalStore } from "@/stores/hospital.store";
 import { useAuthStore } from "@/stores/auth.store";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PackagePlus, Microscope, FileText, CheckSquare, FileCheck } from "lucide-react";
+import { PackagePlus, Microscope, FileText, CheckSquare, FileCheck, ListChecks } from "lucide-react";
 import { UserRole } from "@/lib/constants";
 import dynamic from "next/dynamic";
 
@@ -15,6 +15,7 @@ const LabQueuePage = dynamic(() => import("./queue/page"), { ssr: false });
 const LabResultsPage = dynamic(() => import("./results/page"), { ssr: false });
 const LabApprovalPage = dynamic(() => import("./approve/page"), { ssr: false });
 const LabReportsPage = dynamic(() => import("./reports/page"), { ssr: false });
+const LabOrderListPage = dynamic(() => import("./orders/list/page"), { ssr: false });
 
 export default function LabPage() {
   const { selectedHospital } = useHospitalStore();
@@ -43,6 +44,19 @@ export default function LabPage() {
           UserRole.REGISTRATION_STAFF,
           UserRole.REGISTRATION_STAFF_MANAGER,
           UserRole.LAB_TECHNICIAN,
+        ],
+      },
+      {
+        // Reprinting a slip is a manager's call — the server refuses a second
+        // print to anyone else, so the tab is shown to exactly those roles.
+        value: "list",
+        label: "Test List",
+        icon: ListChecks,
+        roles: [
+          UserRole.MASTER_ADMIN,
+          UserRole.SUPER_ADMIN,
+          UserRole.HOSPITAL_ADMIN,
+          UserRole.REGISTRATION_STAFF_MANAGER,
         ],
       },
       {
@@ -156,6 +170,10 @@ export default function LabPage() {
 
         <TabsContent value="new-order">
           <LabOrderNewPage />
+        </TabsContent>
+
+        <TabsContent value="list">
+          <LabOrderListPage />
         </TabsContent>
 
         <TabsContent value="queue">

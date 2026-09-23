@@ -32,9 +32,13 @@ export class LabOrdersController {
     private readonly labResultPdfService: LabResultPdfService,
   ) {}
 
+  /**
+   * The current user is passed through for `orderedAt`: booking an order on a
+   * past date is a manager's call, decided by the token rather than the body.
+   */
   @Post()
-  create(@Body() createLabOrderDto: CreateLabOrderDto) {
-    return this.labOrdersService.create(createLabOrderDto);
+  create(@Body() createLabOrderDto: CreateLabOrderDto, @CurrentUser() user: any) {
+    return this.labOrdersService.create(createLabOrderDto, user);
   }
 
   /**

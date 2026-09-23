@@ -33,6 +33,19 @@ const SLIP_REPRINT_ROLES = new Set<string>([
  */
 const SELF_SCOPED_LIST_ROLES = new Set<string>(['REGISTRATION_STAFF']);
 
+/**
+ * Roles allowed to book a lab order on a past date. A backdated order moves
+ * money into a day that has already been reported on, so it is the same short
+ * list trusted with a slip reprint — the desk staff who enter the day's work
+ * cannot change which day it lands in.
+ */
+const BACKDATE_ROLES = new Set<string>([
+  'MASTER_ADMIN',
+  'SUPER_ADMIN',
+  'HOSPITAL_ADMIN',
+  'REGISTRATION_STAFF_MANAGER',
+]);
+
 /** Bucket for lab tests whose category was left blank in the catalogue. */
 const UNCATEGORISED_LAB_TEST = 'Uncategorised';
 
@@ -59,7 +72,58 @@ interface LabRevenueResourceRow {
 export class LabOrdersService {
   constructor(private prisma: PrismaService) {}
 
-  async create(createLabOrderDto: CreateLabOrderDto) {
+  /**
+   * The day a number is stamped with, read in local time.
+   *
+   * Deliberately not toISOString(): that is UTC, and at the desk in Quetta
+   * (UTC+5) an order booked before 5am would carry the previous day's number.
+   */
+  private localDateStamp(when: Date): string {
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${when.getFullYear()}${p(when.getMonth() + 1)}${p(when.getDate())}`;
+  }
+
+  /**
+   * When the order is booked: now, unless a permitted role asked for a past
+   * date.
+   *
+   * A backdated order is given the current time of day on that date, so orders
+   * entered together stay in the sequence they were entered in rather than all
+   * landing on midnight.
+   */
+  private resolveOrderDate(orderedAt: string | undefined, user?: { role: string }): Date {
+    if (!orderedAt) return new Date();
+
+    if (!user || !BACKDATE_ROLES.has(user.role)) {
+      throw new ForbiddenException(
+        'Only a registration manager or an admin may book a lab order on a past date',
+      );
+    }
+
+    const requested = new Date(orderedAt);
+    if (Number.isNaN(requested.getTime())) {
+      throw new BadRequestException('orderedAt must be a valid date');
+    }
+
+    const now = new Date();
+    const booked = new Date(requested);
+    booked.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+
+    // A future date would put work — and its money — in a day that has not
+    // happened, which no report could reconcile.
+    if (booked > now) {
+      throw new BadRequestException('A lab order cannot be booked on a future date');
+    }
+
+    return booked;
+  }
+
+  async create(createLabOrderDto: CreateLabOrderDto, user?: { id: string; role: string }) {
+    // When the order is booked. Everything derived from a date below reads
+    // this, not the clock, so a backdated order is internally consistent.
+    const enteredAt = new Date();
+    const orderedAt = this.resolveOrderDate(createLabOrderDto.orderedAt, user);
+
     // Resolve patient ID - can be UUID or MRN
     let patientId = createLabOrderDto.patientId;
     
@@ -77,9 +141,8 @@ export class LabOrdersService {
       patientId = patient.id;
     }
 
-    // Generate order number: LAB-YYYYMMDD-XXXX
-    const today = new Date();
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
+    // Generate order number: LAB-YYYYMMDD-XXXX, on the day the order is booked
+    const dateStr = this.localDateStamp(orderedAt);
     
     const lastOrder = await this.prisma.labOrder.findFirst({
       where: {
@@ -125,13 +188,18 @@ export class LabOrdersService {
 
 
     const labOrder = await this.prisma.$transaction(async (tx) => {
+      // orderedAt is the DTO's name for the booking date; the column is
+      // createdAt, so it never reaches the row as an unknown field.
+      const { orderedAt: _orderedAt, ...orderData } = createLabOrderDto;
+
       const order = await tx.labOrder.create({
         data: {
-          ...createLabOrderDto,
+          ...orderData,
           patientId, // Use resolved UUID
           orderNumber,
           priority: createLabOrderDto.priority || TestPriority.ROUTINE,
           status: LabOrderStatus.PENDING,
+          createdAt: orderedAt,
         },
         include: {
           hospital: { select: { id: true, name: true } },
@@ -164,7 +232,7 @@ export class LabOrdersService {
         },
       });
 
-      const receiptNumber = await this.generateReceiptNumber(tx);
+      const receiptNumber = await this.generateReceiptNumber(tx, orderedAt);
 
       const txAny = tx as any;
       await txAny.receipt.create({
@@ -182,9 +250,54 @@ export class LabOrdersService {
           paidAmount: new Prisma.Decimal(0),
           paymentMethod: PaymentMethod.CASH,
           paymentStatus: PaymentStatus.UNPAID,
+          // Same day as its order: the revenue reports date receipts by
+          // createdAt, so a backdated order whose receipt landed today would
+          // split one piece of work across two days.
+          createdAt: orderedAt,
           notes: JSON.stringify({ labOrderId: order.id, labTestId: labTest.id }),
         },
       });
+
+      // A backdated order moves money into a day that may already have been
+      // reported on, so it is logged in the same transaction that creates it:
+      // the order and its audit entry are committed together or not at all.
+      // The audit log is readable only by MASTER_ADMIN, SUPER_ADMIN and
+      // HOSPITAL_ADMIN (see AuditLogController), so a registration role can
+      // record a backdate but cannot review or hide one.
+      if (createLabOrderDto.orderedAt) {
+        await tx.auditLog.create({
+          data: {
+            hospitalId: createLabOrderDto.hospitalId,
+            userId: user?.id ?? createLabOrderDto.orderedById,
+            action: 'BACKDATE',
+            module: 'Lab Orders',
+            entityType: 'LabOrder',
+            entityId: order.id,
+            description:
+              `Created lab order ${orderNumber} (${labTest.testName}) backdated to ` +
+              `${this.localDateStamp(orderedAt)} — entered ${enteredAt.toISOString()} ` +
+              `by ${user?.role ?? 'unknown role'}, receipt ${receiptNumber}, ` +
+              `amount ${Number(labTest.price || 0)}`,
+            beforeState: {
+              enteredAt: enteredAt.toISOString(),
+              requestedDate: createLabOrderDto.orderedAt,
+            },
+            afterState: {
+              orderNumber,
+              receiptNumber,
+              createdAt: orderedAt.toISOString(),
+              patientId,
+              labTestId: labTest.id,
+              testName: labTest.testName,
+              amount: Number(labTest.price || 0),
+              orderedById: createLabOrderDto.orderedById,
+              backdatedByDays: Math.round(
+                (enteredAt.getTime() - orderedAt.getTime()) / 86_400_000,
+              ),
+            },
+          },
+        });
+      }
 
       return order;
     });
@@ -192,9 +305,8 @@ export class LabOrdersService {
     return labOrder;
   }
 
-  private async generateReceiptNumber(tx: Prisma.TransactionClient) {
-    const today = new Date();
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+  private async generateReceiptNumber(tx: Prisma.TransactionClient, when: Date) {
+    const dateStr = this.localDateStamp(when);
 
     const lastReceipt = await tx.receipt.findFirst({
       where: { receiptNumber: { startsWith: `REC-${dateStr}` } },

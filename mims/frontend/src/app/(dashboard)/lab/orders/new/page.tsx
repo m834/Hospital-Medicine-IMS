@@ -33,6 +33,7 @@ import { Search, Plus, Trash2, FileText, Printer, AlertTriangle, UserCheck, Load
 import api, { getErrorMessage } from "@/lib/api";
 import { printLabReceipt } from "@/lib/print-receipt";
 import { UserRole } from "@/lib/constants";
+import { DateInput } from "@/components/ui/date-input";
 import type { LabTest } from "@/hooks/use-lab-tests";
 import type { LabOrder } from "@/hooks/use-lab-orders";
 import { formatMRN } from '@/lib/mrn';
@@ -64,6 +65,22 @@ const SLIP_REPRINT_ROLES: string[] = [
   UserRole.HOSPITAL_ADMIN,
   UserRole.REGISTRATION_STAFF_MANAGER,
 ];
+
+/**
+ * Roles allowed to book an order on a past date — a slip written on paper
+ * yesterday and entered today. Mirrors BACKDATE_ROLES in lab-orders.service.ts,
+ * which enforces it; this copy only decides whether to offer the field. Every
+ * use is written to the audit log, which only admins can read.
+ */
+const BACKDATE_ROLES: string[] = SLIP_REPRINT_ROLES;
+
+/** Local calendar date — a UTC "today" reads as yesterday until 5am here. */
+const todayISO = () => {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate(),
+  ).padStart(2, "0")}`;
+};
 
 /**
  * On-screen twin of the printed slip: one block per test, each block being one
@@ -153,6 +170,8 @@ export default function NewLabOrderPageComponent() {
   const [patientSearch, setPatientSearch] = useState("");
   const [selectedTests, setSelectedTests] = useState<SelectedTest[]>([]);
   const [clinicalNotes, setClinicalNotes] = useState("");
+  // Empty means today. Only set by a manager, and only ever to a past date.
+  const [orderedAt, setOrderedAt] = useState("");
   const [isTestSelectorOpen, setIsTestSelectorOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [createdOrders, setCreatedOrders] = useState<LabOrder[]>([]);
@@ -297,6 +316,11 @@ export default function NewLabOrderPageComponent() {
 
   const canReprintSlip = SLIP_REPRINT_ROLES.includes(user?.role || "");
 
+  const canBackdate = !!user && BACKDATE_ROLES.includes(user.role);
+  // The server refuses a future date too; catching it here keeps the desk from
+  // losing a filled-in form to a round trip.
+  const isFutureDate = !!orderedAt && orderedAt > todayISO();
+
   const handleAddTest = (test: LabTest, priority: "ROUTINE" | "URGENT" | "STAT" = "ROUTINE") => {
     if (!selectedTests.find((st) => st.test.id === test.id)) {
       setSelectedTests([...selectedTests, { test, priority }]);
@@ -332,6 +356,11 @@ export default function NewLabOrderPageComponent() {
       return;
     }
 
+    if (isFutureDate) {
+      setFormError("A lab order cannot be booked on a future date.");
+      return;
+    }
+
     setFormError("");
     setLastPrinted([]);
     const results: LabOrder[] = [];
@@ -347,6 +376,7 @@ export default function NewLabOrderPageComponent() {
           orderedById: user.id,
           priority: selectedTest.priority,
           clinicalNotes,
+          ...(orderedAt ? { orderedAt } : {}),
         });
         results.push(order as LabOrder);
       }
@@ -410,6 +440,9 @@ export default function NewLabOrderPageComponent() {
     setPatientNrNumber("");
     setSelectedTests([]);
     setClinicalNotes("");
+    // Cleared deliberately: a backdate is per-order, and carrying it into the
+    // next patient would silently misdate their work.
+    setOrderedAt("");
     setFoundPatient(null);
     setPatientSearchQuery("");
     setPatientSearchError("");
@@ -713,6 +746,42 @@ export default function NewLabOrderPageComponent() {
               )}
             </CardContent>
           </Card>
+
+          {/* Order date — managers only. Hidden entirely for desk staff, who
+              cannot backdate and should not be shown a field that will be
+              refused. */}
+          {canBackdate && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Order Date</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <DateInput
+                    value={orderedAt}
+                    onChange={setOrderedAt}
+                    placeholder="Today"
+                    className="w-52"
+                  />
+                  {orderedAt && (
+                    <Button variant="ghost" size="sm" onClick={() => setOrderedAt("")}>
+                      Use today
+                    </Button>
+                  )}
+                </div>
+                {isFutureDate && (
+                  <p className="text-xs text-rose-600">
+                    A lab order cannot be booked on a future date.
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {orderedAt
+                    ? "This order, its slip number and its receipt will be dated to the day above. Backdating is recorded in the audit log."
+                    : "Leave empty for today. A past date can be set for a slip written on paper earlier."}
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Clinical Notes */}
           <Card>

@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsEnum,
   IsNumber,
+  IsDateString,
   Min,
 } from 'class-validator';
 import { TestPriority } from '@prisma/client';
@@ -37,4 +38,15 @@ export class CreateLabOrderDto {
   @IsString()
   @IsOptional()
   clinicalNotes?: string;
+
+  /**
+   * Book the order on a past date — a slip written on paper yesterday and
+   * entered today. Only a registration manager or an admin may set it; the
+   * service refuses it for anyone else and refuses a future date for everyone.
+   * The order number, the receipt and the receipt number all follow this date,
+   * so the day's revenue report adds up the way the desk's paper does.
+   */
+  @IsDateString()
+  @IsOptional()
+  orderedAt?: string;
 }

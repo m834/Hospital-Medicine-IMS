@@ -69,6 +69,11 @@ export interface CreateLabOrderInput {
   orderedById: string;
   priority?: "ROUTINE" | "URGENT" | "STAT";
   clinicalNotes?: string;
+  /**
+   * Book the order on a past date (YYYY-MM-DD). The server accepts it only
+   * from a registration manager or an admin, and logs every use of it.
+   */
+  orderedAt?: string;
 }
 
 export interface CollectSampleInput {
