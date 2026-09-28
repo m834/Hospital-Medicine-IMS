@@ -87,29 +87,33 @@ export function printLabRevenueReport(
         <title>Lab Revenue</title>
         <style>
           @page { size: A4; margin: 1.5cm; }
+          /* Deliberately tight. This sheet is a long list of test lines, and
+             the desk reads it as a table rather than a letter — loose leading
+             here costs a page. The registration report print is spaced wider
+             on purpose; the two are not meant to match. */
           body {
             font-family: Arial, Helvetica, sans-serif;
             font-size: 11pt;
-            line-height: 1.45;
+            line-height: 1.2;
             color: #000;
             margin: 0;
           }
           h1 { font-size: 14pt; margin: 0 0 2px; }
-          h2 { font-size: 12pt; margin: 26px 0 10px; }
-          .meta { font-size: 10pt; margin-bottom: 18px; }
+          h2 { font-size: 12pt; margin: 14px 0 5px; }
+          .meta { font-size: 10pt; margin-bottom: 10px; }
           table { width: 100%; border-collapse: collapse; }
-          th, td { padding: 7px 6px; text-align: left; line-height: 1.45; }
+          th, td { padding: 2px 6px; text-align: left; line-height: 1.2; }
           th {
             border-bottom: 1.5px solid #000;
             font-size: 10pt;
             text-transform: uppercase;
-            padding-bottom: 8px;
+            padding-bottom: 4px;
           }
           .num { text-align: right; }
           .indent { padding-left: 18px; }
           tr.category td {
-            padding-top: 16px;
-            padding-bottom: 8px;
+            padding-top: 8px;
+            padding-bottom: 3px;
             font-weight: bold;
             text-transform: uppercase;
             font-size: 10pt;
@@ -118,16 +122,16 @@ export function printLabRevenueReport(
             border-top: 1px solid #000;
             border-bottom: 1px solid #000;
             font-weight: bold;
-            padding-top: 8px;
-            padding-bottom: 8px;
+            padding-top: 3px;
+            padding-bottom: 3px;
           }
           tr.grand td {
             border-top: 2px solid #000;
             border-bottom: 2px double #000;
             font-weight: bold;
             font-size: 12pt;
-            padding-top: 12px;
-            padding-bottom: 12px;
+            padding-top: 6px;
+            padding-bottom: 6px;
           }
           tr { page-break-inside: avoid; }
           .empty { padding: 16px 0; font-style: italic; }
