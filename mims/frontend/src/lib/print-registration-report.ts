@@ -27,8 +27,14 @@ const money = (value: number) =>
     value || 0,
   );
 
+/** Karachi time, so a report run at 1am is not dated to yesterday. */
 const prettyDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' });
+  new Date(iso).toLocaleDateString('en-GB', {
+    timeZone: 'Asia/Karachi',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 
 export function printRegistrationLabReport(
   report: RegistrationReport,

@@ -118,6 +118,101 @@ describe('printLabReceipt', () => {
     expect(html).toContain('20260627-0001');
   });
 
+  // The slip is read by the patient at the counter: a test code and a
+  // generated reference number mean nothing to them. Both stay in the database
+  // and the UI — this is a print-only simplification.
+  it('prints the test name alone, with no internal code', () => {
+    const html = capturePrintedHtml(() =>
+      printLabReceipt([order('LAB-173', 'CT SCAN', 4500)], opts),
+    );
+
+    expect(html).toContain('CT SCAN');
+    expect(html).not.toContain('LAB-173 —');
+    expect(html).not.toMatch(/LAB-173\s*<\/span>/);
+  });
+
+  it('prints no generated reference string on the slip', () => {
+    const html = capturePrintedHtml(() =>
+      printLabReceipt(
+        [{ ...order('CBC', 'Complete Blood Count', 300), id: 'abc-def-12389e' }],
+        opts,
+      ),
+    );
+
+    expect(html).not.toContain('LB-');
+    expect(html).not.toContain('12389E');
+  });
+
+  it('prints the billing date beside the test name as DD/MM/YYYY', () => {
+    const html = capturePrintedHtml(() =>
+      printLabReceipt(
+        [{ ...order('CT', 'CT SCAN', 4500), createdAt: '2026-09-25T09:15:00' }],
+        opts,
+      ),
+    );
+
+    expect(html).toContain('25/09/2026');
+    expect(html.split('class="test"')[1]).toMatch(/CT SCAN[\s\S]*25\/09\/2026/);
+  });
+
+  // A backdated order is billed on the day it was raised, so its slip has to
+  // say that day rather than the day someone reprinted it.
+  it('uses the order date, not the print date', () => {
+    const html = capturePrintedHtml(() =>
+      printLabReceipt(
+        [{ ...order('CBC', 'Complete Blood Count', 300), createdAt: '2026-09-25T09:15:00' }],
+        opts,
+      ),
+    );
+
+    const printedToday = new Date().toLocaleDateString('en-GB');
+    expect(html).toContain('25/09/2026');
+    if (printedToday !== '25/09/2026') {
+      // The header still carries today; only the test line is the billing date.
+      expect(html.split('class="test"')[1]).not.toContain(printedToday);
+    }
+  });
+
+  it('falls back to today when the order carries no date', () => {
+    const html = capturePrintedHtml(() =>
+      printLabReceipt([order('CBC', 'Complete Blood Count', 300)], opts),
+    );
+
+    expect(html.split('class="test"')[1]).toContain(new Date().toLocaleDateString('en-GB'));
+  });
+
+  it('gives every test in a multi-test order its own name and date line', () => {
+    const html = capturePrintedHtml(() =>
+      printLabReceipt(
+        [
+          { ...order('CT', 'CT SCAN', 4500), createdAt: '2026-09-25T09:15:00' },
+          { ...order('XR', 'X-RAY CHEST', 800), createdAt: '2026-09-25T09:15:00' },
+        ],
+        opts,
+      ),
+    );
+
+    const testLines = html.split('class="test"').slice(1);
+    expect(testLines).toHaveLength(2);
+    expect(testLines[0]).toContain('CT SCAN');
+    expect(testLines[0]).toContain('25/09/2026');
+    expect(testLines[1]).toContain('X-RAY CHEST');
+    expect(testLines[1]).toContain('25/09/2026');
+  });
+
+  // The slip drops into a slot on pre-printed paper, so the geometry must not
+  // move when the text inside it changes.
+  it('keeps the slip geometry the pre-printed form is aligned to', () => {
+    const html = capturePrintedHtml(() =>
+      printLabReceipt([order('CT', 'CT SCAN', 4500)], opts),
+    );
+
+    expect(html).toContain('padding: 46.5mm calc(15mm + 8px) 15mm calc(22mm + 8px)');
+    expect(html).toContain('@page { size: A4; margin: 0; }');
+    // Same 16px the reference number printed at, so the line box is unchanged.
+    expect(html).toContain('.test-date { font-size: 16px; }');
+  });
+
   it('does nothing when there is no order to print', () => {
     expect(capturePrintedHtml(() => printLabReceipt([], opts))).toBe('');
   });

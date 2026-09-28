@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { useLabTests } from "@/hooks/use-lab-tests";
@@ -34,6 +34,7 @@ import api, { getErrorMessage } from "@/lib/api";
 import { printLabReceipt } from "@/lib/print-receipt";
 import { UserRole } from "@/lib/constants";
 import { DateInput } from "@/components/ui/date-input";
+import { formatKarachiDate, karachiToday } from "@/lib/karachi-date";
 import type { LabTest } from "@/hooks/use-lab-tests";
 import type { LabOrder } from "@/hooks/use-lab-orders";
 import { formatMRN } from '@/lib/mrn';
@@ -74,13 +75,8 @@ const SLIP_REPRINT_ROLES: string[] = [
  */
 const BACKDATE_ROLES: string[] = SLIP_REPRINT_ROLES;
 
-/** Local calendar date — a UTC "today" reads as yesterday until 5am here. */
-const todayISO = () => {
-  const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-    date.getDate(),
-  ).padStart(2, "0")}`;
-};
+/** Today in Karachi, so the backdate field agrees with what the slips say. */
+const todayISO = () => karachiToday();
 
 /**
  * On-screen twin of the printed slip: one block per test, each block being one
@@ -96,8 +92,6 @@ function LabSlip({
   patientId: string;
   createdByName: string;
 }) {
-  const printedOn = new Date().toLocaleDateString("en-GB");
-
   return (
     <div className="divide-y">
       {orders.map((order, index) => {
@@ -108,17 +102,19 @@ function LabSlip({
           formatMRN(patient?.nrNumber) || patientId,
         ].filter((v) => v != null && String(v).trim() !== "");
 
-        const rightValues = [printedOn, createdByName].filter(
+        // The receipt's own date in Karachi time — kept in step with
+        // printLabReceipt, which is what actually prints.
+        const receiptDate = formatKarachiDate(order.createdAt);
+
+        const rightValues = [receiptDate, createdByName].filter(
           (v) => v != null && String(v).trim() !== ""
         );
 
-        const test = [order.labTest?.testCode, order.labTest?.testName]
-          .filter((v) => v != null && String(v).trim() !== "")
-          .join(" — ");
+        // Test name only, and the billing date rather than a reference string —
+        // kept in step with printLabReceipt, which is what actually prints.
+        const test = String(order.labTest?.testName || "").trim();
 
-        const orderIdFragment = order.id
-          ? `LB-${format(new Date(), "yyyy-dd-MM")}-${order.id.slice(-5).toUpperCase()}`
-          : "";
+
 
         return (
           <div key={order.id} className="p-6 font-sans text-black">
@@ -146,12 +142,8 @@ function LabSlip({
             <div className="mt-4 flex justify-between gap-3 text-sm font-bold">
               <span>
                 {test}
-                {orderIdFragment && (
-                  <>
-                    <span className="px-1.5 font-normal text-gray-500">|</span>
-                    <span className="text-base">{orderIdFragment}</span>
-                  </>
-                )}
+                <span className="px-1.5 font-normal text-gray-500">|</span>
+                <span className="text-base">{receiptDate}</span>
               </span>
               <span>Rs. {Number(order.labTest?.price || 0).toFixed(2)}</span>
             </div>
@@ -184,6 +176,7 @@ export default function NewLabOrderPageComponent() {
   const [lastPrinted, setLastPrinted] = useState<string[]>([]);
   const [formError, setFormError] = useState("");
   const printRef = useRef<HTMLDivElement>(null);
+  const testSearchRef = useRef<HTMLInputElement>(null);
 
   // Patient search
   const [patientSearchQuery, setPatientSearchQuery] = useState("");
@@ -320,6 +313,22 @@ export default function NewLabOrderPageComponent() {
   // The server refuses a future date too; catching it here keeps the desk from
   // losing a filled-in form to a round trip.
   const isFutureDate = !!orderedAt && orderedAt > todayISO();
+
+  /**
+   * Picking a category puts the cursor straight in the search box. The desk
+   * types a test name the moment the list appears — having to click the box
+   * first is a step per test, all day.
+   *
+   * One frame late on purpose: the list renders in the same tick the category
+   * is chosen, and Radix moves focus itself while a dialog is settling, so
+   * focusing immediately can be undone.
+   */
+  useEffect(() => {
+    if (!isTestSelectorOpen || selectedCategory === "all") return;
+
+    const frame = requestAnimationFrame(() => testSearchRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [isTestSelectorOpen, selectedCategory]);
 
   const handleAddTest = (test: LabTest, priority: "ROUTINE" | "URGENT" | "STAT" = "ROUTINE") => {
     if (!selectedTests.find((st) => st.test.id === test.id)) {
@@ -954,10 +963,12 @@ export default function NewLabOrderPageComponent() {
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
+                  ref={testSearchRef}
                   placeholder="Search tests..."
                   value={patientSearch}
                   onChange={(e) => setPatientSearch(e.target.value)}
                   className="pl-10"
+                  autoFocus
                 />
               </div>
 
@@ -981,6 +992,9 @@ export default function NewLabOrderPageComponent() {
                         onClick={() => {
                           handleAddTest(test);
                           setPatientSearch("");
+                          // Straight back to typing the next test, rather than
+                          // leaving focus on a button that is now disabled.
+                          testSearchRef.current?.focus();
                         }}
                         disabled={selectedTests.some((st) => st.test.id === test.id)}
                       >
