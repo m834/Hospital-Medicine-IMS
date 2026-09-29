@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, type KeyboardEvent } from "react";
 import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { useLabTests } from "@/hooks/use-lab-tests";
@@ -178,6 +178,18 @@ export default function NewLabOrderPageComponent() {
   const printRef = useRef<HTMLDivElement>(null);
   const testSearchRef = useRef<HTMLInputElement>(null);
 
+  // Keyboard flow for the desk: arrows walk the category cards and the test
+  // list, Enter picks. Focus is handed from one step to the next through these.
+  const patientSearchRef = useRef<HTMLInputElement>(null);
+  const addTestButtonRef = useRef<HTMLButtonElement>(null);
+  const submitButtonRef = useRef<HTMLButtonElement>(null);
+  const categoryGridRef = useRef<HTMLDivElement>(null);
+  const categoryButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const testRowRefs = useRef<(HTMLDivElement | null)[]>([]);
+  // The category just left via "Back to categories", so the cursor lands on it.
+  const lastCategoryRef = useRef<string>("");
+  const [activeTestIndex, setActiveTestIndex] = useState(0);
+
   // Patient search
   const [patientSearchQuery, setPatientSearchQuery] = useState("");
   const [patientSearching, setPatientSearching] = useState(false);
@@ -329,6 +341,93 @@ export default function NewLabOrderPageComponent() {
     const frame = requestAnimationFrame(() => testSearchRef.current?.focus());
     return () => cancelAnimationFrame(frame);
   }, [isTestSelectorOpen, selectedCategory]);
+
+  /**
+   * The category cards get the cursor when they appear — on the first one, or
+   * on the one just backed out of — so the arrow keys work straight away.
+   * One frame late for the same reason as above.
+   */
+  useEffect(() => {
+    if (!isTestSelectorOpen || selectedCategory !== "all") return;
+
+    const frame = requestAnimationFrame(() => {
+      const index = Math.max(0, categories.indexOf(lastCategoryRef.current));
+      categoryButtonRefs.current[index]?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+    // categories is rebuilt every render; only re-run when the grid appears.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTestSelectorOpen, selectedCategory]);
+
+  // A new search or a new category starts the highlight back at the top.
+  useEffect(() => {
+    setActiveTestIndex(0);
+  }, [patientSearch, selectedCategory]);
+
+  // Keep the highlighted test visible inside the scrolling list.
+  useEffect(() => {
+    testRowRefs.current[activeTestIndex]?.scrollIntoView({ block: "nearest" });
+  }, [activeTestIndex]);
+
+  // Once the patient is found the search box locks, so hand the cursor on to
+  // "Add Test" — Enter there opens the test picker.
+  useEffect(() => {
+    if (foundPatient) addTestButtonRef.current?.focus();
+  }, [foundPatient]);
+
+  // After the slips print, the form is empty again: back to the patient search
+  // for the next patient.
+  useEffect(() => {
+    if (lastPrinted.length > 0) patientSearchRef.current?.focus();
+  }, [lastPrinted]);
+
+  /**
+   * Arrow keys across the category cards. Up and Down move a whole row, so the
+   * column count is read from the grid itself — it changes with screen width.
+   * Enter needs nothing here: it already presses the focused card.
+   */
+  const handleCategoryKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
+    const buttons = categoryButtonRefs.current.slice(0, categories.length);
+    const current = buttons.findIndex((b) => b === document.activeElement);
+    if (current === -1) return;
+    e.preventDefault();
+
+    const grid = categoryGridRef.current;
+    const columns = grid
+      ? getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean).length || 1
+      : 1;
+    const step =
+      e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : e.key === "ArrowUp" ? -columns : columns;
+    const next = current + step;
+    if (next >= 0 && next < buttons.length) buttons[next]?.focus();
+  };
+
+  /**
+   * Arrow keys and Enter for the test list. The cursor stays in the search box
+   * so typing keeps filtering; the arrows move a highlight through the rows
+   * and Enter adds the highlighted test. The default is blocked so the arrows
+   * neither scroll the dialog nor move the text cursor.
+   */
+  const handleTestListKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const count = filteredTests?.length || 0;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (count === 0) return;
+      setActiveTestIndex((i) =>
+        e.key === "ArrowDown" ? Math.min(i + 1, count - 1) : Math.max(i - 1, 0)
+      );
+      return;
+    }
+    // Enter on a focused button (Add, Back) already presses that button.
+    if (e.key === "Enter" && e.target === testSearchRef.current) {
+      e.preventDefault();
+      const test = filteredTests?.[activeTestIndex];
+      if (!test || selectedTests.some((st) => st.test.id === test.id)) return;
+      handleAddTest(test);
+      testSearchRef.current?.focus();
+    }
+  };
 
   const handleAddTest = (test: LabTest, priority: "ROUTINE" | "URGENT" | "STAT" = "ROUTINE") => {
     if (!selectedTests.find((st) => st.test.id === test.id)) {
@@ -632,6 +731,7 @@ export default function NewLabOrderPageComponent() {
               {/* Search Row */}
               <div className="flex gap-2">
                 <Input
+                  ref={patientSearchRef}
                   placeholder={
                     searchType === "mrn"
                       ? "Enter MRN (e.g. 482913)"
@@ -697,7 +797,7 @@ export default function NewLabOrderPageComponent() {
                   {selectedTests.length} test(s) selected
                 </CardDescription>
               </div>
-              <Button onClick={() => setIsTestSelectorOpen(true)} size="sm">
+              <Button ref={addTestButtonRef} onClick={() => setIsTestSelectorOpen(true)} size="sm">
                 <Plus className="mr-2 h-4 w-4" />
                 Add Test
               </Button>
@@ -857,6 +957,7 @@ export default function NewLabOrderPageComponent() {
 
               <div className="space-y-2">
                 <Button
+                  ref={submitButtonRef}
                   onClick={handleSubmit}
                   disabled={
                     selectedTests.length === 0 ||
@@ -912,10 +1013,23 @@ export default function NewLabOrderPageComponent() {
           if (!open) {
             setSelectedCategory("all");
             setPatientSearch("");
+            lastCategoryRef.current = "";
           }
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent
+          className="max-w-2xl max-h-[80vh] overflow-y-auto"
+          onCloseAutoFocus={(e) => {
+            // Leaving the picker with tests chosen goes straight to "Create
+            // Order & Print Slip", so one more Enter prints. Otherwise the
+            // cursor returns to "Add Test" as before.
+            const submit = submitButtonRef.current;
+            if (submit && !submit.disabled) {
+              e.preventDefault();
+              submit.focus();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Select Lab Tests</DialogTitle>
             <DialogDescription>
@@ -926,17 +1040,27 @@ export default function NewLabOrderPageComponent() {
           </DialogHeader>
 
           {selectedCategory === "all" ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div
+              ref={categoryGridRef}
+              onKeyDown={handleCategoryKeyDown}
+              className="grid grid-cols-2 sm:grid-cols-3 gap-3"
+            >
               {categories.length > 0 ? (
-                categories.map((cat) => {
+                categories.map((cat, index) => {
                   const countInCategory =
                     labTests?.filter((t) => t.testCategory === cat).length || 0;
                   return (
                     <button
                       key={cat}
+                      ref={(el) => {
+                        categoryButtonRefs.current[index] = el;
+                      }}
                       type="button"
-                      onClick={() => setSelectedCategory(cat || "")}
-                      className="flex flex-col items-center justify-center gap-1 rounded-lg border p-4 text-center hover:border-primary hover:bg-slate-50 transition-colors"
+                      onClick={() => {
+                        lastCategoryRef.current = cat || "";
+                        setSelectedCategory(cat || "");
+                      }}
+                      className="flex flex-col items-center justify-center gap-1 rounded-lg border p-4 text-center hover:border-primary hover:bg-slate-50 transition-colors focus:outline-none focus-visible:border-primary focus-visible:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary"
                     >
                       <span className="font-medium text-sm">{cat || "Uncategorized"}</span>
                       <span className="text-xs text-muted-foreground">
@@ -952,7 +1076,7 @@ export default function NewLabOrderPageComponent() {
               )}
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4" onKeyDown={handleTestListKeyDown}>
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setSelectedCategory("all")}>
                   <ArrowLeft className="mr-1 h-4 w-4" />
@@ -974,10 +1098,16 @@ export default function NewLabOrderPageComponent() {
 
               <div className="space-y-2 max-h-[50vh] overflow-y-auto">
                 {filteredTests && filteredTests.length > 0 ? (
-                  filteredTests.map((test) => (
+                  filteredTests.map((test, index) => (
                     <div
                       key={test.id}
-                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50"
+                      ref={(el) => {
+                        testRowRefs.current[index] = el;
+                      }}
+                      aria-selected={index === activeTestIndex}
+                      className={`flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50 ${
+                        index === activeTestIndex ? "border-primary bg-primary/10 hover:bg-primary/10" : ""
+                      }`}
                     >
                       <div className="flex-1">
                         <p className="font-medium text-sm">{test.testName}</p>
