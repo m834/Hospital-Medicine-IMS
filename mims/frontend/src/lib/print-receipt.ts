@@ -1,4 +1,4 @@
-import { formatMRN } from './mrn';
+import { formatMRN, formatSlipMRN } from './mrn';
 import { formatKarachiDate } from './karachi-date';
 
 export interface ReceiptPatient {
@@ -112,18 +112,17 @@ export function printLabReceipt(
     .map((order, i) => {
       const patient = order.patient;
 
-      // The full stored MRN, date included (MRN-20260804-482913): the client
-      // asked for the lab slip to carry it whole, unlike every other screen and
+      // The whole MRN, date included, as MR-20260804-482913: the client asked
+      // for the lab slip to carry it in full, unlike every other screen and
       // printout, which show the short code.
       const leftValues = [
         patient?.fullName,
-        patient?.nrNumber?.trim() || opts.patientId,
+        formatSlipMRN(patient?.nrNumber) || formatSlipMRN(opts.patientId),
       ]
         .filter((v) => v != null && String(v).trim() !== '')
         .map((v) => String(v).trim());
 
-      // The receipt's own date in Karachi time, used for both the header and
-      // the test line. Not the moment of printing: a reprint, and an order a
+      // The receipt's own date in Karachi time, printed once in the header. Not the moment of printing: a reprint, and an order a
       // manager booked on a past date, must both show the day the receipt was
       // raised. Falls back to today for an order that carries no date.
       const receiptDate = formatKarachiDate(order.createdAt);
@@ -147,7 +146,7 @@ export function printLabReceipt(
             <span>${rightValues.join('<span class="sep">|</span>')}</span>
           </div>
           <div class="test">
-            <span>${test}<span class="sep">|</span><span class="test-date">${receiptDate}</span></span>
+            <span>${test}</span>
             <span>Rs. ${Number(order.labTest?.price || 0).toFixed(2)}</span>
           </div>
         </div>`;
@@ -188,9 +187,6 @@ export function printLabReceipt(
             font-size: 14px;
             font-weight: 700;
           }
-          /* Same size the reference number printed at, so the test line keeps
-             the line box it had and nothing on the pre-printed form shifts. */
-          .test-date { font-size: 16px; }
         </style>
       </head>
       <body>${slips}

@@ -34,3 +34,14 @@ export function matchesMRN(nrNumber: string | null | undefined, query: string): 
   if (!q) return true;
   return nrNumber.toLowerCase().includes(q) || formatMRN(nrNumber).toLowerCase().includes(q);
 }
+
+/**
+ * The lab slip is the one place the whole MRN prints, date included — but with
+ * the client's "MR-" prefix rather than the stored "MRN-":
+ * `MRN-20260804-482913` prints as `MR-20260804-482913`. Display-only; the
+ * stored value is never changed.
+ */
+export function formatSlipMRN(nrNumber: string | null | undefined): string {
+  if (!nrNumber) return '';
+  return nrNumber.trim().replace(/^MRN-/i, 'MR-');
+}

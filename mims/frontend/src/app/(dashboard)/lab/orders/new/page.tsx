@@ -37,7 +37,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { formatKarachiDate, karachiToday } from "@/lib/karachi-date";
 import type { LabTest } from "@/hooks/use-lab-tests";
 import type { LabOrder } from "@/hooks/use-lab-orders";
-import { formatMRN } from '@/lib/mrn';
+import { formatMRN, formatSlipMRN } from '@/lib/mrn';
 
 interface Patient {
   id: string;
@@ -97,10 +97,10 @@ function LabSlip({
       {orders.map((order, index) => {
         const patient = order.patient;
 
-        // Full stored MRN, date included — kept in step with printLabReceipt.
+        // Whole MRN as MR-20260804-482913 — kept in step with printLabReceipt.
         const leftValues = [
           patient?.fullName,
-          patient?.nrNumber?.trim() || patientId,
+          formatSlipMRN(patient?.nrNumber) || formatSlipMRN(patientId),
         ].filter((v) => v != null && String(v).trim() !== "");
 
         // The receipt's own date in Karachi time — kept in step with
@@ -141,11 +141,7 @@ function LabSlip({
               </span>
             </div>
             <div className="mt-4 flex justify-between gap-3 text-sm font-bold">
-              <span>
-                {test}
-                <span className="px-1.5 font-normal text-gray-500">|</span>
-                <span className="text-base">{receiptDate}</span>
-              </span>
+              <span>{test}</span>
               <span>Rs. {Number(order.labTest?.price || 0).toFixed(2)}</span>
             </div>
           </div>

@@ -82,8 +82,9 @@ describe('printLabReceipt', () => {
 
     expect(html.match(/Ali Khan/g)).toHaveLength(2);
     expect(html.match(/Sana Iqbal/g)).toHaveLength(2);
-    // The lab slip carries the full stored MRN, registration date included.
-    expect(html.match(/MRN-20260804-482913/g)).toHaveLength(2);
+    // The lab slip carries the whole MRN, date included, with an MR- prefix.
+    expect(html.match(/MR-20260804-482913/g)).toHaveLength(2);
+    expect(html).not.toContain('MRN-');
   });
 
   it('carries each test’s own amount and no combined total', () => {
@@ -103,9 +104,8 @@ describe('printLabReceipt', () => {
     );
 
     const body = html.slice(html.indexOf('<body>'));
-    // "MRN" itself is part of the printed value (MRN-20260804-482913), so the
-    // check is for the label form "MRN:".
-    expect(body).not.toMatch(/Full Name|MRN:|Printed by|Gender|Mobile|Order No\.|Category|Priority/);
+    // The printed value itself starts "MR-", so the check is for label forms.
+    expect(body).not.toMatch(/Full Name|MRN?:|Printed by|Gender|Mobile|Order No\.|Category|Priority/);
   });
 
   it('keeps the date on a legacy per-day MRN, which is not unique alone', () => {
@@ -116,7 +116,7 @@ describe('printLabReceipt', () => {
       ),
     );
 
-    expect(html).toContain('MRN-20260627-0001');
+    expect(html).toContain('MR-20260627-0001');
   });
 
   // The slip is read by the patient at the counter: a test code and a
@@ -144,7 +144,8 @@ describe('printLabReceipt', () => {
     expect(html).not.toContain('12389E');
   });
 
-  it('prints the billing date beside the test name as DD/MM/YYYY', () => {
+  // The date prints once, in the header; the test line is the name and price.
+  it('prints the test name with no date beside it', () => {
     const html = capturePrintedHtml(() =>
       printLabReceipt(
         [{ ...order('CT', 'CT SCAN', 4500), createdAt: '2026-09-25T09:15:00' }],
@@ -152,8 +153,10 @@ describe('printLabReceipt', () => {
       ),
     );
 
-    expect(html).toContain('25/09/2026');
-    expect(html.split('class="test"')[1]).toMatch(/CT SCAN[\s\S]*25\/09\/2026/);
+    const testLine = html.split('class="test"')[1];
+    expect(testLine).toContain('CT SCAN');
+    expect(testLine).not.toMatch(/\d{2}\/\d{2}\/\d{4}/);
+    expect(html.match(/25\/09\/2026/g)).toHaveLength(1);
   });
 
   // A backdated order is billed on the day it was raised, so its slip has to
@@ -169,8 +172,7 @@ describe('printLabReceipt', () => {
     const printedToday = new Date().toLocaleDateString('en-GB');
     expect(html).toContain('25/09/2026');
     if (printedToday !== '25/09/2026') {
-      // The header still carries today; only the test line is the billing date.
-      expect(html.split('class="test"')[1]).not.toContain(printedToday);
+      expect(html).not.toContain(printedToday);
     }
   });
 
@@ -179,10 +181,10 @@ describe('printLabReceipt', () => {
       printLabReceipt([order('CBC', 'Complete Blood Count', 300)], opts),
     );
 
-    expect(html.split('class="test"')[1]).toContain(new Date().toLocaleDateString('en-GB'));
+    expect(html.split('class="line"')[1]).toContain(new Date().toLocaleDateString('en-GB'));
   });
 
-  it('gives every test in a multi-test order its own name and date line', () => {
+  it('gives every test in a multi-test order its own line', () => {
     const html = capturePrintedHtml(() =>
       printLabReceipt(
         [
@@ -196,9 +198,7 @@ describe('printLabReceipt', () => {
     const testLines = html.split('class="test"').slice(1);
     expect(testLines).toHaveLength(2);
     expect(testLines[0]).toContain('CT SCAN');
-    expect(testLines[0]).toContain('25/09/2026');
     expect(testLines[1]).toContain('X-RAY CHEST');
-    expect(testLines[1]).toContain('25/09/2026');
   });
 
   // The slip drops into a slot on pre-printed paper, so the geometry must not
@@ -210,8 +210,6 @@ describe('printLabReceipt', () => {
 
     expect(html).toContain('padding: 46.5mm calc(15mm + 8px) 15mm calc(22mm + 8px)');
     expect(html).toContain('@page { size: A4; margin: 0; }');
-    // Same 16px the reference number printed at, so the line box is unchanged.
-    expect(html).toContain('.test-date { font-size: 16px; }');
   });
 
   it('does nothing when there is no order to print', () => {
