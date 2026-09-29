@@ -112,9 +112,12 @@ export function printLabReceipt(
     .map((order, i) => {
       const patient = order.patient;
 
+      // The full stored MRN, date included (MRN-20260804-482913): the client
+      // asked for the lab slip to carry it whole, unlike every other screen and
+      // printout, which show the short code.
       const leftValues = [
         patient?.fullName,
-        formatMRN(patient?.nrNumber) || opts.patientId,
+        patient?.nrNumber?.trim() || opts.patientId,
       ]
         .filter((v) => v != null && String(v).trim() !== '')
         .map((v) => String(v).trim());

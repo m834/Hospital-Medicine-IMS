@@ -82,9 +82,8 @@ describe('printLabReceipt', () => {
 
     expect(html.match(/Ali Khan/g)).toHaveLength(2);
     expect(html.match(/Sana Iqbal/g)).toHaveLength(2);
-    // MRN prints as the short code users recognise, not the full stored value.
-    expect(html.match(/482913/g)).toHaveLength(2);
-    expect(html).not.toContain('MRN-20260804');
+    // The lab slip carries the full stored MRN, registration date included.
+    expect(html.match(/MRN-20260804-482913/g)).toHaveLength(2);
   });
 
   it('carries each test’s own amount and no combined total', () => {
@@ -104,7 +103,9 @@ describe('printLabReceipt', () => {
     );
 
     const body = html.slice(html.indexOf('<body>'));
-    expect(body).not.toMatch(/Full Name|MRN|Printed by|Gender|Mobile|Order No\.|Category|Priority/);
+    // "MRN" itself is part of the printed value (MRN-20260804-482913), so the
+    // check is for the label form "MRN:".
+    expect(body).not.toMatch(/Full Name|MRN:|Printed by|Gender|Mobile|Order No\.|Category|Priority/);
   });
 
   it('keeps the date on a legacy per-day MRN, which is not unique alone', () => {
@@ -115,7 +116,7 @@ describe('printLabReceipt', () => {
       ),
     );
 
-    expect(html).toContain('20260627-0001');
+    expect(html).toContain('MRN-20260627-0001');
   });
 
   // The slip is read by the patient at the counter: a test code and a

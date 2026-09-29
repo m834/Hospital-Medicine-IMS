@@ -97,9 +97,10 @@ function LabSlip({
       {orders.map((order, index) => {
         const patient = order.patient;
 
+        // Full stored MRN, date included — kept in step with printLabReceipt.
         const leftValues = [
           patient?.fullName,
-          formatMRN(patient?.nrNumber) || patientId,
+          patient?.nrNumber?.trim() || patientId,
         ].filter((v) => v != null && String(v).trim() !== "");
 
         // The receipt's own date in Karachi time — kept in step with
