@@ -156,4 +156,69 @@ describe('LabOrdersService slip printing', () => {
       NotFoundException,
     );
   });
+
+  /**
+   * The check runs before the browser prints and the record only after the
+   * print has started, so a slip that failed to print is never counted.
+   */
+  describe('checking before a print', () => {
+    const expectNothingWritten = () => {
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+      expect(mockPrismaService.labOrder.updateMany).not.toHaveBeenCalled();
+      expect(mockPrismaService.auditLog.create).not.toHaveBeenCalled();
+    };
+
+    it('clears an unprinted slip without counting it', async () => {
+      mockPrismaService.labOrder.findMany.mockResolvedValue([order()]);
+
+      await expect(service.checkSlipPrints(['order-1'], staff)).resolves.toEqual([
+        { id: 'order-1', orderNumber: 'LAB-20260907-0001', slipPrintCount: 0 },
+      ]);
+      expectNothingWritten();
+    });
+
+    it('refuses ordinary staff a slip that has already printed', async () => {
+      mockPrismaService.labOrder.findMany.mockResolvedValue([order({ slipPrintCount: 1 })]);
+
+      await expect(service.checkSlipPrints(['order-1'], staff)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expectNothingWritten();
+    });
+
+    it('clears a manager to reprint, without counting it', async () => {
+      mockPrismaService.labOrder.findMany.mockResolvedValue([order({ slipPrintCount: 1 })]);
+
+      await expect(service.checkSlipPrints(['order-1'], manager)).resolves.toHaveLength(1);
+      expectNothingWritten();
+    });
+
+    it('refuses a slip belonging to another hospital', async () => {
+      mockPrismaService.labOrder.findMany.mockResolvedValue([
+        order({ hospitalId: 'hospital-2' }),
+      ]);
+
+      await expect(service.checkSlipPrints(['order-1'], staff)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('rejects an unknown order', async () => {
+      mockPrismaService.labOrder.findMany.mockResolvedValue([]);
+
+      await expect(service.checkSlipPrints(['order-1'], staff)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    // A slip the check cleared stays printable until the print is recorded,
+    // so a print that never started can be retried by the same desk.
+    it('leaves a slip printable for staff until a print is recorded', async () => {
+      mockPrismaService.labOrder.findMany.mockResolvedValue([order()]);
+
+      await service.checkSlipPrints(['order-1'], staff);
+      await expect(service.checkSlipPrints(['order-1'], staff)).resolves.toHaveLength(1);
+      await expect(service.recordSlipPrints(['order-1'], staff)).resolves.toHaveLength(1);
+    });
+  });
 });

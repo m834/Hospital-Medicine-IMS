@@ -1,37 +1,21 @@
-import { printLabReceipt, LabReceiptOrder } from '../print-receipt';
+import { printLabReceipt, printReceiptHtml, LabReceiptOrder } from '../print-receipt';
 
 /**
- * printLabReceipt renders into a hidden iframe. Capture what it writes so the
- * page structure can be asserted without a real printer.
+ * printLabReceipt renders into a hidden iframe through srcdoc. Capture what it
+ * hands the frame so the page structure can be asserted without a printer.
  */
 function capturePrintedHtml(run: () => void): string {
   let written = '';
-  const realCreate = document.createElement.bind(document);
 
-  jest.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-    const el = realCreate(tag);
-    if (tag === 'iframe') {
-      Object.defineProperty(el, 'contentWindow', {
-        value: {
-          document: {
-            open: jest.fn(),
-            write: (html: string) => {
-              written += html;
-            },
-            close: jest.fn(),
-          },
-          print: jest.fn(),
-        },
-      });
-    }
-    return el;
+  jest.spyOn(document.body, 'appendChild').mockImplementation((n: any) => {
+    if (n instanceof HTMLIFrameElement) written += n.srcdoc;
+    return n;
   });
 
-  jest.spyOn(document.body, 'appendChild').mockImplementation((n: any) => n);
-
+  jest.useFakeTimers();
   run();
+  jest.useRealTimers();
 
-  (document.createElement as jest.Mock).mockRestore();
   (document.body.appendChild as jest.Mock).mockRestore();
   return written;
 }
@@ -222,64 +206,151 @@ describe('printLabReceipt', () => {
  * returns before the job has spooled. The iframe holding the slip has to
  * outlive the call or the printer can be handed an empty page.
  */
-describe('printLabReceipt teardown', () => {
+describe('printReceiptHtml', () => {
+  const SLIP = '<!DOCTYPE html><html><body><div>slip</div></body></html>';
+
   /**
-   * Run a print against a fake iframe and hand back the handles needed to drive
-   * its lifecycle: the load event, the print spy and the afterprint listeners.
+   * Run one print against a frame whose window is faked, and hand back the
+   * handles that drive its lifecycle: the load event, the print spy, the
+   * afterprint listeners, the frame's remove and the promise's result.
    */
-  function setUpPrint() {
-    const print = jest.fn();
+  function setUpPrint(options: { body?: string; printThrows?: boolean } = {}) {
+    const order: string[] = [];
+    const print = jest.fn(() => {
+      if (options.printThrows) throw new Error('print blocked');
+    });
     const listeners: Record<string, Array<() => void>> = {};
-    const remove = jest.fn();
+    const fakeWindow = {
+      document: { body: { innerHTML: options.body ?? '<div>slip</div>' } },
+      print,
+      addEventListener: (event: string, fn: () => void) => {
+        (listeners[event] ||= []).push(fn);
+      },
+    };
+
     const realCreate = document.createElement.bind(document);
     let frame: any;
-
     jest.spyOn(document, 'createElement').mockImplementation((tag: string) => {
       const el: any = realCreate(tag);
       if (tag === 'iframe') {
-        Object.defineProperty(el, 'contentWindow', {
-          value: {
-            document: { open: jest.fn(), write: jest.fn(), close: jest.fn() },
-            print,
-            addEventListener: (event: string, fn: () => void) => {
-              (listeners[event] ||= []).push(fn);
-            },
-          },
-        });
-        el.remove = remove;
+        Object.defineProperty(el, 'contentWindow', { value: fakeWindow });
+        const realAdd = el.addEventListener.bind(el);
+        el.addEventListener = (type: string, fn: any) => {
+          if (type === 'load') order.push('listen');
+          realAdd(type, fn);
+        };
+        jest.spyOn(el, 'remove');
         frame = el;
       }
       return el;
     });
-    jest.spyOn(document.body, 'appendChild').mockImplementation((n: any) => n);
+    jest.spyOn(document.body, 'appendChild').mockImplementation((n: any) => {
+      order.push('insert');
+      return n;
+    });
 
-    printLabReceipt([order('CBC', 'Complete Blood Count', 300)], {
-      patientId: '482913',
-      createdBy: 'Sana Iqbal',
+    let result: boolean | undefined;
+    printReceiptHtml(SLIP).then((started) => {
+      result = started;
     });
 
     (document.createElement as jest.Mock).mockRestore();
     (document.body.appendChild as jest.Mock).mockRestore();
 
     return {
-      load: () => frame.onload(),
+      frame,
+      order,
       print,
-      remove,
+      load: () => frame.dispatchEvent(new Event('load')),
       afterPrint: () => listeners.afterprint?.forEach((fn) => fn()),
+      remove: () => frame.remove as jest.Mock,
+      // Flush the promise's then() after timers have run.
+      result: async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        return result;
+      },
     };
   }
 
   beforeEach(() => jest.useFakeTimers());
-  afterEach(() => jest.useRealTimers());
+  afterEach(() => {
+    jest.useRealTimers();
+    document.querySelectorAll('iframe').forEach((f) => f.remove());
+  });
 
-  it('sends the slip to the printer once the frame has loaded', () => {
-    const { load, print } = setUpPrint();
+  it('loads the slip through srcdoc, listening before the frame is inserted', () => {
+    const { frame, order } = setUpPrint();
+
+    expect(frame.srcdoc).toBe(SLIP);
+    expect(order).toEqual(['listen', 'insert']);
+  });
+
+  it('sends the slip to the printer once the frame has loaded', async () => {
+    const { load, print, result } = setUpPrint();
 
     load();
     expect(print).not.toHaveBeenCalled();
 
     jest.advanceTimersByTime(250);
     expect(print).toHaveBeenCalledTimes(1);
+    expect(await result()).toBe(true);
+  });
+
+  // The defect behind the double slips: a second load event printed again.
+  it('prints exactly once however many load events arrive', () => {
+    const { load, print } = setUpPrint();
+
+    load();
+    load();
+    jest.advanceTimersByTime(250);
+    load();
+    jest.advanceTimersByTime(20000);
+
+    expect(print).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores an empty about:blank load and waits for the slip', () => {
+    const { load, print, frame } = setUpPrint({ body: '' });
+
+    load();
+    jest.advanceTimersByTime(250);
+    expect(print).not.toHaveBeenCalled();
+
+    frame.contentWindow.document.body.innerHTML = '<div>slip</div>';
+    load();
+    jest.advanceTimersByTime(250);
+    expect(print).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports false and cleans up when the slip never loads', async () => {
+    const { print, remove, result } = setUpPrint();
+
+    jest.advanceTimersByTime(5000);
+
+    expect(await result()).toBe(false);
+    expect(remove()).toHaveBeenCalledTimes(1);
+    expect(print).not.toHaveBeenCalled();
+  });
+
+  it('does not print a slip that loads after it was given up on', () => {
+    const { load, print } = setUpPrint();
+
+    jest.advanceTimersByTime(5000);
+    load();
+    jest.advanceTimersByTime(20000);
+
+    expect(print).not.toHaveBeenCalled();
+  });
+
+  it('reports false and cleans up when print() throws', async () => {
+    const { load, remove, result } = setUpPrint({ printThrows: true });
+
+    load();
+    jest.advanceTimersByTime(250);
+
+    expect(await result()).toBe(false);
+    expect(remove()).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the frame alive while the job is still spooling', () => {
@@ -288,7 +359,7 @@ describe('printLabReceipt teardown', () => {
     load();
     jest.advanceTimersByTime(1000);
 
-    expect(remove).not.toHaveBeenCalled();
+    expect(remove()).not.toHaveBeenCalled();
   });
 
   it('tears the frame down once the job is done', () => {
@@ -299,7 +370,7 @@ describe('printLabReceipt teardown', () => {
     afterPrint();
     jest.advanceTimersByTime(500);
 
-    expect(remove).toHaveBeenCalledTimes(1);
+    expect(remove()).toHaveBeenCalledTimes(1);
   });
 
   it('tears the frame down anyway when afterprint never fires', () => {
@@ -308,7 +379,7 @@ describe('printLabReceipt teardown', () => {
     load();
     jest.advanceTimersByTime(250 + 10000);
 
-    expect(remove).toHaveBeenCalledTimes(1);
+    expect(remove()).toHaveBeenCalledTimes(1);
   });
 
   it('removes the frame only once when afterprint and the fallback both land', () => {
@@ -319,6 +390,49 @@ describe('printLabReceipt teardown', () => {
     afterPrint();
     jest.advanceTimersByTime(20000);
 
-    expect(remove).toHaveBeenCalledTimes(1);
+    expect(remove()).toHaveBeenCalledTimes(1);
+  });
+
+  describe('leftover frames', () => {
+    function leftover(state: string, ageMs: number) {
+      const frame = document.createElement('iframe');
+      frame.setAttribute('data-print-frame', state);
+      frame.setAttribute('data-print-frame-since', String(Date.now() - ageMs));
+      document.body.appendChild(frame);
+      return frame;
+    }
+
+    it('removes print frames left behind by earlier prints', () => {
+      const stuckLoading = leftover('loading', 60_000);
+      const stuckPrinting = leftover('printing', 60_000);
+
+      setUpPrint();
+
+      expect(stuckLoading.isConnected).toBe(false);
+      expect(stuckPrinting.isConnected).toBe(false);
+    });
+
+    it('keeps a frame whose slip is still spooling', () => {
+      const spooling = leftover('printing', 2_000);
+
+      setUpPrint();
+
+      expect(spooling.isConnected).toBe(true);
+    });
+
+    it('leaves frames that are not print frames alone', () => {
+      const other = document.createElement('iframe');
+      document.body.appendChild(other);
+
+      setUpPrint();
+
+      expect(other.isConnected).toBe(true);
+    });
+  });
+});
+
+describe('slip printers', () => {
+  it('report false when there is no lab slip to print', async () => {
+    await expect(printLabReceipt([], { patientId: '482913' })).resolves.toBe(false);
   });
 });

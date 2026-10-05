@@ -10,6 +10,7 @@ import {
   UseGuards,
   Res,
   StreamableFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { LabOrdersService } from './lab-orders.service';
@@ -23,6 +24,7 @@ import { PrintSlipDto } from './dto/print-slip.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { LabOrderStatus, TestPriority } from '@prisma/client';
+import { isUuid } from '../../common/utils/mrn.util';
 
 @Controller('lab-orders')
 @UseGuards(JwtAuthGuard)
@@ -111,9 +113,32 @@ export class LabOrdersController {
   }
 
   /**
-   * Claim the one print a slip is allowed. Returns 403 when the slip has been
-   * printed already and the caller is not a manager or an admin, so the client
-   * must call this before it opens the print dialog.
+   * May these slips be printed? Read-only — nothing is counted. Returns 403 for
+   * a slip already printed when the caller is not a manager or an admin, so the
+   * client asks here first and a refusal never reaches the printer.
+   *
+   * orderIds is a comma-separated list, the same ids print-slip takes.
+   */
+  @Get('print-slip/check')
+  checkSlipPrints(@Query('orderIds') orderIds: string, @CurrentUser() user: any) {
+    const ids = String(orderIds || '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+
+    if (ids.length === 0) {
+      throw new BadRequestException('No lab orders given to print');
+    }
+    if (ids.length > 100 || ids.some((id) => !isUuid(id))) {
+      throw new BadRequestException('orderIds must be up to 100 lab order ids');
+    }
+
+    return this.labOrdersService.checkSlipPrints(ids, user);
+  }
+
+  /**
+   * Count slips as printed, once the browser has actually started the print.
+   * Applies the same rules as the check and refuses the same slips.
    */
   @Post('print-slip')
   recordSlipPrints(@Body() printSlipDto: PrintSlipDto, @CurrentUser() user: any) {

@@ -31,7 +31,8 @@ import {
 } from "@/components/ui/table";
 import { Search, Plus, Trash2, FileText, Printer, AlertTriangle, UserCheck, Loader2, X, ArrowLeft } from "lucide-react";
 import api, { getErrorMessage } from "@/lib/api";
-import { printLabReceipt } from "@/lib/print-receipt";
+import { printLabSlips, createSingleFlight } from "@/lib/lab-slip-print";
+import { SlipPrintNotice } from "@/components/lab/slip-print-notice";
 import { UserRole } from "@/lib/constants";
 import { DateInput } from "@/components/ui/date-input";
 import { formatKarachiDate, karachiToday } from "@/lib/karachi-date";
@@ -171,6 +172,13 @@ export default function NewLabOrderPageComponent() {
   // The order numbers of the slips that just went to the printer, shown on the
   // empty form as the receipt for the last patient.
   const [lastPrinted, setLastPrinted] = useState<string[]>([]);
+  // The last print started but the server could not count it.
+  const [lastPrintRecordError, setLastPrintRecordError] = useState("");
+  // One save-and-print at a time. The lock is taken the instant the button is
+  // pressed, before any await, so a double press or a held Enter cannot send
+  // the same order twice; busy mirrors it so the buttons show it.
+  const [submitLock] = useState(createSingleFlight);
+  const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState("");
   const printRef = useRef<HTMLDivElement>(null);
   const testSearchRef = useRef<HTMLInputElement>(null);
@@ -455,7 +463,20 @@ export default function NewLabOrderPageComponent() {
    * The preview screen below is the exception path only: it appears when the
    * print itself fails, so the orders are not stranded without a slip.
    */
-  const handleSubmit = async () => {
+  const handleSubmit = () => runLocked(submitOrder);
+
+  /** Hold the lock for the whole save-and-print flow, success or failure. */
+  const runLocked = (flow: () => Promise<void>) =>
+    submitLock.run(async () => {
+      setBusy(true);
+      try {
+        await flow();
+      } finally {
+        setBusy(false);
+      }
+    });
+
+  const submitOrder = async () => {
     if (!patientNrNumber || selectedTests.length === 0 || !user) {
       setFormError("Search for a patient and add at least one test before creating the order.");
       return;
@@ -468,6 +489,7 @@ export default function NewLabOrderPageComponent() {
 
     setFormError("");
     setLastPrinted([]);
+    setLastPrintRecordError("");
     const results: LabOrder[] = [];
 
     try {
@@ -501,23 +523,30 @@ export default function NewLabOrderPageComponent() {
   };
 
   /**
-   * Claim the print on the server first: it counts the slip and refuses a
-   * second print to anyone but a manager or an admin. Only once it says yes
-   * does anything reach the printer, so a refusal never prints.
+   * The server is asked first and refuses a slip it will not print, so a
+   * refusal never reaches the printer. The print is counted only once it has
+   * actually started; a slip that did not print stays on screen, uncounted,
+   * for Retry Print — the desk never has to enter the order again.
    */
   const printAndClear = async (orders: LabOrder[]) => {
     if (orders.length === 0) return;
     setPrinting(true);
     setPrintError("");
     try {
-      await api.post("/lab-orders/print-slip", {
-        orderIds: orders.map((order) => order.id),
-      });
-      printLabReceipt(orders, {
+      const result = await printLabSlips(orders, {
         patientId: patientNrNumber,
         createdBy: user?.fullName || user?.email || "Staff",
       });
+
+      if (result.status === "not-printed") {
+        setCreatedOrders(orders);
+        setShowSlip(true);
+        setHasPrinted(false);
+        return;
+      }
+
       setLastPrinted(orders.map((order) => order.orderNumber));
+      setLastPrintRecordError(result.recordError ?? "");
       resetForm();
       setCreatedOrders([]);
       setShowSlip(false);
@@ -535,10 +564,11 @@ export default function NewLabOrderPageComponent() {
   };
 
   /** Retry from the slip screen after a failed print. */
-  const handlePrint = async () => {
-    if (createdOrders.length === 0 || printing) return;
-    await printAndClear(createdOrders);
-  };
+  const handlePrint = () =>
+    runLocked(async () => {
+      if (createdOrders.length === 0) return;
+      await printAndClear(createdOrders);
+    });
 
   /** Empty the form for the next patient, leaving any print status in place. */
   const resetForm = () => {
@@ -561,6 +591,7 @@ export default function NewLabOrderPageComponent() {
     setHasPrinted(false);
     setPrintError("");
     setLastPrinted([]);
+    setLastPrintRecordError("");
     resetForm();
   };
 
@@ -583,15 +614,24 @@ export default function NewLabOrderPageComponent() {
   if (showSlip && createdOrders.length > 0) {
     return (
       <div className="space-y-4 p-6 max-w-3xl mx-auto">
-        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <AlertTriangle className="h-6 w-6 text-amber-600 shrink-0" />
-          <div>
-            <p className="font-semibold text-amber-900">Order created — the slip did not print</p>
-            <p className="text-sm text-amber-800">
-              {createdOrders.length} test(s) ordered. Order numbers: {createdOrders.map(o => o.orderNumber).join(", ")}
-            </p>
+        {hasPrinted ? (
+          // Refused because the slip has already printed once — it is counted,
+          // so the "not counted" wording of the notice would be wrong here.
+          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <AlertTriangle className="h-6 w-6 text-amber-600 shrink-0" />
+            <div>
+              <p className="font-semibold text-amber-900">Order created — the slip did not print</p>
+              <p className="text-sm text-amber-800">
+                {createdOrders.length} test(s) ordered. Order numbers: {createdOrders.map(o => o.orderNumber).join(", ")}
+              </p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <SlipPrintNotice
+            printed={false}
+            orderNumbers={createdOrders.map((order) => order.orderNumber)}
+          />
+        )}
 
         {/* Print refusal, or anything else the server said about the print */}
         {printError && (
@@ -607,7 +647,7 @@ export default function NewLabOrderPageComponent() {
             onClick={handlePrint}
             className="flex-1"
             size="lg"
-            disabled={printing || (hasPrinted && !canReprintSlip)}
+            disabled={busy || printing || (hasPrinted && !canReprintSlip)}
             title={
               hasPrinted && !canReprintSlip
                 ? "This slip has been printed. Only a registration staff manager, hospital admin or super admin can print it again."
@@ -668,16 +708,13 @@ export default function NewLabOrderPageComponent() {
 
       {/* The last patient's slips, so the desk can see what just printed
           without anything to dismiss. */}
+      {/* Set only when the print actually started — see printAndClear. */}
       {lastPrinted.length > 0 && (
-        <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 p-3">
-          <Printer className="mt-0.5 h-5 w-5 shrink-0 text-green-600" />
-          <p className="text-sm text-green-800">
-            <span className="font-semibold">
-              {lastPrinted.length} slip{lastPrinted.length > 1 ? "s" : ""} sent to the printer
-            </span>{" "}
-            — {lastPrinted.join(", ")}. Ready for the next patient.
-          </p>
-        </div>
+        <SlipPrintNotice
+          printed
+          orderNumbers={lastPrinted}
+          recordError={lastPrintRecordError || undefined}
+        />
       )}
 
       {formError && (
@@ -959,6 +996,7 @@ export default function NewLabOrderPageComponent() {
                   disabled={
                     selectedTests.length === 0 ||
                     !patientNrNumber ||
+                    busy ||
                     createOrderMutation.isPending ||
                     printing
                   }

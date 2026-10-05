@@ -20,7 +20,7 @@ export function printPatientReceipt(
 
   hospitalName: string,
   registeredBy?: string,
-) {
+): Promise<boolean> {
   const leftValues = [
     patient.fullName,
     formatMRN(patient.nrNumber),
@@ -67,7 +67,7 @@ export function printPatientReceipt(
     </html>
   `;
 
-  printReceiptHtml(receiptHTML);
+  return printReceiptHtml(receiptHTML);
 }
 
 export interface LabReceiptOrder {
@@ -105,8 +105,8 @@ export function printLabReceipt(
     patientId?: string;
     createdBy?: string;
   },
-) {
-  if (orders.length === 0) return;
+): Promise<boolean> {
+  if (orders.length === 0) return Promise.resolve(false);
 
   const slips = orders
     .map((order, i) => {
@@ -194,49 +194,145 @@ export function printLabReceipt(
     </html>
   `;
 
-  printReceiptHtml(receiptHTML);
+  return printReceiptHtml(receiptHTML);
+}
+
+/** Marks the hidden frames printReceiptHtml creates, with their state. */
+const PRINT_FRAME_ATTR = 'data-print-frame';
+/** When the frame entered its current state, so a leftover can be aged. */
+const PRINT_FRAME_SINCE_ATTR = 'data-print-frame-since';
+
+/** Settle time between the slip loading and print(), as before. */
+const PRINT_DELAY_MS = 250;
+/** A slip that has not loaded by now never will; give up and report it. */
+const LOAD_TIMEOUT_MS = 5000;
+/** Grace after afterprint before the frame goes. */
+const AFTERPRINT_GRACE_MS = 500;
+/** Teardown for browsers that never fire afterprint. */
+const SPOOL_FALLBACK_MS = 10000;
+
+type PrintFrameState = 'loading' | 'printing';
+
+function markPrintFrame(frame: HTMLIFrameElement, state: PrintFrameState) {
+  frame.setAttribute(PRINT_FRAME_ATTR, state);
+  frame.setAttribute(PRINT_FRAME_SINCE_ATTR, String(Date.now()));
 }
 
 /**
- * Render the given HTML in a hidden iframe and send it to the printer.
+ * Remove print frames left behind by earlier prints, so they cannot pile up
+ * on a desk that prints all day without reloading the page.
+ *
+ * A frame still inside its own window is kept: kiosk printing spools in the
+ * background after print() returns, and removing the frame mid-spool empties
+ * the slip out from under the job. Everything else is a leftover.
+ */
+function removeLeftoverPrintFrames() {
+  const now = Date.now();
+  document.querySelectorAll<HTMLIFrameElement>(`iframe[${PRINT_FRAME_ATTR}]`).forEach((frame) => {
+    const state = frame.getAttribute(PRINT_FRAME_ATTR);
+    const age = now - Number(frame.getAttribute(PRINT_FRAME_SINCE_ATTR) || 0);
+    const inFlight =
+      (state === 'loading' && age < LOAD_TIMEOUT_MS) ||
+      (state === 'printing' && age < SPOOL_FALLBACK_MS);
+    if (!inFlight) frame.remove();
+  });
+}
+
+/**
+ * Render the given HTML in a hidden iframe and send it to the printer —
+ * exactly once.
  *
  * On an ordinary browser this opens the print dialog. On the reception
  * machines, where Chrome runs with --kiosk-printing, there is no dialog: the
- * slip goes straight to the default printer as one copy. That path is the
- * reason for the teardown below — kiosk printing returns from print() at once
- * and spools in the background, so tearing the iframe down on a short timer
- * can empty the page out from under the job. Wait for afterprint instead, with
- * a generous timeout for the browsers that never fire it.
+ * slip goes straight to the default printer as one copy.
+ *
+ * The slip is loaded through srcdoc with the load listener attached before the
+ * frame is inserted, so the listener cannot miss the load. The previous version
+ * wrote the slip in with document.write and attached onload afterwards; Chrome
+ * fires those load events synchronously, before the handler existed, so
+ * depending on the browser's timing a slip printed twice or not at all, and a
+ * slip that never printed also never cleaned its frame up. A flag now allows
+ * one print() per slip however many load events arrive.
+ *
+ * Teardown waits for afterprint, with a generous fallback for browsers that
+ * never fire it: kiosk printing returns from print() at once and spools in the
+ * background, so an early teardown can empty the page out from under the job.
+ *
+ * Resolves true once print() has been called without throwing, false when the
+ * slip never loaded or print() threw. With kiosk printing, true means the job
+ * was handed to Chrome; it cannot say whether paper came out.
  */
-export function printReceiptHtml(html: string) {
-  const printFrame = document.createElement('iframe');
-  printFrame.style.cssText =
-    'position:fixed;right:0;bottom:0;width:0;height:0;border:none;';
-  document.body.appendChild(printFrame);
+export function printReceiptHtml(html: string): Promise<boolean> {
+  if (typeof document === 'undefined') return Promise.resolve(false);
 
-  const frameDoc = printFrame.contentWindow?.document;
-  if (frameDoc) {
-    frameDoc.open();
-    frameDoc.write(html);
-    frameDoc.close();
+  removeLeftoverPrintFrames();
 
-    printFrame.onload = () => {
+  return new Promise<boolean>((resolve) => {
+    const printFrame = document.createElement('iframe');
+    printFrame.style.cssText =
+      'position:fixed;right:0;bottom:0;width:0;height:0;border:none;';
+    markPrintFrame(printFrame, 'loading');
+
+    let claimed = false; // the one print() this slip is allowed
+    let settled = false;
+    let removed = false;
+
+    const removeFrame = () => {
+      if (removed) return;
+      removed = true;
+      printFrame.remove();
+    };
+
+    const settle = (started: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(loadTimer);
+      resolve(started);
+    };
+
+    const loadTimer = setTimeout(() => {
+      if (claimed) return;
+      settle(false);
+      removeFrame();
+    }, LOAD_TIMEOUT_MS);
+
+    printFrame.addEventListener('load', () => {
+      if (claimed || settled) return;
+
       const frameWindow = printFrame.contentWindow;
       if (!frameWindow) return;
 
-      let removed = false;
-      const removeFrame = () => {
-        if (removed) return;
-        removed = true;
-        printFrame.remove();
-      };
+      // Only the slip itself counts. An empty about:blank load, which some
+      // browsers fire on insertion, is not the slip and is ignored.
+      let hasSlip = false;
+      try {
+        hasSlip = !!frameWindow.document.body?.innerHTML.trim();
+      } catch {
+        hasSlip = false;
+      }
+      if (!hasSlip) return;
 
-      frameWindow.addEventListener('afterprint', () => setTimeout(removeFrame, 500));
+      // Claimed before the delay, so a second load in the meantime is a no-op.
+      claimed = true;
+      markPrintFrame(printFrame, 'printing');
+      frameWindow.addEventListener('afterprint', () =>
+        setTimeout(removeFrame, AFTERPRINT_GRACE_MS),
+      );
 
       setTimeout(() => {
-        frameWindow.print();
-        setTimeout(removeFrame, 10000);
-      }, 250);
-    };
-  }
+        try {
+          frameWindow.print();
+        } catch {
+          settle(false);
+          removeFrame();
+          return;
+        }
+        settle(true);
+        setTimeout(removeFrame, SPOOL_FALLBACK_MS);
+      }, PRINT_DELAY_MS);
+    });
+
+    printFrame.srcdoc = html;
+    document.body.appendChild(printFrame);
+  });
 }

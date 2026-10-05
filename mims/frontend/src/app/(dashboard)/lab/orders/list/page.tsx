@@ -15,7 +15,6 @@ import { useLabOrders, type LabOrder } from "@/hooks/use-lab-orders";
 import { useHospitalStore } from "@/stores/hospital.store";
 import { useAuthStore } from "@/stores/auth.store";
 import { UserRole } from "@/lib/constants";
-import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,7 +30,7 @@ import {
 } from "@/components/ui/table";
 import { Search, Printer } from "lucide-react";
 import { formatMRN, matchesMRN } from "@/lib/mrn";
-import { printLabReceipt } from "@/lib/print-receipt";
+import { printLabSlips } from "@/lib/lab-slip-print";
 
 /** Mirrors SLIP_REPRINT_ROLES on the server. */
 const LIST_ROLES: UserRole[] = [
@@ -109,19 +108,25 @@ export default function LabOrderListPage() {
   }, [orders, searchQuery]);
 
   /**
-   * Claim the print on the server first: it counts the slip and refuses one it
-   * is not willing to reprint, so a refusal never reaches the printer.
+   * The server is asked first and refuses a slip it will not reprint, so a
+   * refusal never reaches the printer. The print is counted only once it has
+   * actually started, so a reprint that did not print can simply be retried.
    */
   const handlePrint = async (order: LabOrder) => {
+    if (printingId) return;
     setPrintingId(order.id);
     setPrintError("");
 
     try {
-      await api.post("/lab-orders/print-slip", { orderIds: [order.id] });
-      printLabReceipt([order], {
+      const result = await printLabSlips([order], {
         patientId: order.patient?.nrNumber,
         createdBy: user?.fullName || user?.email || "Staff",
       });
+      if (result.status === "not-printed") {
+        setPrintError(`${order.orderNumber}: the slip did not print and was not counted — try again.`);
+      } else if (result.recordError) {
+        setPrintError(`${order.orderNumber}: printed, but the print could not be recorded — ${result.recordError}`);
+      }
     } catch (error) {
       setPrintError(`${order.orderNumber}: ${getErrorMessage(error)}`);
     } finally {
