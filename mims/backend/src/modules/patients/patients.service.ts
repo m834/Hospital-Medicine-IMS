@@ -6,8 +6,15 @@ import { UpdatePatientDto } from './dto/update-patient.dto';
 import { SearchPatientsDto } from './dto/search-patients.dto';
 import { VisitsService } from '../visits/visits.service';
 import { AdmissionsService } from '../admissions/admissions.service';
-import { AdmissionType, VisitType } from '@prisma/client';
+import { AdmissionType, Prisma, VisitType } from '@prisma/client';
 import { mrnFilter } from '../../common/utils/mrn.util';
+
+/**
+ * An indoor registration writes the patient, the visit, the admission, the
+ * bed and the room in one transaction — more than Prisma's 5s default allows
+ * on a busy server.
+ */
+const INDOOR_REGISTRATION_TX = { maxWait: 10_000, timeout: 20_000 };
 
 @Injectable()
 export class PatientsService {
@@ -22,6 +29,7 @@ export class PatientsService {
     createPatientDto: CreatePatientDto,
     userId: string,
     hospitalId: string,
+    tx?: Prisma.TransactionClient,
   ) {
     return this.visitsService.create({
       hospitalId,
@@ -36,25 +44,74 @@ export class PatientsService {
       chiefComplaint: createPatientDto.chiefComplaint,
       vitalSigns: createPatientDto.vitalSigns,
       notes: createPatientDto.notes,
-    });
+    }, tx);
   }
 
-  private async createAdmissionForRegistration(
+  /**
+   * An indoor registration admits the patient to a bed, so it needs every
+   * field the admission needs. Checked before anything is saved: a missing
+   * field refuses the registration outright, where it used to save the
+   * patient and visit and quietly skip the admission — leaving the bed shown
+   * as available with a patient in it.
+   */
+  private assertIndoorAdmissionFields(createPatientDto: CreatePatientDto) {
+    const missing = [
+      !createPatientDto.department && 'department',
+      !createPatientDto.attendingDoctorId && 'attending doctor',
+      !createPatientDto.ward && 'room',
+      !createPatientDto.bed && 'bed',
+    ].filter(Boolean);
+
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `Ward/Indoor registration is missing: ${missing.join(', ')}. ` +
+          'Department, attending doctor, room and bed are all needed to admit the patient.',
+      );
+    }
+  }
+
+  /**
+   * The visit and the admission for an indoor registration, inside the
+   * caller's transaction: either both are saved and the bed is occupied, or
+   * nothing is.
+   */
+  private async createIndoorStay(
+    tx: Prisma.TransactionClient,
     patientId: string,
-    visitId: string | undefined,
     createPatientDto: CreatePatientDto,
     userId: string,
     hospitalId: string,
   ) {
-    if (createPatientDto.visitType !== 'WARD_INDOOR') {
-      return null;
+    const visitResult = await this.createVisitForRegistration(
+      patientId,
+      createPatientDto,
+      userId,
+      hospitalId,
+      tx,
+    );
+    const visitId = visitResult?.visit?.id;
+    if (!visitId) {
+      throw new BadRequestException('The indoor visit could not be created');
     }
 
-    // Skip admission creation if minimum required fields are absent
-    if (!createPatientDto.department || !createPatientDto.attendingDoctorId) {
-      return null;
-    }
+    return this.createAdmissionForRegistration(
+      tx,
+      patientId,
+      visitId,
+      createPatientDto,
+      userId,
+      hospitalId,
+    );
+  }
 
+  private async createAdmissionForRegistration(
+    tx: Prisma.TransactionClient,
+    patientId: string,
+    visitId: string,
+    createPatientDto: CreatePatientDto,
+    userId: string,
+    hospitalId: string,
+  ) {
     return this.admissionsService.create({
       hospitalId,
       patientId,
@@ -67,7 +124,7 @@ export class PatientsService {
       admissionType: AdmissionType.PLANNED,
       diagnosisOnAdmission: createPatientDto.chiefComplaint,
       notes: createPatientDto.notes,
-    });
+    }, tx);
   }
 
   /**
@@ -130,6 +187,9 @@ export class PatientsService {
    * Register a new patient
    */
   async create(createPatientDto: CreatePatientDto, userId: string, hospitalId: string) {
+    const isIndoor = createPatientDto.visitType === VisitType.WARD_INDOOR;
+    if (isIndoor) this.assertIndoorAdmissionFields(createPatientDto);
+
     // Verify attending doctor if provided
     if (createPatientDto.attendingDoctorId) {
       const doctor = await this.prisma.user.findFirst({
@@ -198,14 +258,16 @@ export class PatientsService {
     }
 
     if (existingPatient) {
-      // Create visit for all types
-      const visitResult = await this.createVisitForRegistration(existingPatient.id, createPatientDto, userId, hospitalId);
-      const visitId = visitResult?.visit?.id;
-
-      // Create admission for WARD_INDOOR
-      if (createPatientDto.visitType === VisitType.WARD_INDOOR && visitId) {
-        await this.createAdmissionForRegistration(existingPatient.id, visitId, createPatientDto, userId, hospitalId);
+      if (isIndoor) {
+        await this.prisma.$transaction(
+          (tx) => this.createIndoorStay(tx, existingPatient.id, createPatientDto, userId, hospitalId),
+          INDOOR_REGISTRATION_TX,
+        );
+        return existingPatient;
       }
+
+      // Create visit for all other types
+      await this.createVisitForRegistration(existingPatient.id, createPatientDto, userId, hospitalId);
 
       return existingPatient;
     }
@@ -213,55 +275,47 @@ export class PatientsService {
     // Generate MRN
     const nrNumber = await this.generateNRNumber(hospitalId);
 
+    const patientData: Prisma.PatientUncheckedCreateInput = {
+      hospitalId,
+      nrNumber,
+      fullName: createPatientDto.fullName,
+      mobile: createPatientDto.mobile ?? null,
+      // Blank is stored as null, not '', so it never collides with another
+      // ID-less patient when the family key is looked up.
+      cnic: createPatientDto.cnic?.trim() || null,
+      idType: createPatientDto.idType ?? 'CNIC',
+      dob: createPatientDto.dob ? new Date(createPatientDto.dob) : null,
+      age: createPatientDto.age ?? null,
+      guardianType: createPatientDto.guardianType ?? null,
+      gender: createPatientDto.gender ?? 'MALE',
+      address: createPatientDto.address,
+      visitType: createPatientDto.visitType ?? 'OPD',
+      department: createPatientDto.department,
+      ward: createPatientDto.ward,
+      bed: createPatientDto.bed,
+      attendingDoctorId: createPatientDto.attendingDoctorId || null,
+      registeredBy: userId,
+    };
+
+    // Indoor: the patient, visit and admission are saved together, so a
+    // refused admission (bed taken, patient already admitted) leaves no
+    // half-registered patient behind.
+    if (isIndoor) {
+      return this.prisma.$transaction(async (tx) => {
+        const patient = await tx.patient.create({ data: patientData, include: patientInclude });
+        await this.createIndoorStay(tx, patient.id, createPatientDto, userId, hospitalId);
+        return patient;
+      }, INDOOR_REGISTRATION_TX);
+    }
+
     // Create patient
     const patient = await this.prisma.patient.create({
-      data: {
-        hospitalId,
-        nrNumber,
-        fullName: createPatientDto.fullName,
-        mobile: createPatientDto.mobile ?? null,
-        // Blank is stored as null, not '', so it never collides with another
-        // ID-less patient when the family key is looked up.
-        cnic: createPatientDto.cnic?.trim() || null,
-        idType: createPatientDto.idType ?? 'CNIC',
-        dob: createPatientDto.dob ? new Date(createPatientDto.dob) : null,
-        age: createPatientDto.age ?? null,
-        guardianType: createPatientDto.guardianType ?? null,
-        gender: createPatientDto.gender ?? 'MALE',
-        address: createPatientDto.address,
-        visitType: createPatientDto.visitType ?? 'OPD',
-        department: createPatientDto.department,
-        ward: createPatientDto.ward,
-        bed: createPatientDto.bed,
-        attendingDoctorId: createPatientDto.attendingDoctorId || null,
-        registeredBy: userId,
-      },
-      include: {
-        attendingDoctor: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
-        },
-        registeredByUser: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
-        },
-      },
+      data: patientData,
+      include: patientInclude,
     });
 
-    // Create visit for all types
-    const visitResult = await this.createVisitForRegistration(patient.id, createPatientDto, userId, hospitalId);
-    const visitId = visitResult?.visit?.id;
-    
-    // Create admission for WARD_INDOOR
-    if (createPatientDto.visitType === VisitType.WARD_INDOOR && visitId) {
-      await this.createAdmissionForRegistration(patient.id, visitId, createPatientDto, userId, hospitalId);
-    }
+    // Create visit for all other types
+    await this.createVisitForRegistration(patient.id, createPatientDto, userId, hospitalId);
 
     return patient;
   }

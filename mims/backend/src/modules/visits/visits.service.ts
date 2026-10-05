@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '@/database/prisma.service';
 import { CreateVisitDto, UpdateVisitDto, VisitQueryDto } from './dto';
-import { VisitStatus, PaymentStatus, TokenStatus, ReceiptType, PaymentMethod, VisitType } from '@prisma/client';
+import { VisitStatus, PaymentStatus, TokenStatus, ReceiptType, PaymentMethod, VisitType, Prisma } from '@prisma/client';
 
 // Flat fee (PKR) charged when an emergency patient is registered.
 const EMERGENCY_REGISTRATION_FEE = 20;
@@ -17,7 +17,10 @@ export class VisitsService {
   /**
    * Generate Visit Number in format: PV-YYYYMMDD-XXXX
    */
-  private async generateVisitNumber(hospitalId: string): Promise<string> {
+  private async generateVisitNumber(
+    hospitalId: string,
+    db: Prisma.TransactionClient = this.prisma,
+  ): Promise<string> {
     const today = new Date();
     const year = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, '0');
@@ -27,7 +30,7 @@ export class VisitsService {
     const startOfDay = new Date(today.setHours(0, 0, 0, 0));
     const endOfDay = new Date(today.setHours(23, 59, 59, 999));
 
-    const todayCount = await this.prisma.visit.count({
+    const todayCount = await db.visit.count({
       where: {
         hospitalId,
         visitDate: {
@@ -43,12 +46,18 @@ export class VisitsService {
 
   /**
    * Create a new visit with token generation
+   *
+   * tx: run inside the caller's transaction. Used by indoor registration so
+   * the patient, the visit and the admission are saved together or not at
+   * all. Only a visit with no OPD clinic and no emergency fee can be created
+   * this way — those branches write tokens and receipts outside it.
    */
-  async create(createVisitDto: CreateVisitDto) {
-    const visitNumber = await this.generateVisitNumber(createVisitDto.hospitalId);
+  async create(createVisitDto: CreateVisitDto, tx?: Prisma.TransactionClient) {
+    const db = tx ?? this.prisma;
+    const visitNumber = await this.generateVisitNumber(createVisitDto.hospitalId, db);
 
     // Validate patient exists
-    const patient = await this.prisma.patient.findUnique({
+    const patient = await db.patient.findUnique({
       where: { id: createVisitDto.patientId },
     });
     if (!patient) {
@@ -60,7 +69,7 @@ export class VisitsService {
     }
 
     if (createVisitDto.departmentId) {
-      const department = await this.prisma.department.findFirst({
+      const department = await db.department.findFirst({
         where: {
           id: createVisitDto.departmentId,
           hospitalId: createVisitDto.hospitalId,
@@ -73,7 +82,7 @@ export class VisitsService {
     }
 
     if (createVisitDto.bedId) {
-      const bed = await this.prisma.bed.findFirst({
+      const bed = await db.bed.findFirst({
         where: {
           id: createVisitDto.bedId,
           hospitalId: createVisitDto.hospitalId,
@@ -86,7 +95,7 @@ export class VisitsService {
     }
 
     if (createVisitDto.attendingDoctorId) {
-      const doctor = await this.prisma.user.findFirst({
+      const doctor = await db.user.findFirst({
         where: {
           id: createVisitDto.attendingDoctorId,
           hospitalId: createVisitDto.hospitalId,
@@ -110,7 +119,12 @@ export class VisitsService {
       const isEmergency = createVisitDto.visitType === VisitType.EMERGENCY;
       const consultationFee = isEmergency ? EMERGENCY_REGISTRATION_FEE : 0;
 
-      const prisma = this.prisma as any;
+      // The emergency receipt is written outside any transaction.
+      if (tx && isEmergency) {
+        throw new Error('Emergency visits cannot be created inside a transaction');
+      }
+
+      const prisma = db as any;
       const visit = await prisma.visit.create({
         data: {
           hospitalId: createVisitDto.hospitalId,
@@ -151,6 +165,11 @@ export class VisitsService {
       }
 
       return { visit };
+    }
+
+    // The clinic path writes tokens and receipts outside any transaction.
+    if (tx) {
+      throw new Error('OPD clinic visits cannot be created inside a transaction');
     }
 
     // At this point an OPD clinic was provided — validate it exists and is active

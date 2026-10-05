@@ -9,13 +9,16 @@ import { CreateAdmissionDto } from './dto/create-admission.dto';
 import { UpdateAdmissionDto } from './dto/update-admission.dto';
 import { DischargeAdmissionDto } from './dto/discharge-admission.dto';
 import { AdmissionQueryDto } from './dto/admission-query.dto';
-import { AdmissionStatus, BedStatus, Prisma, ReceiptType, PaymentStatus, PaymentMethod } from '@prisma/client';
+import { AdmissionStatus, BedStatus, RoomStatus, Prisma, ReceiptType, PaymentStatus, PaymentMethod } from '@prisma/client';
 
 @Injectable()
 export class AdmissionsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async generateAdmissionNumber(hospitalId: string): Promise<string> {
+  private async generateAdmissionNumber(
+    hospitalId: string,
+    db: Prisma.TransactionClient = this.prisma,
+  ): Promise<string> {
     const today = new Date();
     const year = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, '0');
@@ -26,7 +29,7 @@ export class AdmissionsService {
       const sequence = Math.floor(1000 + Math.random() * 9000);
       const admissionNumber = `${prefix}-${sequence}`;
 
-      const existing = await this.prisma.admission.findUnique({
+      const existing = await db.admission.findUnique({
         where: { admissionNumber },
         select: { id: true },
       });
@@ -39,7 +42,34 @@ export class AdmissionsService {
     throw new ConflictException('Unable to generate unique admission number');
   }
 
-  async create(createAdmissionDto: CreateAdmissionDto) {
+  /**
+   * Admit a patient and occupy their bed.
+   *
+   * tx: run inside the caller's transaction — indoor registration saves the
+   * patient, the visit and the admission together. Without it the admission
+   * gets a transaction of its own, retried on an admission-number collision.
+   */
+  async create(createAdmissionDto: CreateAdmissionDto, tx?: Prisma.TransactionClient) {
+    if (tx) return this.createWithin(tx, createAdmissionDto);
+
+    const maxAttempts = 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        return await this.prisma.$transaction((t) => this.createWithin(t, createAdmissionDto));
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002' &&
+          attempt < maxAttempts - 1
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+
+  private async createWithin(tx: Prisma.TransactionClient, createAdmissionDto: CreateAdmissionDto) {
     const {
       hospitalId,
       patientId,
@@ -55,11 +85,11 @@ export class AdmissionsService {
     // Validate entities exist
     const [hospital, patient, department, attendingDoctor, admittingUser] =
       await Promise.all([
-        this.prisma.hospital.findUnique({ where: { id: hospitalId } }),
-        this.prisma.patient.findUnique({ where: { id: patientId } }),
-        this.prisma.department.findUnique({ where: { id: departmentId } }),
-        this.prisma.user.findUnique({ where: { id: attendingDoctorId } }),
-        this.prisma.user.findUnique({ where: { id: admittingUserId } }),
+        tx.hospital.findUnique({ where: { id: hospitalId } }),
+        tx.patient.findUnique({ where: { id: patientId } }),
+        tx.department.findUnique({ where: { id: departmentId } }),
+        tx.user.findUnique({ where: { id: attendingDoctorId } }),
+        tx.user.findUnique({ where: { id: admittingUserId } }),
       ]);
 
     if (!hospital) throw new NotFoundException('Hospital not found');
@@ -69,7 +99,7 @@ export class AdmissionsService {
     if (!admittingUser) throw new NotFoundException('Admitting user not found');
 
     // Check if patient already has an active admission
-    const activeAdmission = await this.prisma.admission.findFirst({
+    const activeAdmission = await tx.admission.findFirst({
       where: {
         patientId,
         status: AdmissionStatus.ADMITTED,
@@ -82,122 +112,149 @@ export class AdmissionsService {
       );
     }
 
-    let room = null;
-    let bed = null;
     let roomCharges = new Prisma.Decimal(0);
     let bedCharges = new Prisma.Decimal(0);
 
-    // Validate and assign room if provided
+    // A room is judged by its beds, not by a room-wide flag: a ward with a
+    // free bed takes the next patient. Only a room taken out of service is
+    // refused outright.
     if (roomId) {
-      room = await this.prisma.room.findUnique({ where: { id: roomId } });
-      if (!room) throw new NotFoundException('Room not found');
-      if (room.status !== 'AVAILABLE') {
-        throw new BadRequestException('Selected room is not available');
+      const room = await tx.room.findUnique({ where: { id: roomId } });
+      if (!room || room.hospitalId !== hospitalId) throw new NotFoundException('Room not found');
+      if (room.status === RoomStatus.MAINTENANCE || room.status === RoomStatus.RESERVED) {
+        throw new BadRequestException(`Selected room is ${room.status.toLowerCase()}`);
       }
       roomCharges = room.dailyRate;
     }
 
-    // Validate and assign bed if provided
     if (bedId) {
-      bed = await this.prisma.bed.findUnique({ where: { id: bedId } });
-      if (!bed) throw new NotFoundException('Bed not found');
+      const bed = await tx.bed.findUnique({ where: { id: bedId } });
+      if (!bed || bed.hospitalId !== hospitalId) throw new NotFoundException('Bed not found');
+      if (roomId && bed.roomId !== roomId) {
+        throw new BadRequestException('Selected bed is not in the selected room');
+      }
       if (bed.status !== BedStatus.AVAILABLE) {
         throw new BadRequestException('Selected bed is not available');
       }
       bedCharges = bed.dailyRate;
     }
 
-    const maxAttempts = 3;
-    let admission: any;
+    const admissionNumber = await this.generateAdmissionNumber(hospitalId, tx);
 
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const admissionNumber = await this.generateAdmissionNumber(hospitalId);
+    const newAdmission = await tx.admission.create({
+      data: {
+        hospitalId,
+        patientId,
+        visitId,
+        departmentId,
+        roomId,
+        bedId,
+        attendingDoctorId,
+        admittingUserId,
+        admissionNumber,
+        ...rest,
+      },
+      include: {
+        patient: {
+          select: {
+            id: true,
+            nrNumber: true,
+            fullName: true,
+            gender: true,
+            mobile: true,
+          },
+        },
+        department: {
+          select: { id: true, name: true, code: true },
+        },
+        room: {
+          select: { id: true, roomNumber: true, roomType: true, dailyRate: true },
+        },
+        bed: {
+          select: { id: true, bedNumber: true, bedType: true, dailyRate: true },
+        },
+        attendingDoctor: {
+          select: { id: true, fullName: true },
+        },
+        admittingUser: {
+          select: { id: true, fullName: true },
+        },
+      },
+    });
 
-      try {
-        admission = await this.prisma.$transaction(async (tx) => {
-          const newAdmission = await tx.admission.create({
-            data: {
-              hospitalId,
-              patientId,
-              visitId,
-              departmentId,
-              roomId,
-              bedId,
-              attendingDoctorId,
-              admittingUserId,
-              admissionNumber,
-              ...rest,
-            },
-            include: {
-              patient: {
-                select: {
-                  id: true,
-                  nrNumber: true,
-                  fullName: true,
-                  gender: true,
-                  mobile: true,
-                },
-              },
-              department: {
-                select: { id: true, name: true, code: true },
-              },
-              room: {
-                select: { id: true, roomNumber: true, roomType: true, dailyRate: true },
-              },
-              bed: {
-                select: { id: true, bedNumber: true, bedType: true, dailyRate: true },
-              },
-              attendingDoctor: {
-                select: { id: true, fullName: true },
-              },
-              admittingUser: {
-                select: { id: true, fullName: true },
-              },
-            },
-          });
+    if (bedId) await this.occupyBed(tx, bedId);
+    if (roomId) await this.syncRoomStatus(tx, roomId);
 
-          if (bedId) {
-            await tx.bed.update({
-              where: { id: bedId },
-              data: { status: BedStatus.OCCUPIED },
-            });
-          }
+    await tx.dailyCharge.create({
+      data: {
+        hospitalId,
+        admissionId: newAdmission.id,
+        chargeDate: new Date(),
+        roomCharges,
+        bedCharges,
+        totalCharges: new Prisma.Decimal(roomCharges).plus(bedCharges),
+      },
+    });
 
-          if (roomId) {
-            await tx.room.update({
-              where: { id: roomId },
-              data: { status: 'OCCUPIED' },
-            });
-          }
+    return newAdmission;
+  }
 
-          await tx.dailyCharge.create({
-            data: {
-              hospitalId,
-              admissionId: newAdmission.id,
-              chargeDate: new Date(),
-              roomCharges,
-              bedCharges,
-              totalCharges: new Prisma.Decimal(roomCharges).plus(bedCharges),
-            },
-          });
+  /**
+   * Take a bed, only if it is still free. Checked and written in one
+   * statement, so two desks admitting into the same bed at the same moment
+   * cannot both have it — the second is refused and its transaction undone.
+   */
+  private async occupyBed(tx: Prisma.TransactionClient, bedId: string) {
+    const taken = await tx.bed.updateMany({
+      where: { id: bedId, status: BedStatus.AVAILABLE },
+      data: { status: BedStatus.OCCUPIED },
+    });
 
-          return newAdmission;
-        });
-
-        break;
-      } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === 'P2002' &&
-          attempt < maxAttempts - 1
-        ) {
-          continue;
-        }
-        throw error;
-      }
+    if (taken.count !== 1) {
+      throw new ConflictException(
+        'Selected bed was just taken by another admission. Please choose another bed.',
+      );
     }
+  }
 
-    return admission;
+  /** Give a bed back once its patient has left it. */
+  private async releaseBed(tx: Prisma.TransactionClient, bedId: string) {
+    await tx.bed.updateMany({
+      where: { id: bedId, status: BedStatus.OCCUPIED },
+      data: { status: BedStatus.AVAILABLE },
+    });
+  }
+
+  /**
+   * Set a room's status from its beds: occupied when every bed is taken,
+   * available while any bed is free. A room with no beds of its own follows
+   * its active admissions. A room an admin took out of service (maintenance,
+   * reserved) is left as it is.
+   */
+  private async syncRoomStatus(tx: Prisma.TransactionClient, roomId: string) {
+    const room = await tx.room.findUnique({
+      where: { id: roomId },
+      select: { status: true },
+    });
+    if (!room) return;
+    if (room.status !== RoomStatus.AVAILABLE && room.status !== RoomStatus.OCCUPIED) return;
+
+    const [totalBeds, freeBeds] = await Promise.all([
+      tx.bed.count({ where: { roomId } }),
+      tx.bed.count({ where: { roomId, status: BedStatus.AVAILABLE } }),
+    ]);
+
+    const full =
+      totalBeds > 0
+        ? freeBeds === 0
+        : (await tx.admission.count({
+            where: { roomId, status: AdmissionStatus.ADMITTED },
+          })) > 0;
+
+    const status = full ? RoomStatus.OCCUPIED : RoomStatus.AVAILABLE;
+    if (status !== room.status) {
+      await tx.room.update({ where: { id: roomId }, data: { status } });
+    }
   }
 
   async findAll(query: AdmissionQueryDto) {
@@ -345,32 +402,34 @@ export class AdmissionsService {
 
     const { bedId, roomId, ...rest } = updateAdmissionDto;
 
+    const targetRoomId = roomId ?? admission.roomId;
+    const roomsToSync = new Set<string>(
+      [admission.roomId, targetRoomId].filter((id): id is string => !!id),
+    );
+
     return this.prisma.$transaction(async (tx) => {
       // Handle bed change
       if (bedId && bedId !== admission.bedId) {
-        // Release old bed
-        if (admission.bedId) {
-          await tx.bed.update({
-            where: { id: admission.bedId },
-            data: { status: BedStatus.AVAILABLE },
-          });
-        }
-
-        // Occupy new bed
         const newBed = await tx.bed.findUnique({ where: { id: bedId } });
-        if (!newBed) throw new NotFoundException('New bed not found');
+        if (!newBed || newBed.hospitalId !== admission.hospitalId) {
+          throw new NotFoundException('New bed not found');
+        }
+        if (targetRoomId && newBed.roomId !== targetRoomId) {
+          throw new BadRequestException('New bed is not in the selected room');
+        }
         if (newBed.status !== BedStatus.AVAILABLE) {
           throw new BadRequestException('New bed is not available');
         }
+        if (newBed.roomId) roomsToSync.add(newBed.roomId);
 
-        await tx.bed.update({
-          where: { id: bedId },
-          data: { status: BedStatus.OCCUPIED },
-        });
+        // Take the new bed before freeing the old one, so a refusal leaves
+        // the patient where they were.
+        await this.occupyBed(tx, bedId);
+        if (admission.bedId) await this.releaseBed(tx, admission.bedId);
       }
 
       // Update admission
-      return tx.admission.update({
+      const updated = await tx.admission.update({
         where: { id },
         data: {
           bedId,
@@ -387,6 +446,11 @@ export class AdmissionsService {
           },
         },
       });
+
+      // Every room the patient left or entered follows its beds.
+      for (const id of roomsToSync) await this.syncRoomStatus(tx, id);
+
+      return updated;
     });
   }
 
@@ -468,21 +532,9 @@ export class AdmissionsService {
         },
       });
 
-      // Release bed
-      if (admission.bedId) {
-        await tx.bed.update({
-          where: { id: admission.bedId },
-          data: { status: BedStatus.AVAILABLE },
-        });
-      }
-
-      // Update room status
-      if (admission.roomId) {
-        await tx.room.update({
-          where: { id: admission.roomId },
-          data: { status: 'AVAILABLE' },
-        });
-      }
+      // Release the bed; the room is free again only once its last bed is.
+      if (admission.bedId) await this.releaseBed(tx, admission.bedId);
+      if (admission.roomId) await this.syncRoomStatus(tx, admission.roomId);
 
       const receiptNumber = await this.generateReceiptNumber(tx);
 

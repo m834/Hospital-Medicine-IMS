@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -38,59 +37,8 @@ import { useHospitalStore } from '@/stores/hospital.store';
 import api from '@/lib/api';
 import { printPatientReceipt } from '@/lib/print-receipt';
 import { formatMRN } from '@/lib/mrn';
+import { patientSchema, type PatientFormData } from '@/lib/patient-registration-schema';
 
-const patientSchema = z.object({
-  // Full Name is the only mandatory field. The ID is optional, but when given it
-  // acts as the identity key: a matching ID records a new visit against the
-  // existing MRN instead of creating a second one.
-  fullName: z.string().min(2, 'Full name is required'),
-  // CNIC = Pakistani national ID (fixed format); OTHER = passport / foreign ID,
-  // which has no single format and is accepted as entered.
-  idType: z.enum(['CNIC', 'OTHER']),
-  cnic: z.string().optional(),
-  age: z
-    .string()
-    .optional()
-    .refine((v) => !v || (/^\d{1,3}$/.test(v) && Number(v) <= 150), {
-      message: 'Enter a valid age',
-    }),
-  mobile: z.string().optional(),
-  gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
-  isGuardian: z.boolean().optional(),
-  guardianType: z.enum(['WIFE', 'CHILD']).optional(),
-  visitType: z.enum(['OPD', 'EMERGENCY', 'WARD_INDOOR']).optional(),
-  department: z.string().optional(),
-  clinicId: z.string().optional(),
-  roomType: z.string().optional(),
-  roomId: z.string().optional(),
-  bedId: z.string().optional(),
-  ward: z.string().optional(),
-  bed: z.string().optional(),
-  attendingDoctorId: z.string().optional(),
-}).superRefine((data, ctx) => {
-  // Format is only meaningful for a CNIC. Passports and foreign IDs vary by
-  // country, so they are checked for a sane minimum length and nothing more.
-  const value = (data.cnic ?? '').trim();
-  if (!value) return; // the ID is optional — nothing to check when left blank
-
-  if (data.idType === 'CNIC') {
-    if (!/^\d{5}-\d{7}-\d$/.test(value)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['cnic'],
-        message: 'Enter a valid CNIC (XXXXX-XXXXXXX-X)',
-      });
-    }
-  } else if (value.length < 4) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['cnic'],
-      message: 'Enter a valid ID number (at least 4 characters)',
-    });
-  }
-});
-
-type PatientFormData = z.infer<typeof patientSchema>;
 
 const formatCnic = (value: string) => {
   const digits = value.replace(/\D/g, '').slice(0, 13);
@@ -218,6 +166,7 @@ export default function RegisterPatientPage() {
   });
 
   const visitType = form.watch('visitType');
+  const isIndoor = visitType === 'WARD_INDOOR';
   const guardianType = form.watch('guardianType');
   const selectedDepartmentId = form.watch('department');
   const selectedRoomType = form.watch('roomType');
@@ -457,7 +406,8 @@ export default function RegisterPatientPage() {
         <CardHeader>
           <CardTitle>Patient Information</CardTitle>
           <CardDescription>
-            Full Name is the only required field — everything else is optional. Switch
+            Full Name is the only required field — everything else is optional, except that a
+            Ward/Indoor (IPD) patient needs a department, doctor, room and bed to be admitted. Switch
             the ID toggle to <span className="font-medium">Other</span> for a passport or foreign
             national ID. When an ID is entered, a matching ID records a new visit against the
             existing MRN. To register a wife or child under the same ID holder, turn on{' '}
@@ -684,7 +634,7 @@ export default function RegisterPatientPage() {
                     name="department"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Department</FormLabel>
+                        <FormLabel>Department{isIndoor ? ' *' : ''}</FormLabel>
                         <Select 
                           onValueChange={(value) => {
                             field.onChange(value);
@@ -778,7 +728,7 @@ export default function RegisterPatientPage() {
                       name="attendingDoctorId"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Doctor</FormLabel>
+                          <FormLabel>Doctor{isIndoor ? ' *' : ''}</FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
@@ -868,7 +818,7 @@ export default function RegisterPatientPage() {
                           name="roomId"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Room</FormLabel>
+                              <FormLabel>Room{isIndoor ? ' *' : ''}</FormLabel>
                               <Select 
                                 onValueChange={(value) => {
                                   field.onChange(value);
@@ -912,7 +862,7 @@ export default function RegisterPatientPage() {
                           name="bedId"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Bed</FormLabel>
+                              <FormLabel>Bed{isIndoor ? ' *' : ''}</FormLabel>
                               <Select 
                                 onValueChange={(value) => {
                                   field.onChange(value);
