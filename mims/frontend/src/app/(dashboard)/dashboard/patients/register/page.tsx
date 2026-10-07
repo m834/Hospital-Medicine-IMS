@@ -131,6 +131,8 @@ export default function RegisterPatientPage() {
   const [selectedBedRate, setSelectedBedRate] = useState<string>('');
   // MRN of the patient just saved, shown above the (now empty) form
   const [lastRegisteredMrn, setLastRegisteredMrn] = useState<string>('');
+  // Whether that registration also sent a slip — Save alone does not.
+  const [lastRegisteredPrinted, setLastRegisteredPrinted] = useState(false);
 
   const router = useRouter();
   const { user } = useAuthStore();
@@ -360,6 +362,7 @@ export default function RegisterPatientPage() {
       }
 
       setLastRegisteredMrn(formatMRN(patient.nrNumber));
+      setLastRegisteredPrinted(print);
       form.reset();
       setSelectedFee('');
       setSelectedBedRate('');
@@ -394,10 +397,17 @@ export default function RegisterPatientPage() {
       {lastRegisteredMrn && (
         <div className="mb-6 flex items-center gap-2 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
           <CheckCircle className="h-4 w-4 shrink-0" />
-          <span>
-            Registered <span className="font-semibold">{lastRegisteredMrn}</span> and sent the slip
-            to the printer. Ready for the next patient.
-          </span>
+          {lastRegisteredPrinted ? (
+            <span>
+              Registered <span className="font-semibold">{lastRegisteredMrn}</span> and sent the slip
+              to the printer. Ready for the next patient.
+            </span>
+          ) : (
+            <span>
+              Registration saved — MR number{' '}
+              <span className="font-semibold">{lastRegisteredMrn}</span>. Ready for the next patient.
+            </span>
+          )}
         </div>
       )}
 
