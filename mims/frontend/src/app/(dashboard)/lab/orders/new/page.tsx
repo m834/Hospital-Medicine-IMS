@@ -33,6 +33,7 @@ import { Search, Plus, Trash2, FileText, Printer, AlertTriangle, UserCheck, Load
 import api, { getErrorMessage } from "@/lib/api";
 import { printLabSlips, createSingleFlight } from "@/lib/lab-slip-print";
 import { SlipPrintNotice } from "@/components/lab/slip-print-notice";
+import { QuickOpdRegistration } from "@/components/lab/quick-opd-registration";
 import { UserRole } from "@/lib/constants";
 import { DateInput } from "@/components/ui/date-input";
 import { formatKarachiDate, karachiToday } from "@/lib/karachi-date";
@@ -201,6 +202,8 @@ export default function NewLabOrderPageComponent() {
   const [patientSearchError, setPatientSearchError] = useState("");
   const [foundPatient, setFoundPatient] = useState<Patient | null>(null);
   const [searchType, setSearchType] = useState<"mrn" | "cnic">("mrn");
+  // MR number of a patient just registered from this page by name.
+  const [registeredMrn, setRegisteredMrn] = useState("");
 
   // CNIC formatter: turns raw digits into 12345-1234567-1 format
   const formatCnic = (raw: string) => {
@@ -296,6 +299,15 @@ export default function NewLabOrderPageComponent() {
     setPatientNrNumber("");
     setPatientSearchQuery("");
     setPatientSearchError("");
+    setRegisteredMrn("");
+  };
+
+  /** A walk-in registered by name goes straight into this order. */
+  const handlePatientRegistered = (patient: Patient) => {
+    setFoundPatient(patient);
+    setPatientNrNumber(patient.nrNumber);
+    setPatientSearchError("");
+    setRegisteredMrn(formatMRN(patient.nrNumber));
   };
 
   // Same rule as the patient lookup above: the logged-in user's hospital wins,
@@ -583,6 +595,7 @@ export default function NewLabOrderPageComponent() {
     setPatientSearchError("");
     setSearchType("mrn");
     setFormError("");
+    setRegisteredMrn("");
   };
 
   const handleNewOrder = () => {
@@ -793,6 +806,24 @@ export default function NewLabOrderPageComponent() {
               {patientSearchError && (
                 <p className="text-sm text-red-600 flex items-center gap-1">
                   <X className="h-3 w-3" /> {patientSearchError}
+                </p>
+              )}
+
+              {/* Walk-in with no MRN yet: register by name without leaving the lab */}
+              {!foundPatient && (
+                <QuickOpdRegistration
+                  user={user}
+                  selectedHospitalId={selectedHospital?.id}
+                  onRegistered={handlePatientRegistered}
+                />
+              )}
+
+              {registeredMrn && foundPatient && (
+                <p role="status" className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+                  <UserCheck className="h-4 w-4 shrink-0" />
+                  <span>
+                    Patient registered — MR number <span className="font-semibold">{registeredMrn}</span>.
+                  </span>
                 </p>
               )}
 
