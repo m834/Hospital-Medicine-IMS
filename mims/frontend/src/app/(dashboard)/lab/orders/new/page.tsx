@@ -398,6 +398,21 @@ export default function NewLabOrderPageComponent() {
     if (lastPrinted.length > 0) patientSearchRef.current?.focus();
   }, [lastPrinted]);
 
+  // Opening Lab Services puts the cursor in the patient search, so the desk
+  // can type an MRN straight away — and again when the form comes back after
+  // the slip screen. One frame late: the tab and the page are still settling,
+  // and focusing immediately can be taken back.
+  const formVisible = !!(selectedHospital || user?.hospitalId) && !(showSlip && createdOrders.length > 0);
+  useEffect(() => {
+    if (!formVisible) return;
+    const frame = requestAnimationFrame(() => {
+      if (!foundPatient) patientSearchRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+    // Only when the form appears; later focus is handed on step by step.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formVisible]);
+
   /**
    * Arrow keys across the category cards. Up and Down move a whole row, so the
    * column count is read from the grid itself — it changes with screen width.
@@ -1085,6 +1100,16 @@ export default function NewLabOrderPageComponent() {
       >
         <DialogContent
           className="max-w-2xl max-h-[80vh] overflow-y-auto"
+          onEscapeKeyDown={(e) => {
+            // Esc in a category's test list goes back to the categories, onto
+            // the card just left. On the categories themselves it closes the
+            // picker as before.
+            if (selectedCategory !== "all") {
+              e.preventDefault();
+              setPatientSearch("");
+              setSelectedCategory("all");
+            }
+          }}
           onCloseAutoFocus={(e) => {
             // Leaving the picker with tests chosen goes straight to "Create
             // Order & Print Slip", so one more Enter prints. Otherwise the
@@ -1147,6 +1172,7 @@ export default function NewLabOrderPageComponent() {
                 <Button variant="ghost" size="sm" onClick={() => setSelectedCategory("all")}>
                   <ArrowLeft className="mr-1 h-4 w-4" />
                   Back to categories
+                  <kbd className="ml-2 rounded border px-1 text-[10px] font-normal text-muted-foreground">Esc</kbd>
                 </Button>
               </div>
 
