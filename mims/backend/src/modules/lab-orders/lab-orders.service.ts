@@ -46,6 +46,12 @@ const BACKDATE_ROLES = new Set<string>([
   'REGISTRATION_STAFF_MANAGER',
 ]);
 
+/**
+ * Roles allowed to delete a lab order outright. Deleting takes the order and
+ * its receipt out of every report, so it is the super admin's call alone.
+ */
+const LAB_ORDER_DELETE_ROLES = new Set<string>(['SUPER_ADMIN']);
+
 /** Bucket for lab tests whose category was left blank in the catalogue. */
 const UNCATEGORISED_LAB_TEST = 'Uncategorised';
 
@@ -610,6 +616,84 @@ export class LabOrdersService {
         labTest: { select: { testName: true } },
       },
     });
+  }
+
+  /**
+   * Delete a lab order outright, with the receipt that was raised for it.
+   * Super admin only: a deleted order takes its money out of the revenue
+   * report, and its slip number is gone for good.
+   *
+   * The receipt goes with it — otherwise the receipt would keep counting as
+   * money charged for a test that no longer exists. The two are removed in
+   * one transaction with an audit entry that holds a full copy of both, so
+   * the deletion can always be traced and, if need be, put back by hand.
+   */
+  async deleteOrder(id: string, user: { id: string; role: string; hospitalId?: string | null }) {
+    if (!user || !LAB_ORDER_DELETE_ROLES.has(user.role)) {
+      throw new ForbiddenException('Only a super admin can delete a lab test');
+    }
+
+    const order = await this.prisma.labOrder.findUnique({
+      where: { id },
+      include: {
+        labTest: { select: { testCode: true, testName: true, testCategory: true, price: true } },
+        patient: { select: { id: true, nrNumber: true, fullName: true } },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Lab order with ID ${id} not found`);
+    }
+
+    // A super admin tied to one hospital deletes only that hospital's work.
+    if (user.hospitalId && order.hospitalId !== user.hospitalId) {
+      throw new ForbiddenException('This lab order belongs to another hospital');
+    }
+
+    // The receipt names its lab order only inside notes. Narrow by text, then
+    // confirm by parsing, so a receipt that merely mentions the id is spared.
+    const candidates = await this.prisma.receipt.findMany({
+      where: {
+        hospitalId: order.hospitalId,
+        receiptType: ReceiptType.LAB_TEST,
+        notes: { contains: order.id },
+      },
+    });
+    const receipts = candidates.filter((receipt) => this.readLabOrderId(receipt.notes) === order.id);
+
+    const receiptNumbers = receipts.map((receipt) => receipt.receiptNumber);
+    const amount = Number(order.labTest?.price || 0);
+
+    await this.prisma.$transaction([
+      ...receipts.map((receipt) => this.prisma.receipt.delete({ where: { id: receipt.id } })),
+      this.prisma.labOrder.delete({ where: { id: order.id } }),
+      this.prisma.auditLog.create({
+        data: {
+          hospitalId: order.hospitalId,
+          userId: user.id,
+          action: 'DELETE',
+          module: 'Lab Orders',
+          entityType: 'LabOrder',
+          entityId: order.id,
+          description:
+            `Deleted lab order ${order.orderNumber} (${order.labTest?.testName}) for ` +
+            `${order.patient?.fullName} ${order.patient?.nrNumber} — status ${order.status}, ` +
+            `${order.slipPrintCount} slip(s) printed, ` +
+            (receiptNumbers.length
+              ? `receipt ${receiptNumbers.join(', ')} deleted`
+              : 'no receipt found') +
+            `, amount ${amount}`,
+          beforeState: JSON.parse(JSON.stringify({ order, receipts })),
+          afterState: Prisma.JsonNull,
+        },
+      }),
+    ]);
+
+    return {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      deletedReceipts: receiptNumbers,
+    };
   }
 
   async cancelOrder(id: string) {

@@ -179,6 +179,15 @@ export class LabOrdersController {
     return this.labOrdersService.approveResult(id, approveResultDto);
   }
 
+  /**
+   * Delete a lab order and its receipt. Super admin only — refused in the
+   * service for everyone else, and logged with a full copy of what was removed.
+   */
+  @Delete(':id')
+  deleteOrder(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.labOrdersService.deleteOrder(id, user);
+  }
+
   @Post(':id/cancel')
   cancelOrder(@Param('id') id: string) {
     return this.labOrdersService.cancelOrder(id);

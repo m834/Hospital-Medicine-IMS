@@ -11,6 +11,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLabOrders, type LabOrder } from "@/hooks/use-lab-orders";
 import { useHospitalStore } from "@/stores/hospital.store";
 import { useAuthStore } from "@/stores/auth.store";
@@ -31,6 +32,7 @@ import {
 import { Search, Printer } from "lucide-react";
 import { formatMRN, matchesMRN } from "@/lib/mrn";
 import { printLabSlips } from "@/lib/lab-slip-print";
+import { DeleteLabOrderButton, type DeletableLabOrder } from "@/components/lab/delete-lab-order-button";
 
 /** Mirrors SLIP_REPRINT_ROLES on the server. */
 const LIST_ROLES: UserRole[] = [
@@ -84,6 +86,15 @@ export default function LabOrderListPage() {
   const [endDate, setEndDate] = useState(today);
   const [printingId, setPrintingId] = useState<string | null>(null);
   const [printError, setPrintError] = useState("");
+  const [deletedNotice, setDeletedNotice] = useState("");
+  const queryClient = useQueryClient();
+
+  /** Drop the deleted test from every lab list and the revenue report. */
+  const handleDeleted = (order: DeletableLabOrder) => {
+    setDeletedNotice(`${order.orderNumber} deleted.`);
+    queryClient.invalidateQueries({ queryKey: ["labOrders"] });
+    queryClient.invalidateQueries({ queryKey: ["lab-orders", "revenue"] });
+  };
 
   const hospitalId = user?.hospitalId || selectedHospital?.id;
   const hasAccess = !!user && LIST_ROLES.includes(user.role as UserRole);
@@ -193,6 +204,7 @@ export default function LabOrderListPage() {
       </Card>
 
       {printError && <p className="text-sm text-rose-600">{printError}</p>}
+      {deletedNotice && <p role="status" className="text-sm text-emerald-700">{deletedNotice}</p>}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
@@ -267,6 +279,7 @@ export default function LabOrderListPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
                         <Button
                           variant="outline"
                           size="sm"
@@ -280,6 +293,8 @@ export default function LabOrderListPage() {
                               ? "Reprint"
                               : "Print"}
                         </Button>
+                        <DeleteLabOrderButton order={order} user={user} onDeleted={handleDeleted} />
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
