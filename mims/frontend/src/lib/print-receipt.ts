@@ -8,13 +8,6 @@ export interface ReceiptPatient {
   registeredAt?: string;
 }
 
-/**
- * Print a patient registration slip.
- *
- * The slip drops into a slot on a pre-printed A4 form, so the details go out as
- * a single run of values — no "Label: value" pairs, no grid. Empty fields are
- * dropped entirely so the line never carries a dangling separator.
- */
 export function printPatientReceipt(
   patient: ReceiptPatient,
 
@@ -91,14 +84,7 @@ export interface LabReceiptOrder {
   } | null;
 }
 
-/**
- * Print one lab slip per test.
- *
- * Each slip drops into a slot on a pre-printed A4 lab form, so an order of six
- * tests prints as six pages — one form per test — rather than one page listing
- * all six. Same single run of values as the patient slip: no "Label: value"
- * pairs, patient and order details on one line, the test on its own line.
- */
+
 export function printLabReceipt(
   orders: LabReceiptOrder[],
   opts: {
@@ -112,9 +98,7 @@ export function printLabReceipt(
     .map((order, i) => {
       const patient = order.patient;
 
-      // The whole MRN, date included, as MR-20260804-482913: the client asked
-      // for the lab slip to carry it in full, unlike every other screen and
-      // printout, which show the short code.
+     
       const leftValues = [
         patient?.fullName,
         formatSlipMRN(patient?.nrNumber) || formatSlipMRN(opts.patientId),
@@ -122,18 +106,14 @@ export function printLabReceipt(
         .filter((v) => v != null && String(v).trim() !== '')
         .map((v) => String(v).trim());
 
-      // The receipt's own date in Karachi time, printed once in the header. Not the moment of printing: a reprint, and an order a
-      // manager booked on a past date, must both show the day the receipt was
-      // raised. Falls back to today for an order that carries no date.
+    
       const receiptDate = formatKarachiDate(order.createdAt);
 
       const rightValues = [receiptDate, opts.createdBy]
         .filter((v) => v != null && String(v).trim() !== '')
         .map((v) => String(v).trim());
 
-      // The display name alone: the internal test code (LAB-173) means nothing
-      // to the patient holding the slip. It stays in the database, the UI and
-      // search — this is a print-only simplification.
+      
       const test = String(order.labTest?.testName || '').trim();
 
       // The final slip must not break, or the printer ejects a blank page.
@@ -218,14 +198,7 @@ function markPrintFrame(frame: HTMLIFrameElement, state: PrintFrameState) {
   frame.setAttribute(PRINT_FRAME_SINCE_ATTR, String(Date.now()));
 }
 
-/**
- * Remove print frames left behind by earlier prints, so they cannot pile up
- * on a desk that prints all day without reloading the page.
- *
- * A frame still inside its own window is kept: kiosk printing spools in the
- * background after print() returns, and removing the frame mid-spool empties
- * the slip out from under the job. Everything else is a leftover.
- */
+
 function removeLeftoverPrintFrames() {
   const now = Date.now();
   document.querySelectorAll<HTMLIFrameElement>(`iframe[${PRINT_FRAME_ATTR}]`).forEach((frame) => {
@@ -238,30 +211,7 @@ function removeLeftoverPrintFrames() {
   });
 }
 
-/**
- * Render the given HTML in a hidden iframe and send it to the printer —
- * exactly once.
- *
- * On an ordinary browser this opens the print dialog. On the reception
- * machines, where Chrome runs with --kiosk-printing, there is no dialog: the
- * slip goes straight to the default printer as one copy.
- *
- * The slip is loaded through srcdoc with the load listener attached before the
- * frame is inserted, so the listener cannot miss the load. The previous version
- * wrote the slip in with document.write and attached onload afterwards; Chrome
- * fires those load events synchronously, before the handler existed, so
- * depending on the browser's timing a slip printed twice or not at all, and a
- * slip that never printed also never cleaned its frame up. A flag now allows
- * one print() per slip however many load events arrive.
- *
- * Teardown waits for afterprint, with a generous fallback for browsers that
- * never fire it: kiosk printing returns from print() at once and spools in the
- * background, so an early teardown can empty the page out from under the job.
- *
- * Resolves true once print() has been called without throwing, false when the
- * slip never loaded or print() threw. With kiosk printing, true means the job
- * was handed to Chrome; it cannot say whether paper came out.
- */
+
 export function printReceiptHtml(html: string): Promise<boolean> {
   if (typeof document === 'undefined') return Promise.resolve(false);
 

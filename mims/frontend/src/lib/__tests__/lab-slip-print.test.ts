@@ -133,6 +133,26 @@ describe('printLabSlips', () => {
     });
   });
 
+  it('skips the check for orders created a moment ago, but still records', async () => {
+    const { calls, print, deps } = setUp(true);
+
+    await expect(
+      printLabSlips(orders, { patientId: '482913', skipCheck: true }, deps),
+    ).resolves.toEqual({ status: 'printed' });
+
+    expect(calls).toEqual(['print', 'record /lab-orders/print-slip']);
+    // The flag is the flow's, not the slip's: it never reaches the printer.
+    expect(print).toHaveBeenCalledWith(orders, { patientId: '482913' });
+  });
+
+  it('checks first for a retry or a reprint', async () => {
+    const { calls, deps } = setUp(true);
+
+    await printLabSlips(orders, { patientId: '482913' }, deps);
+
+    expect(calls[0]).toBe('check /lab-orders/print-slip/check');
+  });
+
   it('does not record a print that never started', async () => {
     const { client, deps } = setUp(false);
 

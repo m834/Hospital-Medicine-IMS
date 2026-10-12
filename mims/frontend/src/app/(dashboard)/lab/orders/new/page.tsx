@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, type KeyboardEvent } from "react";
 import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { useLabTests } from "@/hooks/use-lab-tests";
-import { useLabOrders, useCreateLabOrder } from "@/hooks/use-lab-orders";
+import { useLabOrders, useCreateLabOrderBatch } from "@/hooks/use-lab-orders";
 import { useHospitalStore } from "@/stores/hospital.store";
 import { useAuthStore } from "@/stores/auth.store";
 import { Button } from "@/components/ui/button";
@@ -318,7 +318,7 @@ export default function NewLabOrderPageComponent() {
     status: "ACTIVE",
   });
 
-  const createOrderMutation = useCreateLabOrder({ silent: true });
+  const createOrderMutation = useCreateLabOrderBatch();
 
   const categories = Array.from(
     new Set(labTests?.map((test) => test.testCategory).filter(Boolean) || [])
@@ -517,36 +517,28 @@ export default function NewLabOrderPageComponent() {
     setFormError("");
     setLastPrinted([]);
     setLastPrintRecordError("");
-    const results: LabOrder[] = [];
+    let results: LabOrder[];
 
     try {
-      // Prefer the resolved UUID; fall back to nrNumber (service will resolve it)
-      const resolvedPatientId = foundPatient?.id || patientNrNumber;
-      for (const selectedTest of selectedTests) {
-        const order = await createOrderMutation.mutateAsync({
-          hospitalId: user?.hospitalId || selectedHospital?.id || "",
-          patientId: resolvedPatientId,
-          labTestId: selectedTest.test.id,
-          orderedById: user.id,
-          priority: selectedTest.priority,
-          clinicalNotes,
-          ...(orderedAt ? { orderedAt } : {}),
-        });
-        results.push(order as LabOrder);
-      }
+      // Every test in one request and one transaction: all of the order is
+      // saved or none of it, so there is never a half-saved set to recover.
+      results = await createOrderMutation.mutateAsync({
+        hospitalId: user?.hospitalId || selectedHospital?.id || "",
+        // Prefer the resolved UUID; fall back to nrNumber (service will resolve it)
+        patientId: foundPatient?.id || patientNrNumber,
+        orderedById: user.id,
+        clinicalNotes,
+        ...(orderedAt ? { orderedAt } : {}),
+        tests: selectedTests.map((st) => ({ labTestId: st.test.id, priority: st.priority })),
+      });
     } catch (error) {
       console.error("Failed to create orders:", error);
       setFormError(getErrorMessage(error) || "Failed to create the lab order. Please try again.");
-      // Some of the set may have been created before the failure; hold them on
-      // the slip screen rather than losing their slips.
-      if (results.length > 0) {
-        setCreatedOrders(results);
-        setShowSlip(true);
-      }
       return;
     }
 
-    await printAndClear(results);
+    // Just created, so never printed: the pre-print check can be skipped.
+    await printAndClear(results, { fresh: true });
   };
 
   /**
@@ -555,7 +547,7 @@ export default function NewLabOrderPageComponent() {
    * actually started; a slip that did not print stays on screen, uncounted,
    * for Retry Print — the desk never has to enter the order again.
    */
-  const printAndClear = async (orders: LabOrder[]) => {
+  const printAndClear = async (orders: LabOrder[], opts: { fresh?: boolean } = {}) => {
     if (orders.length === 0) return;
     setPrinting(true);
     setPrintError("");
@@ -563,6 +555,7 @@ export default function NewLabOrderPageComponent() {
       const result = await printLabSlips(orders, {
         patientId: patientNrNumber,
         createdBy: user?.fullName || user?.email || "Staff",
+        skipCheck: opts.fresh,
       });
 
       if (result.status === "not-printed") {

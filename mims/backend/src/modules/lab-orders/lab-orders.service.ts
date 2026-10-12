@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateLabOrderDto } from './dto/create-lab-order.dto';
+import { CreateLabOrderBatchDto } from './dto/create-lab-order-batch.dto';
 import { UpdateLabOrderDto } from './dto/update-lab-order.dto';
 import { CollectSampleDto } from './dto/collect-sample.dto';
 import { EnterResultDto } from './dto/enter-result.dto';
@@ -51,6 +52,24 @@ const BACKDATE_ROLES = new Set<string>([
  * its receipt out of every report, so it is the super admin's call alone.
  */
 const LAB_ORDER_DELETE_ROLES = new Set<string>(['SUPER_ADMIN']);
+
+/** What a newly booked order comes back with — enough to print its slip. */
+const LAB_ORDER_CREATED_INCLUDE = {
+  hospital: { select: { id: true, name: true } },
+  patient: { select: { id: true, nrNumber: true, fullName: true, mobile: true } },
+  visit: { select: { id: true, tokenNumber: true } },
+  labTest: {
+    select: {
+      id: true,
+      testCode: true,
+      testName: true,
+      testCategory: true,
+      price: true,
+      turnaroundTime: true,
+    },
+  },
+  orderedBy: { select: { id: true, fullName: true, role: true } },
+} satisfies Prisma.LabOrderInclude;
 
 /** Bucket for lab tests whose category was left blank in the catalogue. */
 const UNCATEGORISED_LAB_TEST = 'Uncategorised';
@@ -309,6 +328,175 @@ export class LabOrdersService {
     });
 
     return labOrder;
+  }
+
+  /**
+   * Book every test for one patient in a single request: one order and one
+   * receipt per test, exactly as create() makes them, but all in one
+   * transaction. The desk waits on one round trip instead of one per test, and
+   * an order is never left half-saved — a refusal saves none of it.
+   *
+   * Order and receipt numbers are "highest so far + 1". Two desks booking at
+   * the same moment can both reach for the same number; the database refuses
+   * the second, and the whole booking is simply retried with fresh numbers.
+   */
+  async createBatch(dto: CreateLabOrderBatchDto, user?: { id: string; role: string }) {
+    const enteredAt = new Date();
+    const orderedAt = this.resolveOrderDate(dto.orderedAt, user);
+
+    const labTestIds = dto.tests.map((test) => test.labTestId);
+    if (new Set(labTestIds).size !== labTestIds.length) {
+      throw new BadRequestException('The same test is listed twice in this order');
+    }
+
+    // Resolve the patient once — UUID, full MRN or the short code staff see.
+    let patientId = dto.patientId;
+    if (!isUuid(patientId)) {
+      const patient = await this.prisma.patient.findFirst({
+        where: { nrNumber: mrnFilter(patientId) },
+      });
+      if (!patient) {
+        throw new NotFoundException(`Patient with MRN ${patientId} not found`);
+      }
+      patientId = patient.id;
+    }
+
+    const [labTests, visit, orderedBy] = await Promise.all([
+      this.prisma.labTest.findMany({ where: { id: { in: labTestIds } } }),
+      dto.visitId
+        ? (this.prisma as any).visit.findUnique({
+            where: { id: dto.visitId },
+            select: { id: true, departmentId: true },
+          })
+        : Promise.resolve(null),
+      this.prisma.user.findUnique({
+        where: { id: dto.orderedById },
+        select: { departmentId: true },
+      }),
+    ]);
+
+    const testsById = new Map(labTests.map((test) => [test.id, test]));
+    const missing = labTestIds.filter((id) => !testsById.has(id));
+    if (missing.length > 0) {
+      throw new NotFoundException(`Lab test not found: ${missing.join(', ')}`);
+    }
+    if (labTests.some((test) => test.hospitalId !== dto.hospitalId)) {
+      throw new BadRequestException('A lab test in this order belongs to another hospital');
+    }
+
+    const dateStr = this.localDateStamp(orderedAt);
+    const { tests, orderedAt: _orderedAt, ...common } = dto;
+
+    const maxAttempts = 3;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await this.prisma.$transaction(
+          async (tx) => {
+            const lastOrder = await tx.labOrder.findFirst({
+              where: { hospitalId: dto.hospitalId, orderNumber: { startsWith: `LAB-${dateStr}` } },
+              orderBy: { orderNumber: 'desc' },
+            });
+            let sequence = lastOrder ? parseInt(lastOrder.orderNumber.split('-')[2]) + 1 : 1;
+
+            const orders = [];
+            for (const test of tests) {
+              const labTest = testsById.get(test.labTestId)!;
+              const orderNumber = `LAB-${dateStr}-${String(sequence).padStart(4, '0')}`;
+              sequence += 1;
+
+              const order = await tx.labOrder.create({
+                data: {
+                  ...common,
+                  patientId,
+                  labTestId: labTest.id,
+                  orderNumber,
+                  priority: test.priority || TestPriority.ROUTINE,
+                  status: LabOrderStatus.PENDING,
+                  createdAt: orderedAt,
+                },
+                include: LAB_ORDER_CREATED_INCLUDE,
+              });
+
+              const receiptNumber = await this.generateReceiptNumber(tx, orderedAt);
+              const departmentId =
+                labTest.departmentId || visit?.departmentId || orderedBy?.departmentId || null;
+
+              await (tx as any).receipt.create({
+                data: {
+                  hospitalId: dto.hospitalId,
+                  patientId,
+                  visitId: dto.visitId || undefined,
+                  departmentId,
+                  generatedById: dto.orderedById,
+                  receiptNumber,
+                  receiptType: ReceiptType.LAB_TEST,
+                  description: `Lab Test - ${labTest.testName}`,
+                  amount: new Prisma.Decimal(labTest.price || 0),
+                  totalAmount: new Prisma.Decimal(labTest.price || 0),
+                  paidAmount: new Prisma.Decimal(0),
+                  paymentMethod: PaymentMethod.CASH,
+                  paymentStatus: PaymentStatus.UNPAID,
+                  // Same day as its order, as create() does.
+                  createdAt: orderedAt,
+                  notes: JSON.stringify({ labOrderId: order.id, labTestId: labTest.id }),
+                },
+              });
+
+              // Same audit trail a backdated single order leaves.
+              if (dto.orderedAt) {
+                await tx.auditLog.create({
+                  data: {
+                    hospitalId: dto.hospitalId,
+                    userId: user?.id ?? dto.orderedById,
+                    action: 'BACKDATE',
+                    module: 'Lab Orders',
+                    entityType: 'LabOrder',
+                    entityId: order.id,
+                    description:
+                      `Created lab order ${orderNumber} (${labTest.testName}) backdated to ` +
+                      `${dateStr} — entered ${enteredAt.toISOString()} ` +
+                      `by ${user?.role ?? 'unknown role'}, receipt ${receiptNumber}, ` +
+                      `amount ${Number(labTest.price || 0)}`,
+                    beforeState: {
+                      enteredAt: enteredAt.toISOString(),
+                      requestedDate: dto.orderedAt,
+                    },
+                    afterState: {
+                      orderNumber,
+                      receiptNumber,
+                      createdAt: orderedAt.toISOString(),
+                      patientId,
+                      labTestId: labTest.id,
+                      testName: labTest.testName,
+                      amount: Number(labTest.price || 0),
+                      orderedById: dto.orderedById,
+                      backdatedByDays: Math.round(
+                        (enteredAt.getTime() - orderedAt.getTime()) / 86_400_000,
+                      ),
+                    },
+                  },
+                });
+              }
+
+              orders.push(order);
+            }
+
+            return orders;
+          },
+          { maxWait: 10_000, timeout: 20_000 },
+        );
+      } catch (error) {
+        // Another desk took the same order or receipt number first.
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002' &&
+          attempt < maxAttempts - 1
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
   }
 
   private async generateReceiptNumber(tx: Prisma.TransactionClient, when: Date) {

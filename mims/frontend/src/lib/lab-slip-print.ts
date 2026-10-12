@@ -22,22 +22,28 @@ interface PrintDeps {
  *
  * 1. Ask the server whether the slips may print. A refusal (already printed,
  *    another hospital) throws here, before anything reaches the printer.
+ *    Skipped for orders created a moment ago (skipCheck) — they cannot have
+ *    been printed, so the answer is known and the round trip is saved. The
+ *    record step still applies every rule.
  * 2. Print. The helper reports whether print() started.
  * 3. Only then record the print. A slip whose print never started is not
  *    counted, so the desk can retry it instead of re-entering the order.
  */
 export async function printLabSlips(
   orders: (LabReceiptOrder & { id: string })[],
-  options: { patientId?: string; createdBy?: string },
+  options: { patientId?: string; createdBy?: string; skipCheck?: boolean },
   deps: PrintDeps = { client: api, print: printLabReceipt },
 ): Promise<LabSlipPrintResult> {
   const orderIds = orders.map((order) => order.id);
+  const { skipCheck, ...slipOptions } = options;
 
-  await deps.client.get('/lab-orders/print-slip/check', {
-    params: { orderIds: orderIds.join(',') },
-  });
+  if (!skipCheck) {
+    await deps.client.get('/lab-orders/print-slip/check', {
+      params: { orderIds: orderIds.join(',') },
+    });
+  }
 
-  const started = await deps.print(orders, options);
+  const started = await deps.print(orders, slipOptions);
   if (!started) return { status: 'not-printed' };
 
   try {

@@ -16,6 +16,7 @@ import { Response } from 'express';
 import { LabOrdersService } from './lab-orders.service';
 import { LabResultPdfService } from './lab-result-pdf.service';
 import { CreateLabOrderDto } from './dto/create-lab-order.dto';
+import { CreateLabOrderBatchDto } from './dto/create-lab-order-batch.dto';
 import { UpdateLabOrderDto } from './dto/update-lab-order.dto';
 import { CollectSampleDto } from './dto/collect-sample.dto';
 import { EnterResultDto } from './dto/enter-result.dto';
@@ -41,6 +42,16 @@ export class LabOrdersController {
   @Post()
   create(@Body() createLabOrderDto: CreateLabOrderDto, @CurrentUser() user: any) {
     return this.labOrdersService.create(createLabOrderDto, user);
+  }
+
+  /**
+   * Book every test for one patient in one request and one transaction. The
+   * New Order screen uses this; the single-test endpoint above stays for
+   * anything else that books one test at a time.
+   */
+  @Post('batch')
+  createBatch(@Body() dto: CreateLabOrderBatchDto, @CurrentUser() user: any) {
+    return this.labOrdersService.createBatch(dto, user);
   }
 
   /**

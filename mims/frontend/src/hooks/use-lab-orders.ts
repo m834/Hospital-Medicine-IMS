@@ -181,6 +181,38 @@ export function useLabOrderStats(hospitalId: string) {
  * creates an order and prints its slip in one click, and reports the outcome on
  * the form itself — a toast per test would stack up behind the printer.
  */
+/** Every test for one patient, booked in one request. */
+export interface CreateLabOrderBatchInput {
+  hospitalId: string;
+  patientId: string;
+  visitId?: string;
+  orderedById: string;
+  clinicalNotes?: string;
+  /** Past date (YYYY-MM-DD) — managers only, as for a single order. */
+  orderedAt?: string;
+  tests: { labTestId: string; priority?: "ROUTINE" | "URGENT" | "STAT" }[];
+}
+
+/**
+ * Book every test for one patient in one request and one transaction. Either
+ * all the orders and receipts are saved or none are, and the desk waits on a
+ * single round trip instead of one per test. Errors are left to the caller.
+ */
+export function useCreateLabOrderBatch() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: CreateLabOrderBatchInput) => {
+      const res = await api.post(`/lab-orders/batch`, data);
+      return res.data as LabOrder[];
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["labOrders", variables.hospitalId] });
+      queryClient.invalidateQueries({ queryKey: ["labOrderStats", variables.hospitalId] });
+    },
+  });
+}
+
 export function useCreateLabOrder(options?: { silent?: boolean }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
