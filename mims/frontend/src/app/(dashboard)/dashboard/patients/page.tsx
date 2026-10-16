@@ -219,7 +219,9 @@ export default function PatientsPage() {
 
   const printReceipt = (patient: Patient) => {
     const hospitalName = selectedHospital?.name || 'Hospital Medical Center';
-    printPatientReceipt(patient, hospitalName, user?.fullName);
+    printPatientReceipt(patient, hospitalName, user?.fullName).then((result) => {
+      if (!result.printed) alert(`The slip did not print: ${result.error}`);
+    });
   };
 
   const getGenderBadge = (gender: string) => {

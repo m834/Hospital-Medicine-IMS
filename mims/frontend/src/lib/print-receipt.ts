@@ -1,5 +1,6 @@
 import { formatMRN, formatSlipMRN } from './mrn';
 import { formatKarachiDate } from './karachi-date';
+import { hasShellSlipPrinter, printRawSlips, rawSlipPrinter, type RawSlip } from './slip-printer';
 
 export interface ReceiptPatient {
   nrNumber: string;
@@ -8,13 +9,19 @@ export interface ReceiptPatient {
   registeredAt?: string;
 }
 
-export function printPatientReceipt(
-  patient: ReceiptPatient,
+/** Whether a slip reached the printer, and if not, why. */
+export type SlipPrintResult = { printed: true } | { printed: false; error: string };
 
-  hospitalName: string,
+/**
+ * What the registration slip prints, in order: name, MR number and gender on
+ * the left; registration date and who registered on the right. The HTML slip
+ * and the dot-matrix text slip both print exactly these.
+ */
+export function patientSlipValues(
+  patient: ReceiptPatient,
   registeredBy?: string,
-): Promise<boolean> {
-  const leftValues = [
+): { left: string[]; right: string[] } {
+  const left = [
     patient.fullName,
     formatMRN(patient.nrNumber),
     patient.gender,
@@ -22,7 +29,7 @@ export function printPatientReceipt(
     .filter((v) => v != null && String(v).trim() !== '')
     .map((v) => String(v).trim());
 
-  const rightValues = [
+  const right = [
     patient.registeredAt
       ? formatKarachiDate(patient.registeredAt)
       : '',
@@ -31,7 +38,54 @@ export function printPatientReceipt(
     .filter((v) => v != null && String(v).trim() !== '')
     .map((v) => String(v).trim());
 
-  const receiptHTML = `
+  return { left, right };
+}
+
+/**
+ * Prints the registration slip: as plain text straight to the dot-matrix on a
+ * station the MIMS Desktop shell has set to print raw, otherwise as HTML.
+ */
+export function printPatientReceipt(
+  patient: ReceiptPatient,
+
+  hospitalName: string,
+  registeredBy?: string,
+): Promise<SlipPrintResult> {
+  const { left, right } = patientSlipValues(patient, registeredBy);
+
+  return printSlips(
+    'MIMS registration slip',
+    [{ lines: [{ left, right, bold: true }] }],
+    () => patientSlipHtml(left, right),
+  );
+}
+
+/**
+ * Sends slips to the printer: as plain text through the MIMS Desktop shell on
+ * a station set to print raw, otherwise as HTML. Printed means the raw job
+ * reached Windows whole, or print() was called on the HTML slip.
+ */
+function printSlips(docName: string, rawSlips: RawSlip[], html: () => string): Promise<SlipPrintResult> {
+  // Without the shell, straight to HTML with no await first — exactly as
+  // before, so plain Chrome prints in the same turn as the click.
+  if (!hasShellSlipPrinter()) return printSlipHtml(html());
+
+  return (async (): Promise<SlipPrintResult> => {
+    const raw = await rawSlipPrinter();
+    if (!raw) return printSlipHtml(html());
+
+    const result = await printRawSlips(raw, docName, rawSlips);
+    return result.ok ? { printed: true } : { printed: false, error: result.error };
+  })();
+}
+
+async function printSlipHtml(html: string): Promise<SlipPrintResult> {
+  const printed = await printReceiptHtml(html);
+  return printed ? { printed: true } : { printed: false, error: 'The slip did not print.' };
+}
+
+function patientSlipHtml(leftValues: string[], rightValues: string[]): string {
+  return `
     <!DOCTYPE html>
     <html>
       <head>
@@ -59,8 +113,6 @@ export function printPatientReceipt(
       </body>
     </html>
   `;
-
-  return printReceiptHtml(receiptHTML);
 }
 
 export interface LabReceiptOrder {
@@ -85,55 +137,96 @@ export interface LabReceiptOrder {
 }
 
 
+/** What one lab slip prints: the patient line, then the test line. */
+export interface LabSlipValues {
+  left: string[];
+  right: string[];
+  test: string;
+  amount: string;
+}
+
+/**
+ * The values on one test's slip, in order: name and full MR number on the
+ * left, the order date and who raised it on the right; then the test name and
+ * its own amount. The HTML slip and the dot-matrix text slip print exactly these.
+ */
+export function labSlipValues(
+  order: LabReceiptOrder,
+  opts: { patientId?: string; createdBy?: string },
+): LabSlipValues {
+  const patient = order.patient;
+
+  const left = [
+    patient?.fullName,
+    formatSlipMRN(patient?.nrNumber) || formatSlipMRN(opts.patientId),
+  ]
+    .filter((v) => v != null && String(v).trim() !== '')
+    .map((v) => String(v).trim());
+
+  const receiptDate = formatKarachiDate(order.createdAt);
+
+  const right = [receiptDate, opts.createdBy]
+    .filter((v) => v != null && String(v).trim() !== '')
+    .map((v) => String(v).trim());
+
+  const test = String(order.labTest?.testName || '').trim();
+  const amount = `Rs. ${Number(order.labTest?.price || 0).toFixed(2)}`;
+
+  return { left, right, test, amount };
+}
+
+/**
+ * Prints one slip per test — one pre-printed form each: as plain text straight
+ * to the dot-matrix on a station the MIMS Desktop shell has set to print raw,
+ * otherwise as HTML.
+ */
 export function printLabReceipt(
   orders: LabReceiptOrder[],
   opts: {
     patientId?: string;
     createdBy?: string;
   },
-): Promise<boolean> {
-  if (orders.length === 0) return Promise.resolve(false);
+): Promise<SlipPrintResult> {
+  if (orders.length === 0) {
+    return Promise.resolve({ printed: false, error: 'There is no lab slip to print.' });
+  }
 
-  const slips = orders
-    .map((order, i) => {
-      const patient = order.patient;
+  const slips = orders.map((order) => labSlipValues(order, opts));
 
-     
-      const leftValues = [
-        patient?.fullName,
-        formatSlipMRN(patient?.nrNumber) || formatSlipMRN(opts.patientId),
-      ]
-        .filter((v) => v != null && String(v).trim() !== '')
-        .map((v) => String(v).trim());
+  return printSlips(
+    'MIMS lab slip',
+    slips.map((slip) => ({
+      lines: [
+        { left: slip.left, right: slip.right, bold: true },
+        {},
+        { left: [slip.test], right: [slip.amount], bold: true },
+      ],
+    })),
+    () => labSlipHtml(slips),
+  );
+}
 
-    
-      const receiptDate = formatKarachiDate(order.createdAt);
-
-      const rightValues = [receiptDate, opts.createdBy]
-        .filter((v) => v != null && String(v).trim() !== '')
-        .map((v) => String(v).trim());
-
-      
-      const test = String(order.labTest?.testName || '').trim();
-
+function labSlipHtml(slips: LabSlipValues[]): string {
+  const pages = slips
+    .map((slip, i) => {
       // The final slip must not break, or the printer ejects a blank page.
-      const isLast = i === orders.length - 1;
+      const isLast = i === slips.length - 1;
 
       return `
         <div class="slip${isLast ? '' : ' break'}">
           <div class="line">
-            <span>${leftValues.join('<span class="sep">|</span>')}</span>
-            <span>${rightValues.join('<span class="sep">|</span>')}</span>
+            <span>${slip.left.join('<span class="sep">|</span>')}</span>
+            <span>${slip.right.join('<span class="sep">|</span>')}</span>
           </div>
           <div class="test">
-            <span>${test}</span>
-            <span>Rs. ${Number(order.labTest?.price || 0).toFixed(2)}</span>
+            <span>${slip.test}</span>
+            <span>${slip.amount}</span>
           </div>
         </div>`;
     })
     .join('');
 
-  const receiptHTML = `
+  return `
     <!DOCTYPE html>
     <html>
       <head>
@@ -169,12 +262,10 @@ export function printLabReceipt(
           }
         </style>
       </head>
-      <body>${slips}
+      <body>${pages}
       </body>
     </html>
   `;
-
-  return printReceiptHtml(receiptHTML);
 }
 
 /** Marks the hidden frames printReceiptHtml creates, with their state. */

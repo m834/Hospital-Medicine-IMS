@@ -1,4 +1,11 @@
-import { printLabReceipt, printReceiptHtml, LabReceiptOrder } from '../print-receipt';
+import {
+  printLabReceipt,
+  printPatientReceipt,
+  patientSlipValues,
+  printReceiptHtml,
+  labSlipValues,
+  LabReceiptOrder,
+} from '../print-receipt';
 
 /**
  * printLabReceipt renders into a hidden iframe through srcdoc. Capture what it
@@ -432,7 +439,161 @@ describe('printReceiptHtml', () => {
 });
 
 describe('slip printers', () => {
-  it('report false when there is no lab slip to print', async () => {
-    await expect(printLabReceipt([], { patientId: '482913' })).resolves.toBe(false);
+  it('report not printed when there is no lab slip to print', async () => {
+    await expect(printLabReceipt([], { patientId: '482913' })).resolves.toEqual({
+      printed: false,
+      error: 'There is no lab slip to print.',
+    });
+  });
+});
+
+describe('printPatientReceipt', () => {
+  const registered = {
+    nrNumber: 'MRN-20261016-482913',
+    fullName: 'Ali Khan',
+    gender: 'MALE',
+    registeredAt: '2026-10-16T05:00:00Z',
+  };
+
+  const shellWith = (mode: 'html' | 'escp-raw', print = jest.fn()) => {
+    window.mimsShell = { slipPrinter: { mode: jest.fn().mockResolvedValue(mode), print } };
+    return print;
+  };
+
+  afterEach(() => {
+    delete window.mimsShell;
+    jest.restoreAllMocks();
+  });
+
+  it('sends the same values, in the same order, as the HTML slip', () => {
+    expect(patientSlipValues(registered, 'Sana Iqbal')).toEqual({
+      left: ['Ali Khan', '482913', 'MALE'],
+      right: ['16/10/2026', 'Sana Iqbal'],
+    });
+  });
+
+  it('prints raw on a station the shell has set to escp-raw, and builds no HTML', async () => {
+    const print = shellWith('escp-raw', jest.fn().mockResolvedValue({ ok: true, jobId: 7 }));
+    const appendChild = jest.spyOn(document.body, 'appendChild');
+
+    await expect(printPatientReceipt(registered, 'Civil Hospital', 'Sana Iqbal')).resolves.toEqual({ printed: true });
+
+    expect(print).toHaveBeenCalledWith({
+      docName: 'MIMS registration slip',
+      slips: [{ lines: [{ left: ['Ali Khan', '482913', 'MALE'], right: ['16/10/2026', 'Sana Iqbal'], bold: true }] }],
+    });
+    expect(appendChild).not.toHaveBeenCalled();
+  });
+
+  it('reports the printer’s reason when the raw job is not sent', async () => {
+    shellWith('escp-raw', jest.fn().mockResolvedValue({ ok: false, error: 'Printer is offline.' }));
+
+    await expect(printPatientReceipt(registered, 'Civil Hospital')).resolves.toEqual({
+      printed: false,
+      error: 'Printer is offline.',
+    });
+  });
+
+  it('reports a shell that stops answering as not printed, never as printed', async () => {
+    shellWith('escp-raw', jest.fn().mockRejectedValue(new Error('gone')));
+
+    await expect(printPatientReceipt(registered, 'Civil Hospital')).resolves.toEqual({ printed: false, error: 'gone' });
+  });
+
+  it.each([
+    ['in plain Chrome, with no shell', () => undefined],
+    ['on a station left on html', () => shellWith('html')],
+  ])('prints as HTML %s', async (_label, setup) => {
+    const print = setup();
+    let written = '';
+    jest.spyOn(document.body, 'appendChild').mockImplementation((n: any) => {
+      if (n instanceof HTMLIFrameElement) written += n.srcdoc;
+      return n;
+    });
+
+    jest.useFakeTimers();
+    const result = printPatientReceipt(registered, 'Civil Hospital', 'Sana Iqbal');
+    // The station check is async; let it settle so the slip frame goes in.
+    for (let i = 0; i < 5 && !written; i += 1) await Promise.resolve();
+
+    expect(written).toContain('Ali Khan');
+    expect(written).toContain('482913');
+    expect(written).toContain('Sana Iqbal');
+    if (print) expect(print).not.toHaveBeenCalled();
+
+    // The frame never loads in jsdom, so the print gives up as not printed.
+    jest.runAllTimers();
+    await expect(result).resolves.toEqual({ printed: false, error: 'The slip did not print.' });
+    jest.useRealTimers();
+  });
+});
+
+describe('printLabReceipt on a dot-matrix station', () => {
+  const opts = { patientId: '482913', createdBy: 'Sana Iqbal' };
+  const orders: LabReceiptOrder[] = [
+    { ...order('CBC', 'Complete Blood Count', 1200), createdAt: '2026-10-16T05:00:00Z' },
+    { ...order('LFT', 'Liver Function Test', 850.5), createdAt: '2026-10-16T05:00:00Z' },
+  ];
+
+  const shellWith = (mode: 'html' | 'escp-raw', print = jest.fn()) => {
+    window.mimsShell = { slipPrinter: { mode: jest.fn().mockResolvedValue(mode), print } };
+    return print;
+  };
+
+  afterEach(() => {
+    delete window.mimsShell;
+    jest.restoreAllMocks();
+  });
+
+  it('carries the same values as the HTML slip', () => {
+    expect(labSlipValues(orders[0], opts)).toEqual({
+      left: ['Ali Khan', 'MR-20260804-482913'],
+      right: ['16/10/2026', 'Sana Iqbal'],
+      test: 'Complete Blood Count',
+      amount: 'Rs. 1200.00',
+    });
+  });
+
+  it('sends one raw slip per test — patient line, a blank line, the test line — and no HTML', async () => {
+    const print = shellWith('escp-raw', jest.fn().mockResolvedValue({ ok: true, jobId: 3 }));
+    const appendChild = jest.spyOn(document.body, 'appendChild');
+
+    await expect(printLabReceipt(orders, opts)).resolves.toEqual({ printed: true });
+
+    const patientLine = { left: ['Ali Khan', 'MR-20260804-482913'], right: ['16/10/2026', 'Sana Iqbal'], bold: true };
+    expect(print).toHaveBeenCalledWith({
+      docName: 'MIMS lab slip',
+      slips: [
+        { lines: [patientLine, {}, { left: ['Complete Blood Count'], right: ['Rs. 1200.00'], bold: true }] },
+        { lines: [patientLine, {}, { left: ['Liver Function Test'], right: ['Rs. 850.50'], bold: true }] },
+      ],
+    });
+    expect(appendChild).not.toHaveBeenCalled();
+  });
+
+  it('reports a raw job that was not sent as not printed, with the reason', async () => {
+    shellWith('escp-raw', jest.fn().mockResolvedValue({ ok: false, error: 'Printer is offline.' }));
+
+    await expect(printLabReceipt(orders, opts)).resolves.toEqual({ printed: false, error: 'Printer is offline.' });
+  });
+
+  it('prints as HTML on a station left on html', async () => {
+    const print = shellWith('html');
+    let written = '';
+    jest.spyOn(document.body, 'appendChild').mockImplementation((n: any) => {
+      if (n instanceof HTMLIFrameElement) written += n.srcdoc;
+      return n;
+    });
+
+    jest.useFakeTimers();
+    const result = printLabReceipt(orders, opts);
+    for (let i = 0; i < 5 && !written; i += 1) await Promise.resolve();
+
+    expect(written.split('class="slip').length - 1).toBe(2);
+    expect(print).not.toHaveBeenCalled();
+
+    jest.runAllTimers();
+    await result;
+    jest.useRealTimers();
   });
 });

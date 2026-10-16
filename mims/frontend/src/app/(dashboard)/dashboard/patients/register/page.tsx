@@ -30,7 +30,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, Loader2, UserPlus, CheckCircle, Printer, Save } from 'lucide-react';
+import { ArrowLeft, Loader2, UserPlus, CheckCircle, AlertTriangle, Printer, Save } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
@@ -133,6 +133,8 @@ export default function RegisterPatientPage() {
   const [lastRegisteredMrn, setLastRegisteredMrn] = useState<string>('');
   // Whether that registration also sent a slip — Save alone does not.
   const [lastRegisteredPrinted, setLastRegisteredPrinted] = useState(false);
+  // Why that registration's slip did not print, if it did not.
+  const [lastPrintError, setLastPrintError] = useState({ mrn: '', error: '' });
 
   const router = useRouter();
   const { user } = useAuthStore();
@@ -347,7 +349,10 @@ export default function RegisterPatientPage() {
       if (print) {
         // Print from this page rather than navigating to the patient record:
         // closing the print dialog then leaves the user back on an empty
-        // registration form, ready for the next patient.
+        // registration form, ready for the next patient. Not awaited, so the
+        // form clears at once; a slip that fails to print says so in the
+        // banner, since the patient is saved either way.
+        const mrn = formatMRN(patient.nrNumber);
         printPatientReceipt(
           {
             ...patient,
@@ -358,11 +363,17 @@ export default function RegisterPatientPage() {
           },
           selectedHospital?.name || 'Hospital Medical Center',
           user?.fullName,
-        );
+        ).then((result) => {
+          // Only if this is still the latest registration on screen.
+          if (!result.printed) {
+            setLastPrintError((current) => (current.mrn === mrn ? { mrn, error: result.error } : current));
+          }
+        });
       }
 
       setLastRegisteredMrn(formatMRN(patient.nrNumber));
       setLastRegisteredPrinted(print);
+      setLastPrintError({ mrn: formatMRN(patient.nrNumber), error: '' });
       form.reset();
       setSelectedFee('');
       setSelectedBedRate('');
@@ -394,7 +405,15 @@ export default function RegisterPatientPage() {
 
       {/* Confirms the save that just happened — the form itself is back to blank
           for the next patient. */}
-      {lastRegisteredMrn && (
+      {lastRegisteredMrn && lastPrintError.error && lastPrintError.mrn === lastRegisteredMrn ? (
+        <div className="mb-6 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>
+            Registered <span className="font-semibold">{lastRegisteredMrn}</span>, but the slip did not
+            print: {lastPrintError.error} Reprint it from the patient&apos;s record.
+          </span>
+        </div>
+      ) : lastRegisteredMrn && (
         <div className="mb-6 flex items-center gap-2 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
           <CheckCircle className="h-4 w-4 shrink-0" />
           {lastRegisteredPrinted ? (

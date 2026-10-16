@@ -8,8 +8,12 @@ export type LabSlipPrintResult =
    * on the server afterwards — the paper is out, but the count is behind.
    */
   | { status: 'printed'; recordError?: string }
-  /** print() never started. Nothing was counted, so the slips stay printable. */
-  | { status: 'not-printed' };
+  /**
+   * The slips never reached the printer — print() never started, or the
+   * dot-matrix job was not sent. Nothing was counted, so the slips stay
+   * printable. error says why.
+   */
+  | { status: 'not-printed'; error: string };
 
 interface PrintDeps {
   client: Pick<typeof api, 'get' | 'post'>;
@@ -25,7 +29,7 @@ interface PrintDeps {
  *    Skipped for orders created a moment ago (skipCheck) — they cannot have
  *    been printed, so the answer is known and the round trip is saved. The
  *    record step still applies every rule.
- * 2. Print. The helper reports whether print() started.
+ * 2. Print. The helper reports whether the slips reached the printer.
  * 3. Only then record the print. A slip whose print never started is not
  *    counted, so the desk can retry it instead of re-entering the order.
  */
@@ -43,8 +47,8 @@ export async function printLabSlips(
     });
   }
 
-  const started = await deps.print(orders, slipOptions);
-  if (!started) return { status: 'not-printed' };
+  const result = await deps.print(orders, slipOptions);
+  if (!result.printed) return { status: 'not-printed', error: result.error };
 
   try {
     await deps.client.post('/lab-orders/print-slip', { orderIds });

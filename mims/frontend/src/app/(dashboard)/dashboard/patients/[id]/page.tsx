@@ -237,7 +237,9 @@ export default function PatientDetailPage() {
   const printPatientDetails = () => {
     if (!patient) return;
     const hospitalName = selectedHospital?.name || 'Hospital Medical Center';
-    printPatientReceipt(patient, hospitalName, user?.fullName);
+    printPatientReceipt(patient, hospitalName, user?.fullName).then((result) => {
+      if (!result.printed) alert(`The slip did not print: ${result.error}`);
+    });
   };
 
   if (loading) {

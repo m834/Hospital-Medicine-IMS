@@ -134,7 +134,7 @@ export default function LabOrderListPage() {
         createdBy: user?.fullName || user?.email || "Staff",
       });
       if (result.status === "not-printed") {
-        setPrintError(`${order.orderNumber}: the slip did not print and was not counted — try again.`);
+        setPrintError(`${order.orderNumber}: the slip did not print and was not counted — ${result.error} Try again.`);
       } else if (result.recordError) {
         setPrintError(`${order.orderNumber}: printed, but the print could not be recorded — ${result.recordError}`);
       }

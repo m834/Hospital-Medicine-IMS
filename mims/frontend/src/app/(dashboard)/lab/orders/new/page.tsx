@@ -562,6 +562,7 @@ export default function NewLabOrderPageComponent() {
         setCreatedOrders(orders);
         setShowSlip(true);
         setHasPrinted(false);
+        setPrintError(`The slip did not print and was not counted — ${result.error} Try again.`);
         return;
       }
 

@@ -71,7 +71,7 @@ describe('createSingleFlight — the New Order lock', () => {
 
   it('drops a press made while a print is still in flight', async () => {
     const lock = createSingleFlight();
-    const printing = deferred<boolean>();
+    const printing = deferred<{ printed: true }>();
     const print = jest.fn(() => printing.promise);
     const client = { get: jest.fn().mockResolvedValue({}), post: jest.fn().mockResolvedValue({}) };
     const orders = [{ id: 'order-1', orderNumber: 'LAB-1' }];
@@ -81,7 +81,7 @@ describe('createSingleFlight — the New Order lock', () => {
     const second = run();
 
     await Promise.resolve();
-    printing.resolve(true);
+    printing.resolve({ printed: true });
     await Promise.all([first, second]);
 
     expect(client.get).toHaveBeenCalledTimes(1);
@@ -110,7 +110,9 @@ describe('printLabSlips', () => {
     };
     const print = jest.fn(async () => {
       calls.push('print');
-      return printStarted;
+      return printStarted
+        ? ({ printed: true } as const)
+        : ({ printed: false, error: 'Printer is offline.' } as const);
     });
     return { calls, client, print, deps: { client: client as any, print } };
   }
@@ -156,7 +158,10 @@ describe('printLabSlips', () => {
   it('does not record a print that never started', async () => {
     const { client, deps } = setUp(false);
 
-    await expect(printLabSlips(orders, {}, deps)).resolves.toEqual({ status: 'not-printed' });
+    await expect(printLabSlips(orders, {}, deps)).resolves.toEqual({
+      status: 'not-printed',
+      error: 'Printer is offline.',
+    });
 
     expect(client.post).not.toHaveBeenCalled();
   });
