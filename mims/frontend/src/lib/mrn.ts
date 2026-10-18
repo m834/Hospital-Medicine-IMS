@@ -36,12 +36,19 @@ export function matchesMRN(nrNumber: string | null | undefined, query: string): 
 }
 
 /**
- * The lab slip is the one place the whole MRN prints, date included — but with
- * the client's "MR-" prefix rather than the stored "MRN-":
- * `MRN-20260804-482913` prints as `MR-20260804-482913`. Display-only; the
- * stored value is never changed.
+ * The printed slips (lab and registration) are the one place the whole MRN
+ * prints, date included — with the client's "MR-" prefix rather than the
+ * stored "MRN-", and the date split by dashes: `MRN-20260804-482913` prints as
+ * `MR-2026-08-04-482913`. Anything not in that shape keeps its own form, only
+ * re-prefixed. Display-only; the stored value is never changed.
  */
 export function formatSlipMRN(nrNumber: string | null | undefined): string {
   if (!nrNumber) return '';
-  return nrNumber.trim().replace(/^MRN-/i, 'MR-');
+  const value = nrNumber.trim();
+  const match = /^MRN-(\d{4})(\d{2})(\d{2})-(.+)$/i.exec(value);
+  if (match) {
+    const [, year, month, day, code] = match;
+    return `MR-${year}-${month}-${day}-${code}`;
+  }
+  return value.replace(/^MRN-/i, 'MR-');
 }

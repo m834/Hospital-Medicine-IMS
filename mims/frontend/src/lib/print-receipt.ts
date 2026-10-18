@@ -1,4 +1,4 @@
-import { formatMRN, formatSlipMRN } from './mrn';
+import { formatSlipMRN } from './mrn';
 import { formatKarachiDate } from './karachi-date';
 import { hasShellSlipPrinter, printRawSlips, rawSlipPrinter, type RawSlip } from './slip-printer';
 
@@ -12,33 +12,35 @@ export interface ReceiptPatient {
 /** Whether a slip reached the printer, and if not, why. */
 export type SlipPrintResult = { printed: true } | { printed: false; error: string };
 
+/** One printed line: values joined with " | ", flush left and flush right. */
+export interface SlipLine {
+  left: string[];
+  right: string[];
+}
+
+function present(values: (string | null | undefined)[]): string[] {
+  return values
+    .filter((v) => v != null && String(v).trim() !== '')
+    .map((v) => String(v).trim());
+}
+
 /**
- * What the registration slip prints, in order: name, MR number and gender on
- * the left; registration date and who registered on the right. The HTML slip
- * and the dot-matrix text slip both print exactly these.
+ * What the registration slip prints, on two lines: the full MR number
+ * (MR-2026-10-18-482913), with the registration date and who registered on
+ * the right; then the patient's name, with their gender on the right. The
+ * HTML slip and the dot-matrix text slip both print exactly these.
  */
-export function patientSlipValues(
-  patient: ReceiptPatient,
-  registeredBy?: string,
-): { left: string[]; right: string[] } {
-  const left = [
-    patient.fullName,
-    formatMRN(patient.nrNumber),
-    patient.gender,
-  ]
-    .filter((v) => v != null && String(v).trim() !== '')
-    .map((v) => String(v).trim());
-
-  const right = [
-    patient.registeredAt
-      ? formatKarachiDate(patient.registeredAt)
-      : '',
-    registeredBy,
-  ]
-    .filter((v) => v != null && String(v).trim() !== '')
-    .map((v) => String(v).trim());
-
-  return { left, right };
+export function patientSlipValues(patient: ReceiptPatient, registeredBy?: string): SlipLine[] {
+  return [
+    {
+      left: present([formatSlipMRN(patient.nrNumber)]),
+      right: present([patient.registeredAt ? formatKarachiDate(patient.registeredAt) : '', registeredBy]),
+    },
+    {
+      left: present([patient.fullName]),
+      right: present([patient.gender]),
+    },
+  ];
 }
 
 /**
@@ -51,12 +53,12 @@ export function printPatientReceipt(
   hospitalName: string,
   registeredBy?: string,
 ): Promise<SlipPrintResult> {
-  const { left, right } = patientSlipValues(patient, registeredBy);
+  const lines = patientSlipValues(patient, registeredBy);
 
   return printSlips(
     'MIMS registration slip',
-    [{ lines: [{ left, right, bold: true }] }],
-    () => patientSlipHtml(left, right),
+    [{ lines: lines.map((line) => ({ ...line, bold: true })) }],
+    () => patientSlipHtml(lines),
   );
 }
 
@@ -84,7 +86,15 @@ async function printSlipHtml(html: string): Promise<SlipPrintResult> {
   return printed ? { printed: true } : { printed: false, error: 'The slip did not print.' };
 }
 
-function patientSlipHtml(leftValues: string[], rightValues: string[]): string {
+function slipLineHtml(line: SlipLine): string {
+  return `
+        <div class="line">
+          <span>${line.left.join('<span class="sep">|</span>')}</span>
+          <span>${line.right.join('<span class="sep">|</span>')}</span>
+        </div>`;
+}
+
+function patientSlipHtml(lines: SlipLine[]): string {
   return `
     <!DOCTYPE html>
     <html>
@@ -93,23 +103,19 @@ function patientSlipHtml(leftValues: string[], rightValues: string[]): string {
         <style>
           @page { size: A4; margin: 0; }
           * { box-sizing: border-box; }
-          body { font-family: Arial, sans-serif; color: #111827; padding: 15mm 15mm 15mm 22mm; margin-top: 15%; }
+          body { font-family: Arial, sans-serif; color: #000; padding: 15mm 15mm 15mm 22mm; margin-top: 15%; }
           .line {
             display: flex;
             justify-content: space-between;
             gap: 16px;
-            font-size: 14px;
+            font-size: 16px;
             font-weight: 700;
             line-height: 1.4;
           }
-          .sep { font-weight: 400; color: #6b7280; padding: 0 14px; }
+          .sep { font-weight: 700; color: #374151; padding: 0 14px; }
         </style>
       </head>
-      <body>
-        <div class="line">
-          <span>${leftValues.join('<span class="sep">|</span>')}</span>
-          <span>${rightValues.join('<span class="sep">|</span>')}</span>
-        </div>
+      <body>${lines.map(slipLineHtml).join('')}
       </body>
     </html>
   `;
@@ -234,7 +240,7 @@ function labSlipHtml(slips: LabSlipValues[]): string {
         <style>
           @page { size: A4; margin: 0; }
           * { box-sizing: border-box; }
-          body { font-family: Arial, sans-serif; color: #111827; margin: 0; }
+          body { font-family: Arial, sans-serif; color: #000; margin: 0; }
           /* Reproduces the previous single-page geometry exactly, now per slip so
              every page lands on the same spot of the pre-printed form:
              46.5mm top = the old body margin-top of 15% (31.5mm of the 210mm
@@ -247,17 +253,17 @@ function labSlipHtml(slips: LabSlipValues[]): string {
             display: flex;
             justify-content: space-between;
             gap: 16px;
-            font-size: 14px;
+            font-size: 16px;
             font-weight: 700;
             line-height: 1.4;
           }
-          .sep { font-weight: 400; color: #6b7280; padding: 0 14px; }
+          .sep { font-weight: 700; color: #374151; padding: 0 14px; }
           .test {
             display: flex;
             justify-content: space-between;
             gap: 12px;
             margin-top: 16px;
-            font-size: 14px;
+            font-size: 16px;
             font-weight: 700;
           }
         </style>

@@ -1,4 +1,4 @@
-import { formatMRN, matchesMRN } from '../mrn';
+import { formatMRN, formatSlipMRN, matchesMRN } from '../mrn';
 
 describe('formatMRN', () => {
   it('shows only the short code staff read out', () => {
@@ -43,5 +43,23 @@ describe('matchesMRN', () => {
   it('treats an empty query as a match and a missing MRN as a miss', () => {
     expect(matchesMRN(mrn, '  ')).toBe(true);
     expect(matchesMRN(undefined, '482913')).toBe(false);
+  });
+});
+
+describe('formatSlipMRN', () => {
+  it('prints the whole MRN as MR- with the date split by dashes', () => {
+    expect(formatSlipMRN('MRN-20261018-482913')).toBe('MR-2026-10-18-482913');
+  });
+
+  it('keeps a legacy per-day code with its date, which it needs to be unique', () => {
+    expect(formatSlipMRN('MRN-20260627-0001')).toBe('MR-2026-06-27-0001');
+  });
+
+  it('only re-prefixes an MRN that is not in the dated shape', () => {
+    expect(formatSlipMRN('MRN-OLD-77')).toBe('MR-OLD-77');
+  });
+
+  it('prints nothing for no MRN', () => {
+    expect(formatSlipMRN(undefined)).toBe('');
   });
 });

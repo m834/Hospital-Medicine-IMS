@@ -74,7 +74,7 @@ describe('printLabReceipt', () => {
     expect(html.match(/Ali Khan/g)).toHaveLength(2);
     expect(html.match(/Sana Iqbal/g)).toHaveLength(2);
     // The lab slip carries the whole MRN, date included, with an MR- prefix.
-    expect(html.match(/MR-20260804-482913/g)).toHaveLength(2);
+    expect(html.match(/MR-2026-08-04-482913/g)).toHaveLength(2);
     expect(html).not.toContain('MRN-');
   });
 
@@ -107,7 +107,7 @@ describe('printLabReceipt', () => {
       ),
     );
 
-    expect(html).toContain('MR-20260627-0001');
+    expect(html).toContain('MR-2026-06-27-0001');
   });
 
   // The slip is read by the patient at the counter: a test code and a
@@ -465,11 +465,11 @@ describe('printPatientReceipt', () => {
     jest.restoreAllMocks();
   });
 
-  it('sends the same values, in the same order, as the HTML slip', () => {
-    expect(patientSlipValues(registered, 'Sana Iqbal')).toEqual({
-      left: ['Ali Khan', '482913', 'MALE'],
-      right: ['16/10/2026', 'Sana Iqbal'],
-    });
+  it('prints two lines: the full MR number with date and staff, then name and gender', () => {
+    expect(patientSlipValues(registered, 'Sana Iqbal')).toEqual([
+      { left: ['MR-2026-10-16-482913'], right: ['16/10/2026', 'Sana Iqbal'] },
+      { left: ['Ali Khan'], right: ['MALE'] },
+    ]);
   });
 
   it('prints raw on a station the shell has set to escp-raw, and builds no HTML', async () => {
@@ -480,7 +480,14 @@ describe('printPatientReceipt', () => {
 
     expect(print).toHaveBeenCalledWith({
       docName: 'MIMS registration slip',
-      slips: [{ lines: [{ left: ['Ali Khan', '482913', 'MALE'], right: ['16/10/2026', 'Sana Iqbal'], bold: true }] }],
+      slips: [
+        {
+          lines: [
+            { left: ['MR-2026-10-16-482913'], right: ['16/10/2026', 'Sana Iqbal'], bold: true },
+            { left: ['Ali Khan'], right: ['MALE'], bold: true },
+          ],
+        },
+      ],
     });
     expect(appendChild).not.toHaveBeenCalled();
   });
@@ -517,8 +524,9 @@ describe('printPatientReceipt', () => {
     for (let i = 0; i < 5 && !written; i += 1) await Promise.resolve();
 
     expect(written).toContain('Ali Khan');
-    expect(written).toContain('482913');
+    expect(written).toContain('MR-2026-10-16-482913');
     expect(written).toContain('Sana Iqbal');
+    expect(written.split('class="line"').length - 1).toBe(2);
     if (print) expect(print).not.toHaveBeenCalled();
 
     // The frame never loads in jsdom, so the print gives up as not printed.
@@ -547,7 +555,7 @@ describe('printLabReceipt on a dot-matrix station', () => {
 
   it('carries the same values as the HTML slip', () => {
     expect(labSlipValues(orders[0], opts)).toEqual({
-      left: ['Ali Khan', 'MR-20260804-482913'],
+      left: ['Ali Khan', 'MR-2026-08-04-482913'],
       right: ['16/10/2026', 'Sana Iqbal'],
       test: 'Complete Blood Count',
       amount: 'Rs. 1200.00',
@@ -560,7 +568,7 @@ describe('printLabReceipt on a dot-matrix station', () => {
 
     await expect(printLabReceipt(orders, opts)).resolves.toEqual({ printed: true });
 
-    const patientLine = { left: ['Ali Khan', 'MR-20260804-482913'], right: ['16/10/2026', 'Sana Iqbal'], bold: true };
+    const patientLine = { left: ['Ali Khan', 'MR-2026-08-04-482913'], right: ['16/10/2026', 'Sana Iqbal'], bold: true };
     expect(print).toHaveBeenCalledWith({
       docName: 'MIMS lab slip',
       slips: [
