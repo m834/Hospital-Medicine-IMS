@@ -26,19 +26,19 @@ function present(values: (string | null | undefined)[]): string[] {
 
 /**
  * What the registration slip prints, on two lines: the full MR number
- * (MR-2026-10-18-482913), with the registration date and who registered on
- * the right; then the patient's name, with their gender on the right. The
- * HTML slip and the dot-matrix text slip both print exactly these.
+ * (MR-2026-10-18-482913), with who registered on the right; then the
+ * patient's name, with their gender and the registration date on the right.
+ * The HTML slip and the dot-matrix text slip both print exactly these.
  */
 export function patientSlipValues(patient: ReceiptPatient, registeredBy?: string): SlipLine[] {
   return [
     {
       left: present([formatSlipMRN(patient.nrNumber)]),
-      right: present([patient.registeredAt ? formatKarachiDate(patient.registeredAt) : '', registeredBy]),
+      right: present([registeredBy]),
     },
     {
       left: present([patient.fullName]),
-      right: present([patient.gender]),
+      right: present([patient.gender, patient.registeredAt ? formatKarachiDate(patient.registeredAt) : '']),
     },
   ];
 }
@@ -108,7 +108,7 @@ function patientSlipHtml(lines: SlipLine[]): string {
             display: flex;
             justify-content: space-between;
             gap: 16px;
-            font-size: 16px;
+            font-size: 20px;
             font-weight: 700;
             line-height: 1.4;
           }
@@ -253,7 +253,7 @@ function labSlipHtml(slips: LabSlipValues[]): string {
             display: flex;
             justify-content: space-between;
             gap: 16px;
-            font-size: 16px;
+            font-size: 20px;
             font-weight: 700;
             line-height: 1.4;
           }
@@ -263,7 +263,7 @@ function labSlipHtml(slips: LabSlipValues[]): string {
             justify-content: space-between;
             gap: 12px;
             margin-top: 16px;
-            font-size: 16px;
+            font-size: 20px;
             font-weight: 700;
           }
         </style>

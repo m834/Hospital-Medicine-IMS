@@ -465,10 +465,10 @@ describe('printPatientReceipt', () => {
     jest.restoreAllMocks();
   });
 
-  it('prints two lines: the full MR number with date and staff, then name and gender', () => {
+  it('prints two lines: the full MR number and staff, then name, gender and date', () => {
     expect(patientSlipValues(registered, 'Sana Iqbal')).toEqual([
-      { left: ['MR-2026-10-16-482913'], right: ['16/10/2026', 'Sana Iqbal'] },
-      { left: ['Ali Khan'], right: ['MALE'] },
+      { left: ['MR-2026-10-16-482913'], right: ['Sana Iqbal'] },
+      { left: ['Ali Khan'], right: ['MALE', '16/10/2026'] },
     ]);
   });
 
@@ -483,8 +483,8 @@ describe('printPatientReceipt', () => {
       slips: [
         {
           lines: [
-            { left: ['MR-2026-10-16-482913'], right: ['16/10/2026', 'Sana Iqbal'], bold: true },
-            { left: ['Ali Khan'], right: ['MALE'], bold: true },
+            { left: ['MR-2026-10-16-482913'], right: ['Sana Iqbal'], bold: true },
+            { left: ['Ali Khan'], right: ['MALE', '16/10/2026'], bold: true },
           ],
         },
       ],
