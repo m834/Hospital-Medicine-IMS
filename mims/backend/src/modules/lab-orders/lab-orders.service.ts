@@ -564,6 +564,9 @@ export class LabOrdersService {
             testCode: true,
             testName: true, 
             testCategory: true,
+            // The Test List reprints slips from these rows; without the price
+            // a reprint shows Rs. 0.00.
+            price: true,
           } 
         },
         orderedBy: { 

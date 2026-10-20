@@ -85,4 +85,12 @@ describe('LabOrdersService list scoping', () => {
 
     expect(whereOf().orderedById).toBeUndefined();
   });
+
+  // The Test List reprints slips straight from these rows.
+  it('returns each test\'s price, so a reprinted slip shows the real amount', async () => {
+    await service.findAll('hospital-1');
+
+    const include = mockPrismaService.labOrder.findMany.mock.calls[0][0].include;
+    expect(include.labTest.select.price).toBe(true);
+  });
 });
