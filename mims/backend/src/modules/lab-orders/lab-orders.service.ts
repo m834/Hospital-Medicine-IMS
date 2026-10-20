@@ -85,12 +85,13 @@ interface LabRevenueTestRow {
   total: number;
 }
 
-/** One staff member and how many tests they created in the range. */
+/** One staff member: how many tests they created in the range, and their value. */
 interface LabRevenueResourceRow {
   resourceId: string;
   resourceName: string;
   role: string | null;
   tests: number;
+  amount: number;
 }
 
 @Injectable()
@@ -1183,8 +1184,10 @@ export class LabOrdersService {
         resourceName: order.orderedBy?.fullName ?? 'Unknown user',
         role: order.orderedBy?.role ?? null,
         tests: 0,
+        amount: 0,
       };
       resource.tests += 1;
+      resource.amount = round2(resource.amount + unitPrice);
       resources.set(order.orderedById, resource);
     }
 

@@ -261,7 +261,7 @@ export default function LabReportsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Tests by Resource</CardTitle>
-          <CardDescription>Tests created by each resource in this period.</CardDescription>
+          <CardDescription>Tests created by each resource in this period, and their total amount.</CardDescription>
         </CardHeader>
         <CardContent>
           {!revenue || revenue.resources.length === 0 ? (
@@ -275,6 +275,7 @@ export default function LabReportsPage() {
                   <tr className="border-b text-xs uppercase text-muted-foreground">
                     <th className="py-2 text-left font-medium">Resource</th>
                     <th className="py-2 text-right font-medium">Tests Created</th>
+                    <th className="py-2 text-right font-medium">Total Amount</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -282,11 +283,13 @@ export default function LabReportsPage() {
                     <tr key={resource.resourceId}>
                       <td className="py-1.5">{resource.resourceName}</td>
                       <td className="py-1.5 text-right">{resource.tests}</td>
+                      <td className="py-1.5 text-right">{formatMoney(resource.amount)}</td>
                     </tr>
                   ))}
                   <tr className="border-t font-semibold">
                     <td className="py-1.5">Total</td>
                     <td className="py-1.5 text-right">{revenue.totalQuantity}</td>
+                    <td className="py-1.5 text-right">{formatMoney(revenue.grandTotal)}</td>
                   </tr>
                 </tbody>
               </table>

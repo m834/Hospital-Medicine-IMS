@@ -77,6 +77,7 @@ export function printLabRevenueReport(
         <tr>
           <td>${escapeHtml(resource.resourceName)}</td>
           <td class="num">${resource.tests}</td>
+          <td class="num">${money(resource.amount)}</td>
         </tr>`,
     )
     .join('');
@@ -177,6 +178,7 @@ export function printLabRevenueReport(
             <tr>
               <th>Resource</th>
               <th class="num">Tests Created</th>
+              <th class="num">Total Amount</th>
             </tr>
           </thead>
           <tbody>
@@ -184,6 +186,7 @@ export function printLabRevenueReport(
             <tr class="subtotal">
               <td>Total</td>
               <td class="num">${report.totalQuantity}</td>
+              <td class="num">${money(report.grandTotal)}</td>
             </tr>
           </tbody>
         </table>`

@@ -17,12 +17,13 @@ export interface LabRevenueCategoryRow {
   tests: LabRevenueTestRow[];
 }
 
-/** A staff member and how many tests they created in the range. */
+/** A staff member: how many tests they created in the range, and their value. */
 export interface LabRevenueResourceRow {
   resourceId: string;
   resourceName: string;
   role: string | null;
   tests: number;
+  amount: number;
 }
 
 export interface LabRevenueReport {

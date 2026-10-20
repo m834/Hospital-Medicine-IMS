@@ -146,7 +146,7 @@ describe('LabOrdersService.getRevenueReport', () => {
     expect(report.categories[0].category).toBe('Uncategorised');
   });
 
-  it('counts the tests each resource created, busiest first', async () => {
+  it('counts the tests each resource created and their amount, busiest first', async () => {
     mockPrismaService.labOrder.findMany.mockResolvedValue([
       order({ id: 'o1', orderedById: 'staff-1' }),
       order({
@@ -156,13 +156,16 @@ describe('LabOrdersService.getRevenueReport', () => {
       }),
       order({ id: 'o3', orderedById: 'staff-1' }),
     ]);
-    mockPrismaService.receipt.findMany.mockResolvedValue([]);
+    // o3 was charged less at the counter; the resource's amount follows the receipt.
+    mockPrismaService.receipt.findMany.mockResolvedValue([
+      receipt('o3', 30),
+    ]);
 
     const report = await service.getRevenueReport('hospital-1');
 
     expect(report.resources).toEqual([
-      { resourceId: 'staff-1', resourceName: 'Ayesha Khan', role: 'REGISTRATION_STAFF', tests: 2 },
-      { resourceId: 'staff-2', resourceName: 'Bilal Ahmed', role: 'RECEPTIONIST', tests: 1 },
+      { resourceId: 'staff-1', resourceName: 'Ayesha Khan', role: 'REGISTRATION_STAFF', tests: 2, amount: 80 },
+      { resourceId: 'staff-2', resourceName: 'Bilal Ahmed', role: 'RECEPTIONIST', tests: 1, amount: 50 },
     ]);
   });
 
