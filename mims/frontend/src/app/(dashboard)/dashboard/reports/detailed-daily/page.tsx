@@ -21,6 +21,7 @@ import { DetailedIssuanceTable } from '@/components/reports/DetailedIssuanceTabl
 import { DetailedTransferTable } from '@/components/reports/DetailedTransferTable';
 import { DetailedGRNTable } from '@/components/reports/DetailedGRNTable';
 import { MedicineConsumptionSummaryComponent } from '@/components/reports/MedicineConsumptionSummary';
+import { karachiToday } from '@/lib/karachi-date';
 
 interface Pharmacy {
   id: string;
@@ -61,7 +62,7 @@ export default function DetailedDailyReportPage() {
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
   const [selectedPharmacy, setSelectedPharmacy] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
+    karachiToday()
   );
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);

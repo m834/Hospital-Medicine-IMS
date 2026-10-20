@@ -34,6 +34,7 @@ import {
   X,
   Loader2,
 } from 'lucide-react';
+import { karachiToday } from '@/lib/karachi-date';
 
 const EXPENDITURE_TYPES = Object.entries(EXPENDITURE_TYPE_LABELS) as [ExpenditureType, string][];
 
@@ -66,7 +67,7 @@ function formatDate(dateStr: string) {
 }
 
 const emptyForm = {
-  date: new Date().toISOString().split('T')[0],
+  date: karachiToday(),
   type: '' as ExpenditureType | '',
   amount: '',
   description: '',
@@ -84,7 +85,7 @@ export default function ExpenditurePage() {
     user?.role === UserRole.HOSPITAL_ADMIN;
 
   // Selected date for totals (default today)
-  const [totalsDate, setTotalsDate] = useState(new Date().toISOString().split('T')[0]);
+  const [totalsDate, setTotalsDate] = useState(karachiToday());
 
   // Filter state for list
   const [filter, setFilter] = useState<ExpenditureFilter>({});

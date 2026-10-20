@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '@/database/prisma.service';
 import { AttendanceStatus, UserStatus } from '@prisma/client';
+import { localCalendarDay } from '../../../common/utils/local-day.util';
 
 @Injectable()
 export class AttendanceAutoAbsentService {
@@ -120,7 +121,8 @@ export class AttendanceAutoAbsentService {
     const cutoff = new Date(end.getTime() + graceMinutes * 60 * 1000);
 
     return {
-      attendanceDate: new Date(start.setHours(0, 0, 0, 0)),
+      // Manual records store the day as UTC midnight (new Date("YYYY-MM-DD")); match them.
+      attendanceDate: localCalendarDay(start),
       shouldMark: now >= cutoff,
     };
   }

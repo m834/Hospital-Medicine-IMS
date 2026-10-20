@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/database/prisma.service';
 import { TokenQueryDto } from './dto';
 import { TokenStatus } from '@prisma/client';
+import { localCalendarDay } from '../../common/utils/local-day.util';
 
 @Injectable()
 export class TokensService {
@@ -17,7 +18,7 @@ export class TokensService {
     const tokens = await this.prisma.token.findMany({
       where: {
         clinicId,
-        tokenDate: today,
+        tokenDate: localCalendarDay(today),
       },
       include: {
         visits: {
@@ -78,7 +79,7 @@ export class TokensService {
     const currentToken = await this.prisma.token.findFirst({
       where: {
         clinicId,
-        tokenDate: today,
+        tokenDate: localCalendarDay(today),
         status: { in: [TokenStatus.CALLED, TokenStatus.IN_PROGRESS] },
       },
       include: {
@@ -117,7 +118,7 @@ export class TokensService {
     return this.prisma.token.findMany({
       where: {
         clinicId,
-        tokenDate: today,
+        tokenDate: localCalendarDay(today),
         status: TokenStatus.WAITING,
       },
       include: {
@@ -197,7 +198,7 @@ export class TokensService {
     const lastToken = await this.prisma.token.findFirst({
       where: {
         clinicId,
-        tokenDate: today,
+        tokenDate: localCalendarDay(today),
       },
       orderBy: { tokenNumber: 'desc' },
     });
@@ -228,7 +229,7 @@ export class TokensService {
     const currentToken = await this.prisma.token.findFirst({
       where: {
         clinicId,
-        tokenDate: today,
+        tokenDate: localCalendarDay(today),
         status: { in: [TokenStatus.CALLED, TokenStatus.IN_PROGRESS] },
       },
       orderBy: { calledAt: 'desc' },
@@ -238,7 +239,7 @@ export class TokensService {
     const upcomingTokens = await this.prisma.token.findMany({
       where: {
         clinicId,
-        tokenDate: today,
+        tokenDate: localCalendarDay(today),
         status: TokenStatus.WAITING,
       },
       orderBy: { tokenNumber: 'asc' },

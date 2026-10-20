@@ -31,6 +31,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, CalendarClock, ClipboardList } from "lucide-react";
 import { formatMRN } from '@/lib/mrn';
+import { karachiToday } from '@/lib/karachi-date';
 
 const STATUS_OPTIONS: OperationStatus[] = [
   "SCHEDULED",
@@ -82,7 +83,7 @@ export default function OperationsPage() {
   const [patientDepartment, setPatientDepartment] = useState<{ id: string; name: string; code: string } | null>(null);
   const [roomInfo, setRoomInfo] = useState<{ id: string; roomNumber: string; roomType: string } | null>(null);
   const [bedInfo, setBedInfo] = useState<{ id: string; bedNumber: string; bedType: string } | null>(null);
-  const [availabilityDate, setAvailabilityDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [availabilityDate, setAvailabilityDate] = useState<string>(karachiToday());
   const [availabilityTheatreId, setAvailabilityTheatreId] = useState<string>("");
   const [statusForm, setStatusForm] = useState<{ status: OperationStatus; postOpNotes: string; recoveryNotes: string; followUpAt: string }>(
     { status: "SCHEDULED", postOpNotes: "", recoveryNotes: "", followUpAt: "" },

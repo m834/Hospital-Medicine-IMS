@@ -27,6 +27,7 @@ import { MedicineStockBalanceTable } from '@/components/reports/MedicineStockBal
 import { DetailedIssuanceTable } from '@/components/reports/DetailedIssuanceTable';
 import { DetailedTransferTable } from '@/components/reports/DetailedTransferTable';
 import { MedicineConsumptionSummaryComponent } from '@/components/reports/MedicineConsumptionSummary';
+import { karachiToday } from '@/lib/karachi-date';
 
 interface Pharmacy {
   id: string;
@@ -63,7 +64,7 @@ export default function SubPharmacyDashboard() {
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
   const [selectedPharmacy, setSelectedPharmacy] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
+    karachiToday()
   );
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(false);

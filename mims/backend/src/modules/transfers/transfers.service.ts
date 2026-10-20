@@ -5,6 +5,7 @@ import { CreateTransferRequestDto } from './dto/create-transfer-request.dto';
 import { SearchTransferRequestDto } from './dto/search-transfer-request.dto';
 import { TransferStatus, BatchStatus, UserRole } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
+import { localDateStamp } from '../../common/utils/local-day.util';
 
 // Roles notified on transfer activity: hospital admins + the main pharmacy manager.
 const OVERSIGHT_ROLES: UserRole[] = [UserRole.HOSPITAL_ADMIN, UserRole.MAIN_PHARMACY_MANAGER];
@@ -63,7 +64,7 @@ export class TransfersService {
 
     // Generate request number: TR-YYYYMMDD-XXXX
     const today = new Date();
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const dateStr = localDateStamp(today);
     const count = await this.prisma.transferRequest.count({
       where: {
         requestNumber: {

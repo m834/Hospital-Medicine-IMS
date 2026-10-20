@@ -60,6 +60,7 @@ import { buildSheetRows, EXPORT_COLUMNS } from '@/lib/inventory-export';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { useRouter } from 'next/navigation';
+import { karachiToday } from '@/lib/karachi-date';
 
 interface StockBatch {
   id: string;
@@ -445,7 +446,7 @@ export default function InventoryDashboardPage() {
     try {
       const cols = EXPORT_COLUMNS.filter(c => selectedColumns[c.key]);
       const wb = XLSX.utils.book_new();
-      const date = new Date().toISOString().slice(0, 10);
+      const date = karachiToday();
 
       if (exportScope === 'current') {
         const mode = activeTab === 'expired' ? 'expired' : 'active';

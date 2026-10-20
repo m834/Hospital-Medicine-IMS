@@ -20,6 +20,7 @@ import {
   PaymentStatus,
   ReceiptType,
 } from '@prisma/client';
+import { localDateStamp } from '../../common/utils/local-day.util';
 
 enum OperationPatientType {
   OPD = 'OPD',
@@ -104,7 +105,7 @@ export class OperationsService {
 
   private async generateReceiptNumber(): Promise<string> {
     const today = new Date();
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const dateStr = localDateStamp(today);
 
     const lastReceipt = await this.prisma.receipt.findFirst({
       where: {

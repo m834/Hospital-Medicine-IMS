@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@/database/prisma.service';
 import { CreateExpenditureDto, UpdateExpenditureDto, ExpenditureFilterDto } from './dto/expenditure.dto';
 import { Decimal } from '@prisma/client/runtime/library';
+import { localISODate } from '../../common/utils/local-day.util';
 
 @Injectable()
 export class ExpenditureService {
@@ -176,7 +177,7 @@ export class ExpenditureService {
     const targetDate = date ? new Date(date) : new Date();
     const year = targetDate.getFullYear();
     const month = targetDate.getMonth() + 1;
-    const dateStr = targetDate.toISOString().split('T')[0];
+    const dateStr = localISODate(targetDate);
 
     const [daily, monthly, yearly] = await Promise.all([
       this.getDailyTotal(hospitalId, dateStr),

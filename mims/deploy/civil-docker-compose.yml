@@ -49,6 +49,8 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      # Pakistan time: dates, day ranges and receipt numbers follow the hospital's clock.
+      TZ: Asia/Karachi
       PORT: 3001
       DATABASE_URL: ${DATABASE_URL}
       REDIS_HOST: civil-redis
@@ -104,6 +106,8 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      # Pakistan time: dates, day ranges and receipt numbers follow the hospital's clock.
+      TZ: Asia/Karachi
       NEXTAUTH_URL: ${FRONTEND_URL}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}

@@ -28,6 +28,7 @@ import { MedicineStockBalanceTable } from '@/components/reports/MedicineStockBal
 import { DetailedTransferTable } from '@/components/reports/DetailedTransferTable';
 import { DetailedGRNTable } from '@/components/reports/DetailedGRNTable';
 import { Badge } from '@/components/ui/badge';
+import { karachiToday } from '@/lib/karachi-date';
 
 interface Pharmacy {
   id: string;
@@ -78,7 +79,7 @@ export default function MainPharmacyDashboard() {
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
   const [selectedPharmacy, setSelectedPharmacy] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
+    karachiToday()
   );
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(false);

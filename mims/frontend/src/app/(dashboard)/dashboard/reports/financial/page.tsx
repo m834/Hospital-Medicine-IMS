@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { useFinancialDetailed, FinancialReportPeriod } from '@/hooks/use-financial-reports';
 import { DollarSign, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { karachiToday } from '@/lib/karachi-date';
 
 const periodOptions: { value: FinancialReportPeriod; label: string }[] = [
   { value: 'DAILY', label: 'Daily' },
@@ -32,7 +33,7 @@ export default function FinancialReportPage() {
   const hospitalId = selectedHospital?.id || user?.hospitalId;
 
   const [period, setPeriod] = useState<FinancialReportPeriod>('MONTHLY');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(karachiToday());
 
   const { data, isLoading } = useFinancialDetailed({
     hospitalId,

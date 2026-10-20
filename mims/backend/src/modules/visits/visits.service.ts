@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '@/database/prisma.service';
 import { CreateVisitDto, UpdateVisitDto, VisitQueryDto } from './dto';
 import { VisitStatus, PaymentStatus, TokenStatus, ReceiptType, PaymentMethod, VisitType, Prisma } from '@prisma/client';
+import { localCalendarDay, localDateStamp } from '../../common/utils/local-day.util';
 
 // Flat fee (PKR) charged when an emergency patient is registered.
 const EMERGENCY_REGISTRATION_FEE = 20;
@@ -211,7 +212,7 @@ export class VisitsService {
     const lastToken = await this.prisma.token.findFirst({
       where: {
         clinicId: clinic.id,
-        tokenDate: today,
+        tokenDate: localCalendarDay(today),
       },
       orderBy: { tokenNumber: 'desc' },
     });
@@ -223,7 +224,7 @@ export class VisitsService {
         hospitalId: clinic.hospitalId,
         clinicId: clinic.id,
         tokenNumber: nextTokenNumber,
-        tokenDate: today,
+        tokenDate: localCalendarDay(today),
         status: TokenStatus.WAITING,
       },
     });
@@ -529,7 +530,7 @@ export class VisitsService {
     const nextToken = await this.prisma.token.findFirst({
       where: {
         clinicId,
-        tokenDate: today,
+        tokenDate: localCalendarDay(today),
         status: TokenStatus.WAITING,
       },
       orderBy: { tokenNumber: 'asc' },
@@ -649,7 +650,7 @@ export class VisitsService {
    * Generate the next REC-YYYYMMDD-NNNN receipt number.
    */
   private async nextReceiptNumber(): Promise<string> {
-    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const dateStr = localDateStamp();
     const lastReceipt = await this.prisma.receipt.findFirst({
       where: { receiptNumber: { startsWith: `REC-${dateStr}` } },
       orderBy: { receiptNumber: 'desc' },
@@ -709,7 +710,7 @@ export class VisitsService {
 
     // Generate receipt number
     const today = new Date();
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const dateStr = localDateStamp(today);
     const lastReceipt = await this.prisma.receipt.findFirst({
       where: {
         receiptNumber: { startsWith: `REC-${dateStr}` },

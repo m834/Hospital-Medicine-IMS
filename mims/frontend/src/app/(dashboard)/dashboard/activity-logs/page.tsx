@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Activity, Download, Search, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { karachiToday } from '@/lib/karachi-date';
 
 const ACTION_COLORS: Record<string, string> = {
   CREATE: 'bg-green-100 text-green-800',
@@ -175,7 +176,7 @@ export default function ActivityLogsPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `activity-logs-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `activity-logs-${karachiToday()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth.store';
 import api from '@/lib/api';
+import { karachiToday } from '@/lib/karachi-date';
 
 // TypeScript interfaces
 export interface DashboardStats {
@@ -72,7 +73,7 @@ export function useAttendanceData() {
 
   // Filter state
   const [filters, setFilters] = useState<AttendanceFilters>({
-    date: new Date().toISOString().split('T')[0],
+    date: karachiToday(),
     days: 30,
     limit: 20,
   });

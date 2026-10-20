@@ -5,6 +5,7 @@ import {
 import { PrismaService } from '@/database/prisma.service';
 import { CreateReceiptDto, ReceiptQueryDto } from './dto';
 import { PaymentStatus, PaymentMethod } from '@prisma/client';
+import { localDateStamp } from '../../common/utils/local-day.util';
 
 @Injectable()
 export class ReceiptsService {
@@ -15,7 +16,7 @@ export class ReceiptsService {
    */
   private async generateReceiptNumber(): Promise<string> {
     const today = new Date();
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const dateStr = localDateStamp(today);
 
     const lastReceipt = await this.prisma.receipt.findFirst({
       where: {

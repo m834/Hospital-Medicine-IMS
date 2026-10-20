@@ -11,6 +11,7 @@ import { SearchIssuanceDto } from './dto/search-issuance.dto';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PaymentMethod, PaymentStatus, Prisma, ReceiptType } from '@prisma/client';
 import { mrnFilter } from '../../common/utils/mrn.util';
+import { localDateStamp } from '../../common/utils/local-day.util';
 
 @Injectable()
 export class IssuanceService {
@@ -255,7 +256,7 @@ export class IssuanceService {
 
   private async generateReceiptNumber(tx: Prisma.TransactionClient) {
     const today = new Date();
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const dateStr = localDateStamp(today);
 
     const lastReceipt = await tx.receipt.findFirst({
       where: { receiptNumber: { startsWith: `REC-${dateStr}` } },

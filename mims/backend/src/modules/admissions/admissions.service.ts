@@ -10,6 +10,7 @@ import { UpdateAdmissionDto } from './dto/update-admission.dto';
 import { DischargeAdmissionDto } from './dto/discharge-admission.dto';
 import { AdmissionQueryDto } from './dto/admission-query.dto';
 import { AdmissionStatus, BedStatus, RoomStatus, Prisma, ReceiptType, PaymentStatus, PaymentMethod } from '@prisma/client';
+import { localCalendarDay, localDateStamp } from '../../common/utils/local-day.util';
 
 @Injectable()
 export class AdmissionsService {
@@ -189,7 +190,7 @@ export class AdmissionsService {
       data: {
         hospitalId,
         admissionId: newAdmission.id,
-        chargeDate: new Date(),
+        chargeDate: localCalendarDay(),
         roomCharges,
         bedCharges,
         totalCharges: new Prisma.Decimal(roomCharges).plus(bedCharges),
@@ -683,7 +684,7 @@ export class AdmissionsService {
 
   private async generateReceiptNumber(tx: Prisma.TransactionClient) {
     const today = new Date();
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const dateStr = localDateStamp(today);
 
     const lastReceipt = await tx.receipt.findFirst({
       where: { receiptNumber: { startsWith: `REC-${dateStr}` } },
