@@ -1,4 +1,5 @@
 import { formatSlipMRN } from './mrn';
+import { amountInWords } from './amount-words';
 import { formatKarachiDate } from './karachi-date';
 import { hasShellSlipPrinter, printRawSlips, rawSlipPrinter, type RawSlip } from './slip-printer';
 
@@ -143,42 +144,63 @@ export interface LabReceiptOrder {
 }
 
 
-/** What one lab slip prints: the patient line, then the test line. */
+/**
+ * What one lab slip prints, one value per pre-printed row of the form. The
+ * form carries the labels; the slip prints values only.
+ */
 export interface LabSlipValues {
-  left: string[];
-  right: string[];
+  mr: string;
+  name: string;
+  sex: string;
+  category: string;
   test: string;
+  date: string;
+  /** In figures, e.g. 50.00 — the form prints the "Rs.". */
   amount: string;
+  amountWords: string;
 }
 
-/**
- * The values on one test's slip, in order: name and full MR number on the
- * left, the order date and who raised it on the right; then the test name and
- * its own amount. The HTML slip and the dot-matrix text slip print exactly these.
- */
 export function labSlipValues(
   order: LabReceiptOrder,
   opts: { patientId?: string; createdBy?: string },
 ): LabSlipValues {
   const patient = order.patient;
+  const text = (value: unknown) => String(value ?? '').trim();
+  const price = Number(order.labTest?.price || 0);
 
-  const left = [
-    patient?.fullName,
-    formatSlipMRN(patient?.nrNumber) || formatSlipMRN(opts.patientId),
-  ]
-    .filter((v) => v != null && String(v).trim() !== '')
-    .map((v) => String(v).trim());
+  return {
+    mr: formatSlipMRN(patient?.nrNumber) || formatSlipMRN(opts.patientId),
+    name: text(patient?.fullName),
+    sex: text(patient?.gender).toUpperCase(),
+    category: text(order.labTest?.testCategory).toUpperCase(),
+    test: text(order.labTest?.testName),
+    date: formatKarachiDate(order.createdAt),
+    amount: price.toFixed(2),
+    amountWords: amountInWords(price),
+  };
+}
 
-  const receiptDate = formatKarachiDate(order.createdAt);
+/** Columns the amount takes before its words start on the Total row. */
+const AMOUNT_COLUMNS = 15;
 
-  const right = [receiptDate, opts.createdBy]
-    .filter((v) => v != null && String(v).trim() !== '')
-    .map((v) => String(v).trim());
-
-  const test = String(order.labTest?.testName || '').trim();
-  const amount = `Rs. ${Number(order.labTest?.price || 0).toFixed(2)}`;
-
-  return { left, right, test, amount };
+/**
+ * The slip's rows, top to bottom, one per row of the pre-printed form, each
+ * 1/6 in below the last: MR no., Name, Sex, Address, Category, Test, Date,
+ * Total. A row with nothing to print (Address, which registration does not
+ * collect, or a test with no category) is left empty, so every row below it
+ * still lands in its own box.
+ */
+export function labSlipRows(slip: LabSlipValues): string[] {
+  return [
+    slip.mr,
+    slip.name,
+    slip.sex,
+    '', // Address
+    slip.category,
+    slip.test,
+    slip.date,
+    `${slip.amount.padEnd(AMOUNT_COLUMNS)}${slip.amountWords}`,
+  ];
 }
 
 /**
@@ -197,37 +219,31 @@ export function printLabReceipt(
     return Promise.resolve({ printed: false, error: 'There is no lab slip to print.' });
   }
 
-  const slips = orders.map((order) => labSlipValues(order, opts));
+  const slips = orders.map((order) => labSlipRows(labSlipValues(order, opts)));
 
   return printSlips(
     'MIMS lab slip',
-    slips.map((slip) => ({
-      lines: [
-        { left: slip.left, right: slip.right, bold: true },
-        {},
-        { left: [slip.test], right: [slip.amount], bold: true },
-      ],
+    slips.map((rows) => ({
+      lines: rows.map((row) => (row ? { left: [row], right: [], bold: true } : {})),
     })),
     () => labSlipHtml(slips),
   );
 }
 
-function labSlipHtml(slips: LabSlipValues[]): string {
+const escapeHtml = (value: string) =>
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function labSlipHtml(slips: string[][]): string {
   const pages = slips
-    .map((slip, i) => {
+    .map((rows, i) => {
       // The final slip must not break, or the printer ejects a blank page.
       const isLast = i === slips.length - 1;
 
       return `
-        <div class="slip${isLast ? '' : ' break'}">
-          <div class="line">
-            <span>${slip.left.join('<span class="sep">|</span>')}</span>
-            <span>${slip.right.join('<span class="sep">|</span>')}</span>
-          </div>
-          <div class="test">
-            <span>${slip.test}</span>
-            <span>${slip.amount}</span>
-          </div>
+        <div class="slip${isLast ? '' : ' break'}">${rows
+          .map((row) => `
+          <div class="row">${escapeHtml(row)}</div>`)
+          .join('')}
         </div>`;
     })
     .join('');
@@ -241,30 +257,16 @@ function labSlipHtml(slips: LabSlipValues[]): string {
           @page { size: A4; margin: 0; }
           * { box-sizing: border-box; }
           body { font-family: Arial, sans-serif; color: #000; margin: 0; }
-          /* Reproduces the previous single-page geometry exactly, now per slip so
-             every page lands on the same spot of the pre-printed form:
-             46.5mm top = the old body margin-top of 15% (31.5mm of the 210mm
-             page) plus its 15mm padding, and the 8px is the default body margin
-             the old slip also printed with. Verified against the old layout in a
-             browser — same landing point to within 0.01mm. */
+          /* Same landing point as before: 46.5mm top, 22mm + 8px left. */
           .slip { padding: 46.5mm calc(15mm + 8px) 15mm calc(22mm + 8px); }
           .break { page-break-after: always; }
-          .line {
-            display: flex;
-            justify-content: space-between;
-            gap: 16px;
-            font-size: 20px;
+          /* One row of the form each, 1/6 in apart — the dot-matrix pitch. */
+          .row {
+            height: calc(1in / 6);
+            line-height: calc(1in / 6);
+            font-size: 15px;
             font-weight: 700;
-            line-height: 1.4;
-          }
-          .sep { font-weight: 700; color: #374151; padding: 0 14px; }
-          .test {
-            display: flex;
-            justify-content: space-between;
-            gap: 12px;
-            margin-top: 16px;
-            font-size: 20px;
-            font-weight: 700;
+            white-space: pre;
           }
         </style>
       </head>

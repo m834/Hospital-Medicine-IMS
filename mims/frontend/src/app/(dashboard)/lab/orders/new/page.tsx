@@ -36,10 +36,11 @@ import { SlipPrintNotice } from "@/components/lab/slip-print-notice";
 import { QuickOpdRegistration } from "@/components/lab/quick-opd-registration";
 import { UserRole } from "@/lib/constants";
 import { DateInput } from "@/components/ui/date-input";
-import { formatKarachiDate, karachiToday } from "@/lib/karachi-date";
+import { karachiToday } from "@/lib/karachi-date";
 import type { LabTest } from "@/hooks/use-lab-tests";
 import type { LabOrder } from "@/hooks/use-lab-orders";
-import { formatMRN, formatSlipMRN } from '@/lib/mrn';
+import { formatMRN } from '@/lib/mrn';
+import { labSlipRows, labSlipValues } from '@/lib/print-receipt';
 
 interface Patient {
   id: string;
@@ -82,8 +83,8 @@ const todayISO = () => karachiToday();
 
 /**
  * On-screen twin of the printed slip: one block per test, each block being one
- * A4 page on the pre-printed lab form. Kept deliberately identical to
- * printLabReceipt so the preview cannot drift from what comes out of the tray.
+ * pre-printed lab form. Built from the same rows printLabReceipt prints, so the
+ * preview cannot drift from what comes out of the tray.
  */
 function LabSlip({
   orders,
@@ -97,55 +98,18 @@ function LabSlip({
   return (
     <div className="divide-y">
       {orders.map((order, index) => {
-        const patient = order.patient;
-
-        // Whole MRN as MR-20260804-482913 — kept in step with printLabReceipt.
-        const leftValues = [
-          patient?.fullName,
-          formatSlipMRN(patient?.nrNumber) || formatSlipMRN(patientId),
-        ].filter((v) => v != null && String(v).trim() !== "");
-
-        // The receipt's own date in Karachi time — kept in step with
-        // printLabReceipt, which is what actually prints.
-        const receiptDate = formatKarachiDate(order.createdAt);
-
-        const rightValues = [receiptDate, createdByName].filter(
-          (v) => v != null && String(v).trim() !== ""
-        );
-
-        // Test name only, and the billing date rather than a reference string —
-        // kept in step with printLabReceipt, which is what actually prints.
-        const test = String(order.labTest?.testName || "").trim();
-
-
+        const rows = labSlipRows(labSlipValues(order, { patientId, createdBy: createdByName }));
 
         return (
           <div key={order.id} className="p-6 font-sans text-black">
             <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">
               Page {index + 1} of {orders.length}
             </p>
-            <div className="flex justify-between gap-4 text-sm font-bold leading-relaxed">
-              <span>
-                {leftValues.map((value, i) => (
-                  <span key={i}>
-                    {i > 0 && <span className="px-1.5 font-normal text-gray-500">|</span>}
-                    {value}
-                  </span>
-                ))}
-              </span>
-              <span>
-                {rightValues.map((value, i) => (
-                  <span key={i}>
-                    {i > 0 && <span className="px-1.5 font-normal text-gray-500">|</span>}
-                    {value}
-                  </span>
-                ))}
-              </span>
-            </div>
-            <div className="mt-4 flex justify-between gap-3 text-sm font-bold">
-              <span>{test}</span>
-              <span>Rs. {Number(order.labTest?.price || 0).toFixed(2)}</span>
-            </div>
+            {rows.map((row, i) => (
+              <div key={i} className="h-5 whitespace-pre font-mono text-sm font-bold leading-5">
+                {row}
+              </div>
+            ))}
           </div>
         );
       })}

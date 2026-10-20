@@ -4,6 +4,7 @@ import {
   patientSlipValues,
   printReceiptHtml,
   labSlipValues,
+  labSlipRows,
   LabReceiptOrder,
 } from '../print-receipt';
 
@@ -27,11 +28,11 @@ function capturePrintedHtml(run: () => void): string {
   return written;
 }
 
-const patient = { nrNumber: 'MRN-20260804-482913', fullName: 'Ali Khan' };
+const patient = { nrNumber: 'MRN-20260804-482913', fullName: 'Ali Khan', gender: 'MALE' };
 
-const order = (testCode: string, testName: string, price: number): LabReceiptOrder => ({
+const order = (testCode: string, testName: string, price: number, testCategory = 'Hematology'): LabReceiptOrder => ({
   orderNumber: `LAB-${testCode}`,
-  labTest: { testCode, testName, price },
+  labTest: { testCode, testName, testCategory, price },
   patient,
 });
 
@@ -66,27 +67,30 @@ describe('printLabReceipt', () => {
     expect(html.match(/class="slip"/g)).toHaveLength(1);
   });
 
-  it('repeats the patient, MR, creator and date on every slip', () => {
+  it('repeats the patient, MR and sex on every slip, and not the staff name', () => {
     const html = capturePrintedHtml(() =>
       printLabReceipt([order('CBC', 'Complete Blood Count', 300), order('LFT', 'Liver Function Test', 450)], opts),
     );
 
     expect(html.match(/Ali Khan/g)).toHaveLength(2);
-    expect(html.match(/Sana Iqbal/g)).toHaveLength(2);
+    expect(html.match(/>MALE</g)).toHaveLength(2);
+    // The form has no box for who raised the order.
+    expect(html).not.toContain('Sana Iqbal');
     // The lab slip carries the whole MRN, date included, with an MR- prefix.
     expect(html.match(/MR-2026-08-04-482913/g)).toHaveLength(2);
     expect(html).not.toContain('MRN-');
   });
 
-  it('carries each test’s own amount and no combined total', () => {
+  it('carries each test’s own amount, in figures and words, and no combined total', () => {
     const html = capturePrintedHtml(() =>
       printLabReceipt([order('CBC', 'Complete Blood Count', 300), order('LFT', 'Liver Function Test', 450)], opts),
     );
 
-    expect(html).toContain('Rs. 300.00');
-    expect(html).toContain('Rs. 450.00');
+    expect(html).toContain('300.00         Three Hundred Rupees Only');
+    expect(html).toContain('450.00         Four Hundred Fifty Rupees Only');
     expect(html).not.toContain('750');
-    expect(html).not.toMatch(/Total/i);
+    // The form prints "Total Rs."; the slip prints the values only.
+    expect(html).not.toMatch(/Total|Rs\./i);
   });
 
   it('prints values only — no field labels', () => {
@@ -135,18 +139,16 @@ describe('printLabReceipt', () => {
     expect(html).not.toContain('12389E');
   });
 
-  // The date prints once, in the header; the test line is the name and price.
-  it('prints the test name with no date beside it', () => {
+  it('prints the category above the test name, and the date once on its own row', () => {
     const html = capturePrintedHtml(() =>
       printLabReceipt(
-        [{ ...order('CT', 'CT SCAN', 4500), createdAt: '2026-09-25T09:15:00' }],
+        [{ ...order('ECG', 'ECG', 500, 'Cardiac'), createdAt: '2026-09-25T09:15:00' }],
         opts,
       ),
     );
 
-    const testLine = html.split('class="test"')[1];
-    expect(testLine).toContain('CT SCAN');
-    expect(testLine).not.toMatch(/\d{2}\/\d{2}\/\d{4}/);
+    const rows = html.split('class="row">').slice(1).map((row) => row.split('<')[0]);
+    expect(rows.slice(4, 7)).toEqual(['CARDIAC', 'ECG', '25/09/2026']);
     expect(html.match(/25\/09\/2026/g)).toHaveLength(1);
   });
 
@@ -172,10 +174,10 @@ describe('printLabReceipt', () => {
       printLabReceipt([order('CBC', 'Complete Blood Count', 300)], opts),
     );
 
-    expect(html.split('class="line"')[1]).toContain(new Date().toLocaleDateString('en-GB'));
+    expect(html).toContain(new Date().toLocaleDateString('en-GB'));
   });
 
-  it('gives every test in a multi-test order its own line', () => {
+  it('gives every test in a multi-test order its own slip', () => {
     const html = capturePrintedHtml(() =>
       printLabReceipt(
         [
@@ -186,10 +188,10 @@ describe('printLabReceipt', () => {
       ),
     );
 
-    const testLines = html.split('class="test"').slice(1);
-    expect(testLines).toHaveLength(2);
-    expect(testLines[0]).toContain('CT SCAN');
-    expect(testLines[1]).toContain('X-RAY CHEST');
+    const slips = html.split('class="slip').slice(1);
+    expect(slips).toHaveLength(2);
+    expect(slips[0]).toContain('CT SCAN');
+    expect(slips[1]).toContain('X-RAY CHEST');
   });
 
   // The slip drops into a slot on pre-printed paper, so the geometry must not
@@ -553,27 +555,53 @@ describe('printLabReceipt on a dot-matrix station', () => {
     jest.restoreAllMocks();
   });
 
-  it('carries the same values as the HTML slip', () => {
-    expect(labSlipValues(orders[0], opts)).toEqual({
-      left: ['Ali Khan', 'MR-2026-08-04-482913'],
-      right: ['16/10/2026', 'Sana Iqbal'],
-      test: 'Complete Blood Count',
-      amount: 'Rs. 1200.00',
-    });
+  it('prints one value per row of the form: MR, name, sex, address, category, test, date, total', () => {
+    expect(labSlipRows(labSlipValues(orders[0], opts))).toEqual([
+      'MR-2026-08-04-482913',
+      'Ali Khan',
+      'MALE',
+      '',
+      'HEMATOLOGY',
+      'Complete Blood Count',
+      '16/10/2026',
+      '1200.00        One Thousand Two Hundred Rupees Only',
+    ]);
   });
 
-  it('sends one raw slip per test — patient line, a blank line, the test line — and no HTML', async () => {
+  it('leaves the category row empty when the test has none, so the rows below stay in their boxes', () => {
+    const rows = labSlipRows(labSlipValues(order('X', 'Sugar Random', 20, ''), opts));
+    expect(rows).toHaveLength(8);
+    expect(rows[4]).toBe('');
+    expect(rows[5]).toBe('Sugar Random');
+  });
+
+  it('sends one raw slip per test, an empty row as a blank line, and no HTML', async () => {
     const print = shellWith('escp-raw', jest.fn().mockResolvedValue({ ok: true, jobId: 3 }));
     const appendChild = jest.spyOn(document.body, 'appendChild');
 
     await expect(printLabReceipt(orders, opts)).resolves.toEqual({ printed: true });
 
-    const patientLine = { left: ['Ali Khan', 'MR-2026-08-04-482913'], right: ['16/10/2026', 'Sana Iqbal'], bold: true };
+    const row = (text: string) => ({ left: [text], right: [], bold: true });
+    const head = [row('MR-2026-08-04-482913'), row('Ali Khan'), row('MALE'), {}, row('HEMATOLOGY')];
     expect(print).toHaveBeenCalledWith({
       docName: 'MIMS lab slip',
       slips: [
-        { lines: [patientLine, {}, { left: ['Complete Blood Count'], right: ['Rs. 1200.00'], bold: true }] },
-        { lines: [patientLine, {}, { left: ['Liver Function Test'], right: ['Rs. 850.50'], bold: true }] },
+        {
+          lines: [
+            ...head,
+            row('Complete Blood Count'),
+            row('16/10/2026'),
+            row('1200.00        One Thousand Two Hundred Rupees Only'),
+          ],
+        },
+        {
+          lines: [
+            ...head,
+            row('Liver Function Test'),
+            row('16/10/2026'),
+            row('850.50         Eight Hundred Fifty Rupees and Fifty Paisa Only'),
+          ],
+        },
       ],
     });
     expect(appendChild).not.toHaveBeenCalled();

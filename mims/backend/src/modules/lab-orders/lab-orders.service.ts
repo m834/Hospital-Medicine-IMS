@@ -56,7 +56,8 @@ const LAB_ORDER_DELETE_ROLES = new Set<string>(['SUPER_ADMIN']);
 /** What a newly booked order comes back with — enough to print its slip. */
 const LAB_ORDER_CREATED_INCLUDE = {
   hospital: { select: { id: true, name: true } },
-  patient: { select: { id: true, nrNumber: true, fullName: true, mobile: true } },
+  // gender: the slip prints the patient's sex.
+  patient: { select: { id: true, nrNumber: true, fullName: true, gender: true, mobile: true } },
   visit: { select: { id: true, tokenNumber: true } },
   labTest: {
     select: {
@@ -234,6 +235,7 @@ export class LabOrdersService {
               id: true,
               nrNumber: true,
               fullName: true,
+              gender: true, // the slip prints the patient's sex
               mobile: true,
             },
           },
@@ -557,6 +559,7 @@ export class LabOrdersService {
             id: true, 
             nrNumber: true, 
             fullName: true,
+            gender: true, // printed on a reprinted slip
           } 
         },
         labTest: { 
