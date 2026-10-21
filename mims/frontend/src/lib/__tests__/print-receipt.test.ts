@@ -3,8 +3,7 @@ import {
   printPatientReceipt,
   patientSlipValues,
   printReceiptHtml,
-  labSlipValues,
-  labSlipRows,
+  labSlipLines,
   LabReceiptOrder,
 } from '../print-receipt';
 
@@ -67,30 +66,26 @@ describe('printLabReceipt', () => {
     expect(html.match(/class="slip"/g)).toHaveLength(1);
   });
 
-  it('repeats the patient, MR and sex on every slip, and not the staff name', () => {
+  it('repeats the MR, patient and staff name on every slip', () => {
     const html = capturePrintedHtml(() =>
       printLabReceipt([order('CBC', 'Complete Blood Count', 300), order('LFT', 'Liver Function Test', 450)], opts),
     );
 
     expect(html.match(/Ali Khan/g)).toHaveLength(2);
-    expect(html.match(/>MALE</g)).toHaveLength(2);
-    // The form has no box for who raised the order.
-    expect(html).not.toContain('Sana Iqbal');
+    expect(html.match(/Sana Iqbal/g)).toHaveLength(2);
     // The lab slip carries the whole MRN, date included, with an MR- prefix.
     expect(html.match(/MR-2026-08-04-482913/g)).toHaveLength(2);
     expect(html).not.toContain('MRN-');
   });
 
-  it('carries each test’s own amount, in figures and words, and no combined total', () => {
+  it('carries each test’s own amount, and no combined total', () => {
     const html = capturePrintedHtml(() =>
       printLabReceipt([order('CBC', 'Complete Blood Count', 300), order('LFT', 'Liver Function Test', 450)], opts),
     );
 
-    expect(html).toContain('300.00         Three Hundred Rupees Only');
-    expect(html).toContain('450.00         Four Hundred Fifty Rupees Only');
+    expect(html).toContain('Rs. 300.00');
+    expect(html).toContain('Rs. 450.00');
     expect(html).not.toContain('750');
-    // The form prints "Total Rs."; the slip prints the values only.
-    expect(html).not.toMatch(/Total|Rs\./i);
   });
 
   it('prints values only — no field labels', () => {
@@ -139,7 +134,7 @@ describe('printLabReceipt', () => {
     expect(html).not.toContain('12389E');
   });
 
-  it('prints the category above the test name, and the date once on its own row', () => {
+  it('prints three lines: MR, name, gender and date, category with the staff, test with its price', () => {
     const html = capturePrintedHtml(() =>
       printLabReceipt(
         [{ ...order('ECG', 'ECG', 500, 'Cardiac'), createdAt: '2026-09-25T09:15:00' }],
@@ -147,8 +142,12 @@ describe('printLabReceipt', () => {
       ),
     );
 
-    const rows = html.split('class="row">').slice(1).map((row) => row.split('<')[0]);
-    expect(rows.slice(4, 7)).toEqual(['CARDIAC', 'ECG', '25/09/2026']);
+    expect(html.match(/class="line"/g)).toHaveLength(3);
+    // Each value its own span, spread across the line with equal gaps.
+    expect(html).toContain('<span>MR-2026-08-04-482913</span><span>Ali Khan</span><span>MALE</span><span>25/09/2026</span>');
+    expect(html).toContain('<span>CARDIAC</span><span>Sana Iqbal</span>');
+    expect(html).toContain('<span>ECG</span><span>Rs. 500.00</span>');
+    expect(html).toContain('justify-content: space-between');
     expect(html.match(/25\/09\/2026/g)).toHaveLength(1);
   });
 
@@ -555,53 +554,35 @@ describe('printLabReceipt on a dot-matrix station', () => {
     jest.restoreAllMocks();
   });
 
-  it('prints one value per row of the form: MR, name, sex, address, category, test, date, total', () => {
-    expect(labSlipRows(labSlipValues(orders[0], opts))).toEqual([
-      'MR-2026-08-04-482913',
-      'Ali Khan',
-      'MALE',
-      '',
-      'HEMATOLOGY',
-      'Complete Blood Count',
-      '16/10/2026',
-      '1200.00        One Thousand Two Hundred Rupees Only',
+  it('prints MR, name, gender and date, then category and staff, then test and price', () => {
+    expect(labSlipLines(orders[0], opts)).toEqual([
+      { left: ['MR-2026-08-04-482913', 'Ali Khan'], right: ['MALE', '16/10/2026'] },
+      { left: ['HEMATOLOGY'], right: ['Sana Iqbal'] },
+      { left: ['Complete Blood Count'], right: ['Rs. 1200.00'] },
     ]);
   });
 
-  it('leaves the category row empty when the test has none, so the rows below stay in their boxes', () => {
-    const rows = labSlipRows(labSlipValues(order('X', 'Sugar Random', 20, ''), opts));
-    expect(rows).toHaveLength(8);
-    expect(rows[4]).toBe('');
-    expect(rows[5]).toBe('Sugar Random');
+  it('leaves the category side empty when the test has none', () => {
+    const lines = labSlipLines(order('X', 'Sugar Random', 20, ''), opts);
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toEqual({ left: [], right: ['Sana Iqbal'] });
   });
 
-  it('sends one raw slip per test, an empty row as a blank line, and no HTML', async () => {
+  it('sends one raw slip per test and no HTML', async () => {
     const print = shellWith('escp-raw', jest.fn().mockResolvedValue({ ok: true, jobId: 3 }));
     const appendChild = jest.spyOn(document.body, 'appendChild');
 
     await expect(printLabReceipt(orders, opts)).resolves.toEqual({ printed: true });
 
-    const row = (text: string) => ({ left: [text], right: [], bold: true });
-    const head = [row('MR-2026-08-04-482913'), row('Ali Khan'), row('MALE'), {}, row('HEMATOLOGY')];
+    const head = [
+      { left: ['MR-2026-08-04-482913', 'Ali Khan'], right: ['MALE', '16/10/2026'], bold: true },
+      { left: ['HEMATOLOGY'], right: ['Sana Iqbal'], bold: true },
+    ];
     expect(print).toHaveBeenCalledWith({
       docName: 'MIMS lab slip',
       slips: [
-        {
-          lines: [
-            ...head,
-            row('Complete Blood Count'),
-            row('16/10/2026'),
-            row('1200.00        One Thousand Two Hundred Rupees Only'),
-          ],
-        },
-        {
-          lines: [
-            ...head,
-            row('Liver Function Test'),
-            row('16/10/2026'),
-            row('850.50         Eight Hundred Fifty Rupees and Fifty Paisa Only'),
-          ],
-        },
+        { lines: [...head, { left: ['Complete Blood Count'], right: ['Rs. 1200.00'], bold: true }] },
+        { lines: [...head, { left: ['Liver Function Test'], right: ['Rs. 850.50'], bold: true }] },
       ],
     });
     expect(appendChild).not.toHaveBeenCalled();

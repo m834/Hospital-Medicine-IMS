@@ -1,5 +1,4 @@
 import { formatSlipMRN } from './mrn';
-import { amountInWords } from './amount-words';
 import { formatKarachiDate } from './karachi-date';
 import { hasShellSlipPrinter, printRawSlips, rawSlipPrinter, type RawSlip } from './slip-printer';
 
@@ -145,61 +144,32 @@ export interface LabReceiptOrder {
 
 
 /**
- * What one lab slip prints, one value per pre-printed row of the form. The
- * form carries the labels; the slip prints values only.
+ * What one lab slip prints, on three lines: the full MR number, the patient's
+ * name, their gender and the order date; then the test's category, with who
+ * raised the order on the right; then the test name, with its own amount on
+ * the right. The HTML slip spreads each line's values across the width with
+ * equal gaps; the dot-matrix text slip prints left and right as given.
  */
-export interface LabSlipValues {
-  mr: string;
-  name: string;
-  sex: string;
-  category: string;
-  test: string;
-  date: string;
-  /** In figures, e.g. 50.00 — the form prints the "Rs.". */
-  amount: string;
-  amountWords: string;
-}
-
-export function labSlipValues(
+export function labSlipLines(
   order: LabReceiptOrder,
   opts: { patientId?: string; createdBy?: string },
-): LabSlipValues {
+): SlipLine[] {
   const patient = order.patient;
-  const text = (value: unknown) => String(value ?? '').trim();
   const price = Number(order.labTest?.price || 0);
 
-  return {
-    mr: formatSlipMRN(patient?.nrNumber) || formatSlipMRN(opts.patientId),
-    name: text(patient?.fullName),
-    sex: text(patient?.gender).toUpperCase(),
-    category: text(order.labTest?.testCategory).toUpperCase(),
-    test: text(order.labTest?.testName),
-    date: formatKarachiDate(order.createdAt),
-    amount: price.toFixed(2),
-    amountWords: amountInWords(price),
-  };
-}
-
-/** Columns the amount takes before its words start on the Total row. */
-const AMOUNT_COLUMNS = 15;
-
-/**
- * The slip's rows, top to bottom, one per row of the pre-printed form, each
- * 1/6 in below the last: MR no., Name, Sex, Address, Category, Test, Date,
- * Total. A row with nothing to print (Address, which registration does not
- * collect, or a test with no category) is left empty, so every row below it
- * still lands in its own box.
- */
-export function labSlipRows(slip: LabSlipValues): string[] {
   return [
-    slip.mr,
-    slip.name,
-    slip.sex,
-    '', // Address
-    slip.category,
-    slip.test,
-    slip.date,
-    `${slip.amount.padEnd(AMOUNT_COLUMNS)}${slip.amountWords}`,
+    {
+      left: present([formatSlipMRN(patient?.nrNumber) || formatSlipMRN(opts.patientId), patient?.fullName]),
+      right: present([String(patient?.gender ?? '').toUpperCase(), formatKarachiDate(order.createdAt)]),
+    },
+    {
+      left: present([String(order.labTest?.testCategory ?? '').toUpperCase()]),
+      right: present([opts.createdBy]),
+    },
+    {
+      left: present([order.labTest?.testName]),
+      right: [`Rs. ${price.toFixed(2)}`],
+    },
   ];
 }
 
@@ -219,13 +189,11 @@ export function printLabReceipt(
     return Promise.resolve({ printed: false, error: 'There is no lab slip to print.' });
   }
 
-  const slips = orders.map((order) => labSlipRows(labSlipValues(order, opts)));
+  const slips = orders.map((order) => labSlipLines(order, opts));
 
   return printSlips(
     'MIMS lab slip',
-    slips.map((rows) => ({
-      lines: rows.map((row) => (row ? { left: [row], right: [], bold: true } : {})),
-    })),
+    slips.map((lines) => ({ lines: lines.map((line) => ({ ...line, bold: true })) })),
     () => labSlipHtml(slips),
   );
 }
@@ -233,17 +201,20 @@ export function printLabReceipt(
 const escapeHtml = (value: string) =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-function labSlipHtml(slips: string[][]): string {
+function labSlipHtml(slips: SlipLine[][]): string {
+  // Every value its own span, so space-between leaves equal gaps between them.
+  const lineHtml = (line: SlipLine) => `
+          <div class="line">${[...line.left, ...line.right]
+            .map((value) => `<span>${escapeHtml(value)}</span>`)
+            .join('')}</div>`;
+
   const pages = slips
-    .map((rows, i) => {
+    .map((lines, i) => {
       // The final slip must not break, or the printer ejects a blank page.
       const isLast = i === slips.length - 1;
 
       return `
-        <div class="slip${isLast ? '' : ' break'}">${rows
-          .map((row) => `
-          <div class="row">${escapeHtml(row)}</div>`)
-          .join('')}
+        <div class="slip${isLast ? '' : ' break'}">${lines.map(lineHtml).join('')}
         </div>`;
     })
     .join('');
@@ -260,13 +231,13 @@ function labSlipHtml(slips: string[][]): string {
           /* Same landing point as before: 46.5mm top, 22mm + 8px left. */
           .slip { padding: 46.5mm calc(15mm + 8px) 15mm calc(22mm + 8px); }
           .break { page-break-after: always; }
-          /* One row of the form each, 1/6 in apart — the dot-matrix pitch. */
-          .row {
-            height: calc(1in / 6);
-            line-height: calc(1in / 6);
-            font-size: 15px;
+          .line {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            font-size: 20px;
             font-weight: 700;
-            white-space: pre;
+            line-height: 1.4;
           }
         </style>
       </head>

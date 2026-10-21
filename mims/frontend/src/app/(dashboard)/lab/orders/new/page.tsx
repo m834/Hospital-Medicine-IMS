@@ -40,7 +40,7 @@ import { karachiToday } from "@/lib/karachi-date";
 import type { LabTest } from "@/hooks/use-lab-tests";
 import type { LabOrder } from "@/hooks/use-lab-orders";
 import { formatMRN } from '@/lib/mrn';
-import { labSlipRows, labSlipValues } from '@/lib/print-receipt';
+import { labSlipLines } from '@/lib/print-receipt';
 
 interface Patient {
   id: string;
@@ -83,7 +83,7 @@ const todayISO = () => karachiToday();
 
 /**
  * On-screen twin of the printed slip: one block per test, each block being one
- * pre-printed lab form. Built from the same rows printLabReceipt prints, so the
+ * pre-printed lab form. Built from the same lines printLabReceipt prints, so the
  * preview cannot drift from what comes out of the tray.
  */
 function LabSlip({
@@ -98,16 +98,18 @@ function LabSlip({
   return (
     <div className="divide-y">
       {orders.map((order, index) => {
-        const rows = labSlipRows(labSlipValues(order, { patientId, createdBy: createdByName }));
+        const lines = labSlipLines(order, { patientId, createdBy: createdByName });
 
         return (
           <div key={order.id} className="p-6 font-sans text-black">
             <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">
               Page {index + 1} of {orders.length}
             </p>
-            {rows.map((row, i) => (
-              <div key={i} className="h-5 whitespace-pre font-mono text-sm font-bold leading-5">
-                {row}
+            {lines.map((line, i) => (
+              <div key={i} className="flex justify-between gap-4 text-sm font-bold leading-6">
+                {[...line.left, ...line.right].map((value, j) => (
+                  <span key={j}>{value}</span>
+                ))}
               </div>
             ))}
           </div>
