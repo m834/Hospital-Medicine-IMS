@@ -98,20 +98,28 @@ function LabSlip({
   return (
     <div className="divide-y">
       {orders.map((order, index) => {
-        const lines = labSlipLines(order, { patientId, createdBy: createdByName });
+        const [head, middle, test] = labSlipLines(order, { patientId, createdBy: createdByName });
 
         return (
           <div key={order.id} className="p-6 font-sans text-black">
             <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">
               Page {index + 1} of {orders.length}
             </p>
-            {lines.map((line, i) => (
-              <div key={i} className="flex justify-between gap-4 text-sm font-bold leading-6">
-                {[...line.left, ...line.right].map((value, j) => (
-                  <span key={j}>{value}</span>
-                ))}
-              </div>
-            ))}
+            <div className="grid grid-cols-[2fr_1fr_auto] items-baseline gap-4 text-sm font-bold leading-6">
+              <span className="text-[21px]">{head.left[0]}</span>
+              <span>{head.left[1]}</span>
+              <span className="text-right">{head.right[0]}</span>
+            </div>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-4 text-sm font-bold leading-6">
+              <span />
+              <span>{middle.left[0]}</span>
+              <span className="text-right">{middle.right[0]}</span>
+            </div>
+            <div className="flex justify-between gap-4 text-sm font-bold leading-6">
+              {[...test.left, ...test.right].map((value, j) => (
+                <span key={j}>{value}</span>
+              ))}
+            </div>
           </div>
         );
       })}

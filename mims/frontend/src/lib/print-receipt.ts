@@ -145,10 +145,10 @@ export interface LabReceiptOrder {
 
 /**
  * What one lab slip prints, on three lines: the full MR number, the patient's
- * name, their gender and the order date; then the test's category, with who
- * raised the order on the right; then the test name, with its own amount on
- * the right. The HTML slip spreads each line's values across the width with
- * equal gaps; the dot-matrix text slip prints left and right as given.
+ * name and the order date; then the test's category, with who raised the
+ * order on the right; then the test name, with its own amount on the right.
+ * The HTML slip lays these out in columns (see labSlipHtml); the dot-matrix
+ * text slip prints left and right as given.
  */
 export function labSlipLines(
   order: LabReceiptOrder,
@@ -160,11 +160,11 @@ export function labSlipLines(
   return [
     {
       left: present([formatSlipMRN(patient?.nrNumber) || formatSlipMRN(opts.patientId), patient?.fullName]),
-      right: present([String(patient?.gender ?? '').toUpperCase(), formatKarachiDate(order.createdAt)]),
+      right: present([formatKarachiDate(order.createdAt)]),
     },
     {
       left: present([String(order.labTest?.testCategory ?? '').toUpperCase()]),
-      right: present([opts.createdBy]),
+      right: present([opts.createdBy ? `Created By: ${opts.createdBy}` : '']),
     },
     {
       left: present([order.labTest?.testName]),
@@ -202,11 +202,16 @@ const escapeHtml = (value: string) =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 function labSlipHtml(slips: SlipLine[][]): string {
-  // Every value its own span, so space-between leaves equal gaps between them.
-  const lineHtml = (line: SlipLine) => `
-          <div class="line">${[...line.left, ...line.right]
-            .map((value) => `<span>${escapeHtml(value)}</span>`)
-            .join('')}</div>`;
+  const cell = (value = '') => `<span>${escapeHtml(value)}</span>`;
+
+  // Line 1: MR (twice Name's width) | Name | Date (as wide as the date).
+  // Line 2: an empty cell as wide as the right one, so the category sits in
+  // the middle of the slip, not the middle of what is left; then Created By
+  // flush right. Line 3: test name and amount, flush left and right.
+  const linesHtml = ([head, middle, test]: SlipLine[]) => `
+          <div class="head">${cell(head.left[0])}${cell(head.left[1])}${cell(head.right[0])}</div>
+          <div class="middle">${cell()}${cell(middle.left[0])}${cell(middle.right[0])}</div>
+          <div class="line">${[...test.left, ...test.right].map((value) => cell(value)).join('')}</div>`;
 
   const pages = slips
     .map((lines, i) => {
@@ -214,7 +219,7 @@ function labSlipHtml(slips: SlipLine[][]): string {
       const isLast = i === slips.length - 1;
 
       return `
-        <div class="slip${isLast ? '' : ' break'}">${lines.map(lineHtml).join('')}
+        <div class="slip${isLast ? '' : ' break'}">${linesHtml(lines)}
         </div>`;
     })
     .join('');
@@ -231,14 +236,18 @@ function labSlipHtml(slips: SlipLine[][]): string {
           /* Same landing point as before: 46.5mm top, 22mm + 8px left. */
           .slip { padding: 46.5mm calc(15mm + 8px) 15mm calc(22mm + 8px); }
           .break { page-break-after: always; }
-          .line {
-            display: flex;
-            justify-content: space-between;
+          .head, .middle, .line {
             gap: 16px;
             font-size: 20px;
             font-weight: 700;
             line-height: 1.4;
           }
+          .head { display: grid; grid-template-columns: 2fr 1fr auto; align-items: baseline; }
+          .head > span:first-child { font-size: 30px; }
+          .middle { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+          .head > span, .middle > span { min-width: 0; overflow-wrap: anywhere; }
+          .head > span:last-child, .middle > span:last-child { text-align: right; }
+          .line { display: flex; justify-content: space-between; }
         </style>
       </head>
       <body>${pages}

@@ -134,7 +134,7 @@ describe('printLabReceipt', () => {
     expect(html).not.toContain('12389E');
   });
 
-  it('prints three lines: MR, name, gender and date, category with the staff, test with its price', () => {
+  it('prints three lines: MR, name and date; category centred with Created By right; test with its price', () => {
     const html = capturePrintedHtml(() =>
       printLabReceipt(
         [{ ...order('ECG', 'ECG', 500, 'Cardiac'), createdAt: '2026-09-25T09:15:00' }],
@@ -142,10 +142,15 @@ describe('printLabReceipt', () => {
       ),
     );
 
-    expect(html.match(/class="line"/g)).toHaveLength(3);
+    expect(html.match(/class="(head|middle|line)"/g)).toEqual(['class="head"', 'class="middle"', 'class="line"']);
     // Each value its own span, spread across the line with equal gaps.
-    expect(html).toContain('<span>MR-2026-08-04-482913</span><span>Ali Khan</span><span>MALE</span><span>25/09/2026</span>');
-    expect(html).toContain('<span>CARDIAC</span><span>Sana Iqbal</span>');
+    // MR takes the width of two columns; Name and Date one each.
+    expect(html).toContain('<div class="head"><span>MR-2026-08-04-482913</span><span>Ali Khan</span><span>25/09/2026</span></div>');
+    expect(html).toContain('grid-template-columns: 2fr 1fr auto');
+    // An empty cell as wide as Created By's keeps the category centred on the slip.
+    expect(html).toContain('<div class="middle"><span></span><span>CARDIAC</span><span>Created By: Sana Iqbal</span></div>');
+    expect(html).toContain('grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr)');
+    expect(html).not.toContain('MALE');
     expect(html).toContain('<span>ECG</span><span>Rs. 500.00</span>');
     expect(html).toContain('justify-content: space-between');
     expect(html.match(/25\/09\/2026/g)).toHaveLength(1);
@@ -554,10 +559,10 @@ describe('printLabReceipt on a dot-matrix station', () => {
     jest.restoreAllMocks();
   });
 
-  it('prints MR, name, gender and date, then category and staff, then test and price', () => {
+  it('prints MR, name and date, then category and Created By, then test and price', () => {
     expect(labSlipLines(orders[0], opts)).toEqual([
-      { left: ['MR-2026-08-04-482913', 'Ali Khan'], right: ['MALE', '16/10/2026'] },
-      { left: ['HEMATOLOGY'], right: ['Sana Iqbal'] },
+      { left: ['MR-2026-08-04-482913', 'Ali Khan'], right: ['16/10/2026'] },
+      { left: ['HEMATOLOGY'], right: ['Created By: Sana Iqbal'] },
       { left: ['Complete Blood Count'], right: ['Rs. 1200.00'] },
     ]);
   });
@@ -565,7 +570,7 @@ describe('printLabReceipt on a dot-matrix station', () => {
   it('leaves the category side empty when the test has none', () => {
     const lines = labSlipLines(order('X', 'Sugar Random', 20, ''), opts);
     expect(lines).toHaveLength(3);
-    expect(lines[1]).toEqual({ left: [], right: ['Sana Iqbal'] });
+    expect(lines[1]).toEqual({ left: [], right: ['Created By: Sana Iqbal'] });
   });
 
   it('sends one raw slip per test and no HTML', async () => {
@@ -575,8 +580,8 @@ describe('printLabReceipt on a dot-matrix station', () => {
     await expect(printLabReceipt(orders, opts)).resolves.toEqual({ printed: true });
 
     const head = [
-      { left: ['MR-2026-08-04-482913', 'Ali Khan'], right: ['MALE', '16/10/2026'], bold: true },
-      { left: ['HEMATOLOGY'], right: ['Sana Iqbal'], bold: true },
+      { left: ['MR-2026-08-04-482913', 'Ali Khan'], right: ['16/10/2026'], bold: true },
+      { left: ['HEMATOLOGY'], right: ['Created By: Sana Iqbal'], bold: true },
     ];
     expect(print).toHaveBeenCalledWith({
       docName: 'MIMS lab slip',
