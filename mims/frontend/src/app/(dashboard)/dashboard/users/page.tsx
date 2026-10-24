@@ -509,7 +509,7 @@ export default function UsersPage() {
           <DialogHeader>
             <DialogTitle>Delete User</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this user? This action cannot be undone.
+              This user will no longer be able to sign in. Their receipts, orders and history are kept, and you can reactivate them later from Edit.
             </DialogDescription>
           </DialogHeader>
           {deleteUserModal && (

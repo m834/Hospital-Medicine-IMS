@@ -84,9 +84,10 @@ const USER_ROLES = [
   { value: 'DOCTOR', label: 'Doctor', requiresPharmacy: false, requiresDepartment: true },
   { value: 'DOCTOR_ASSISTANT', label: 'Doctor Assistant', requiresPharmacy: false, requiresDepartment: true },
   { value: 'NURSE', label: 'Nurse', requiresPharmacy: false, requiresDepartment: true },
-  { value: 'REGISTRATION_STAFF', label: 'Registration Staff', requiresPharmacy: false, requiresDepartment: false },
+  { value: 'REGISTRATION_STAFF', label: 'Registration Staff', requiresPharmacy: false, requiresDepartment: true },
+  { value: 'REGISTRATION_STAFF_MANAGER', label: 'Registration Staff Manager', requiresPharmacy: false, requiresDepartment: true },
   { value: 'PHARMACY_STAFF', label: 'Pharmacy Staff', requiresPharmacy: true, requiresDepartment: false },
-  { value: 'AUDITOR', label: 'Auditor', requiresPharmacy: false, requiresDepartment: false },
+  { value: 'AUDITOR', label: 'Auditor', requiresPharmacy: false, requiresDepartment: true },
   { value: 'LAB_TECHNICIAN', label: 'Lab Technician', requiresPharmacy: false, requiresDepartment: true },
   { value: 'RADIOLOGIST', label: 'Radiologist', requiresPharmacy: false, requiresDepartment: true },
   { value: 'BILLING_STAFF', label: 'Billing Staff', requiresPharmacy: false, requiresDepartment: false },
@@ -192,6 +193,10 @@ export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalPro
   const requiresPharmacy = roleConfig?.requiresPharmacy || false;
   const requiresDepartment = roleConfig?.requiresDepartment || false;
   const requiresManagedDepartment = roleConfig?.managedDepartment || false;
+  // Every role but the pharmacy ones and Department Admin (which picks the
+  // department it manages instead) can be given a department; for the roles
+  // that require one it is mandatory.
+  const showsDepartment = !!selectedRole && !requiresPharmacy && !requiresManagedDepartment;
 
   useEffect(() => {
     if (user) {
@@ -260,7 +265,7 @@ export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalPro
 
   const fetchSubDepartments = async (departmentId: string) => {
     try {
-      const response = await api.get(`/sub-departments?departmentId=${departmentId}`);
+      const response = await api.get(`/sub-departments/department/${departmentId}`);
       setSubDepartments((response.data || []).filter((sd: SubDepartment) => sd.status === 'ACTIVE'));
     } catch (err) {
       console.error('Failed to fetch sub-departments:', err);
@@ -278,8 +283,10 @@ export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalPro
         form.setValue('pharmacyId', '');
       }
       
-      // Clear department selections if role doesn't require them
-      if (!requiresDepartment && !requiresManagedDepartment) {
+      // Clear department selections only for roles that cannot have one —
+      // clearing them for every role that does not *require* one wiped the
+      // department of a user the moment their edit form opened.
+      if (!showsDepartment && !requiresManagedDepartment) {
         form.setValue('departmentId', '');
         form.setValue('subDepartmentId', '');
         form.setValue('managedDepartmentId', '');
@@ -299,6 +306,11 @@ export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalPro
 
   const onSubmit = async (data: EditUserFormData) => {
     if (!user) return;
+
+    if (requiresDepartment && !requiresManagedDepartment && !data.departmentId) {
+      form.setError('departmentId', { type: 'manual', message: 'Department is required for this role' });
+      return;
+    }
 
     setLoading(true);
     try {
@@ -322,10 +334,11 @@ export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalPro
         updateData.pharmacyId = null;
       }
 
-      // Include department fields if role requires them
-      if (requiresDepartment && data.departmentId) {
-        updateData.departmentId = data.departmentId;
-        updateData.subDepartmentId = data.subDepartmentId || null;
+      // Department fields: whatever was chosen, or cleared.
+      if (showsDepartment) {
+        updateData.departmentId = data.departmentId || null;
+        updateData.subDepartmentId = (data.departmentId && data.subDepartmentId) || null;
+        updateData.managedDepartmentId = null;
       } else if (requiresManagedDepartment && data.managedDepartmentId) {
         updateData.managedDepartmentId = data.managedDepartmentId;
       } else {
@@ -488,17 +501,21 @@ export function EditUserModal({ user, onClose, onUserUpdated }: EditUserModalPro
               />
             )}
 
-            {/* Department Assignment (conditional, not for managed department) */}
-            {requiresDepartment && !requiresManagedDepartment && (
+            {/* Department Assignment (not for pharmacy roles or managed department) */}
+            {showsDepartment && (
               <>
                 <FormField
                   control={form.control}
                   name="departmentId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Department</FormLabel>
-                      <Select 
-                        onValueChange={field.onChange} 
+                      <FormLabel>Department{requiresDepartment ? '' : ' (Optional)'}</FormLabel>
+                      <Select
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          // A sub-department belongs to one department only.
+                          form.setValue('subDepartmentId', '');
+                        }}
                         value={field.value}
                         disabled={loadingDepartments}
                       >

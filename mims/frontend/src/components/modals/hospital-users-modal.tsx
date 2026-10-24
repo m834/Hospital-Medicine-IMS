@@ -9,6 +9,14 @@ import { useState, useEffect } from 'react';
 import { X, Users, Mail, Phone, Shield, Loader2, UserPlus, Edit, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import api, { getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { AddUserModal } from './add-user-modal';
@@ -50,6 +58,9 @@ export function HospitalUsersModal({ isOpen, hospital, onClose }: HospitalUsersM
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
+  const [deleteUser, setDeleteUser] = useState<User | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen && hospital) {
@@ -72,6 +83,27 @@ export function HospitalUsersModal({ isOpen, hospital, onClose }: HospitalUsersM
       setError(getErrorMessage(err));
     } finally {
       setLoading(false);
+    }
+  };
+
+  /**
+   * Deleting a user deactivates them (status INACTIVE): they can no longer sign
+   * in, and the receipts, orders and history they made stay intact. Edit can
+   * set them back to Active.
+   */
+  const confirmDelete = async () => {
+    if (!deleteUser) return;
+
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.delete(`/users/${deleteUser.id}`);
+      setDeleteUser(null);
+      await fetchUsers();
+    } catch (err) {
+      setDeleteError(getErrorMessage(err));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -282,9 +314,19 @@ export function HospitalUsersModal({ isOpen, hospital, onClose }: HospitalUsersM
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" title="Delete user">
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        {user.status !== 'INACTIVE' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="Delete user"
+                            onClick={() => {
+                              setDeleteError(null);
+                              setDeleteUser(user);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -317,6 +359,33 @@ export function HospitalUsersModal({ isOpen, hospital, onClose }: HospitalUsersM
           setIsAddUserModalOpen(false);
         }}
       />
+
+      {/* Delete confirmation */}
+      <Dialog open={!!deleteUser} onOpenChange={(open) => !open && !deleting && setDeleteUser(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete user?</DialogTitle>
+            <DialogDescription>
+              {deleteUser?.fullName} ({deleteUser?.email}) will no longer be able to sign in. Their
+              receipts, orders and history are kept. You can reactivate them later from Edit.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteError && (
+            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+              {deleteError}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteUser(null)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+              {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {deleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit User Modal */}
       <EditUserModal

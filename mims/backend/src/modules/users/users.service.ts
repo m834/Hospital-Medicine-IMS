@@ -1,12 +1,25 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { CacheService } from '../../common/services/cache.service';
 import { UpdateUserDto } from './dto';
 import { UserRole } from '@prisma/client';
 import * as argon2 from 'argon2';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cacheService: CacheService,
+  ) {}
+
+  /**
+   * The JWT strategy caches each signed-in user for two minutes. Drop that
+   * entry after a change, so a deactivated user is signed out and a new role or
+   * department applies on their next request, not two minutes later.
+   */
+  private async forgetSignedInUser(id: string) {
+    await this.cacheService.delete(`user:auth:${id}`);
+  }
 
   /**
    * Strip credential fields before a user record leaves the API. Prisma returns
@@ -110,6 +123,29 @@ export class UsersService {
       }
     }
 
+    // A department, and a sub-department under it, must be this hospital's.
+    if (updateUserDto.departmentId) {
+      const department = await this.prisma.department.findUnique({
+        where: { id: updateUserDto.departmentId },
+        select: { hospitalId: true },
+      });
+
+      if (!department || department.hospitalId !== userToUpdate.hospitalId) {
+        throw new BadRequestException('Department must belong to the same hospital as the user');
+      }
+    }
+
+    if (updateUserDto.subDepartmentId) {
+      const subDepartment = await this.prisma.subDepartment.findUnique({
+        where: { id: updateUserDto.subDepartmentId },
+        select: { departmentId: true },
+      });
+
+      if (!subDepartment || subDepartment.departmentId !== updateUserDto.departmentId) {
+        throw new BadRequestException('Sub-department must belong to the selected department');
+      }
+    }
+
     // If email is being updated, check uniqueness
     if (updateUserDto.email) {
       const existingUser = await this.prisma.user.findUnique({
@@ -174,6 +210,8 @@ export class UsersService {
       },
     });
 
+    await this.forgetSignedInUser(id);
+
     return this.sanitize(updatedUser);
   }
 
@@ -225,6 +263,8 @@ export class UsersService {
       },
       select: {
         hospitalId: true,
+        email: true,
+        fullName: true,
       },
     });
 
@@ -234,11 +274,15 @@ export class UsersService {
         hospitalId: deletedUser.hospitalId,
         userId: requestingUserId,
         action: 'DELETE',
+        module: 'Users',
         entityType: 'User',
         entityId: id,
+        description: `Deleted user ${deletedUser.fullName} (${deletedUser.email}) — set to INACTIVE`,
         afterState: JSON.stringify({ status: 'INACTIVE' }),
       },
     });
+
+    await this.forgetSignedInUser(id);
 
     return { message: 'User deleted successfully' };
   }
