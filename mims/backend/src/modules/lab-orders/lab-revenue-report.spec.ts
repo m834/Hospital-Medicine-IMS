@@ -232,6 +232,29 @@ describe('LabOrdersService.getRevenueReport', () => {
     expect(mockPrismaService.labOrder.findMany.mock.calls[0][0].where.orderedById).toBe('staff-9');
   });
 
+  // Registration staff print their own day's total; the day is the server's,
+  // whatever dates the desk PC sends.
+  it('reports only today for a self-scoped role, ignoring the dates sent', async () => {
+    mockPrismaService.labOrder.findMany.mockResolvedValue([]);
+    mockPrismaService.receipt.findMany.mockResolvedValue([]);
+
+    const report = await service.getRevenueReport(
+      'hospital-1',
+      new Date('2020-01-01'),
+      new Date('2020-01-31'),
+      { id: 'staff-9', role: 'REGISTRATION_STAFF' },
+    );
+
+    const { gte, lte } = mockPrismaService.labOrder.findMany.mock.calls[0][0].where.createdAt;
+    const today = new Date();
+    expect(gte.toDateString()).toBe(today.toDateString());
+    expect(lte.toDateString()).toBe(today.toDateString());
+    expect(gte.getHours()).toBe(0);
+    expect(lte.getHours()).toBe(23);
+    expect(new Date(report.range.start!).toDateString()).toBe(today.toDateString());
+    expect(report.generatedAt).toEqual(expect.any(String));
+  });
+
   it('shows the whole desk to a manager', async () => {
     mockPrismaService.labOrder.findMany.mockResolvedValue([]);
     mockPrismaService.receipt.findMany.mockResolvedValue([]);

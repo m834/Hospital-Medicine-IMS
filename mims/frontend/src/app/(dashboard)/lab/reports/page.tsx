@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Search, Download, FileText, Calendar, User, TestTube, Printer } from "lucide-react";
 import { formatMRN, matchesMRN } from '@/lib/mrn';
 import { useLabRevenue } from "@/hooks/use-lab-revenue";
-import { printLabRevenueReport } from "@/lib/print-lab-revenue";
+import { printLabRevenueReport, printLabStaffDailySummary } from "@/lib/print-lab-revenue";
 
 /** Two decimals, grouped — the same figures the printed report carries. */
 const formatMoney = (value: number) =>
@@ -53,11 +53,12 @@ export default function LabReportsPage() {
 
   // Revenue counts every order in the range, not just the approved ones: the
   // charge is raised when the slip is created, so filtering by status here
-  // would under-report the money that was actually taken.
+  // would under-report the money that was actually taken. Registration staff
+  // send no range: the server gives them today, by its own clock.
   const { data: revenue, isLoading: revenueLoading } = useLabRevenue({
     hospitalId,
-    startDate,
-    endDate,
+    startDate: isOwnOrdersOnly ? undefined : startDate,
+    endDate: isOwnOrdersOnly ? undefined : endDate,
   });
 
   const revenuePeriodLabel = useMemo(() => {
@@ -177,6 +178,48 @@ export default function LabReportsPage() {
         </CardContent>
       </Card>
 
+      {/* Registration staff see only their own day: orders and amount. */}
+      {isOwnOrdersOnly ? (
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0">
+            <div>
+              <CardTitle>My lab orders today</CardTitle>
+              <CardDescription>
+                {revenue?.range.start ? prettyDate(revenue.range.start) : 'Today'} · your own orders
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!revenue || revenueLoading}
+              onClick={() =>
+                revenue &&
+                printLabStaffDailySummary(revenue, selectedHospital?.name, user?.fullName)
+              }
+            >
+              <Printer className="mr-2 h-4 w-4" />
+              Print
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {revenueLoading ? (
+              <p className="py-6 text-center text-muted-foreground">Loading...</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Lab orders</p>
+                  <p className="text-3xl font-bold">{revenue?.totalQuantity ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total amount (Rs.)</p>
+                  <p className="text-3xl font-bold">{formatMoney(revenue?.grandTotal ?? 0)}</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+      <>
       {/* Lab Revenue: every order in the range, grouped by category. The print
           button sends a document of its own — see print-lab-revenue.ts. */}
       <Card>
@@ -297,6 +340,8 @@ export default function LabReportsPage() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* Reports List */}
       {isLoading ? (

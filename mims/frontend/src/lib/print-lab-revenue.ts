@@ -41,6 +41,64 @@ const periodLabel = (range: LabRevenueReport['range']) => {
   return from === to ? from : `${from} – ${to}`;
 };
 
+/** DD/MM/YYYY, HH:mm in Karachi time. */
+const prettyDateTime = (iso: string) =>
+  new Date(iso).toLocaleString('en-GB', {
+    timeZone: 'Asia/Karachi',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+
+/**
+ * A registration staff member's own day: how many lab orders they created
+ * today and what they came to. The report is already theirs alone and already
+ * today's — the server decides both — so this prints its totals and nothing
+ * else. Dates are the server's, never the desk PC's.
+ */
+export function printLabStaffDailySummary(
+  report: LabRevenueReport,
+  hospitalName: string | null | undefined,
+  staffName: string | null | undefined,
+) {
+  const html = `
+    <html>
+      <head>
+        <title>Lab Daily Summary</title>
+        <style>
+          @page { size: A4; margin: 1.5cm; }
+          body { font-family: Arial, Helvetica, sans-serif; font-size: 12pt; color: #000; margin: 0; }
+          h1 { font-size: 15pt; margin: 0 0 2px; }
+          .meta { font-size: 10pt; margin-bottom: 14px; }
+          table { border-collapse: collapse; min-width: 9cm; }
+          td { padding: 5px 8px; border-bottom: 1px solid #000; }
+          td.num { text-align: right; font-weight: bold; }
+          tr.total td { border-top: 2px solid #000; border-bottom: 2px double #000; font-size: 13pt; }
+        </style>
+      </head>
+      <body>
+        <h1>${escapeHtml(hospitalName || 'Lab Daily Summary')}</h1>
+        <div class="meta">
+          ${hospitalName ? 'Lab Daily Summary &nbsp;|&nbsp; ' : ''}Printed: ${escapeHtml(prettyDateTime(report.generatedAt))}
+        </div>
+        <table>
+          <tbody>
+            <tr><td>Staff</td><td class="num">${escapeHtml(staffName || '')}</td></tr>
+            <tr><td>Date</td><td class="num">${escapeHtml(periodLabel(report.range))}</td></tr>
+            <tr><td>Lab orders</td><td class="num">${report.totalQuantity}</td></tr>
+            <tr class="total"><td>Total amount (Rs.)</td><td class="num">${money(report.grandTotal)}</td></tr>
+          </tbody>
+        </table>
+      </body>
+    </html>
+  `;
+
+  printReceiptHtml(html);
+}
+
 export function printLabRevenueReport(
   report: LabRevenueReport,
   hospitalName: string | null | undefined,

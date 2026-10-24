@@ -1119,9 +1119,15 @@ export class LabOrdersService {
     user?: { id: string; role: string },
   ) {
     // Same rule as the order list: a self-scoped role reports on its own work
-    // whatever it asks for.
-    const orderedById =
-      user && SELF_SCOPED_LIST_ROLES.has(user.role) ? user.id : undefined;
+    // whatever it asks for — and only on today, by the server's clock, so a
+    // desk PC with a wrong date can neither pick nor shift the day.
+    const selfScoped = !!user && SELF_SCOPED_LIST_ROLES.has(user.role);
+    const orderedById = selfScoped ? user.id : undefined;
+    const generatedAt = new Date();
+    if (selfScoped) {
+      startDate = generatedAt;
+      endDate = generatedAt;
+    }
 
     // The dates arrive as plain days (2026-09-21), which parse to midnight —
     // without widening, an end date would cut the day off before the desk had
@@ -1217,6 +1223,7 @@ export class LabOrdersService {
         start: startDate ? startDate.toISOString() : null,
         end: endDate ? endDate.toISOString() : null,
       },
+      generatedAt: generatedAt.toISOString(),
       categories: categoryRows,
       grandTotal: round2(categoryRows.reduce((sum, row) => sum + row.subtotal, 0)),
       totalQuantity: categoryRows.reduce((sum, row) => sum + row.quantity, 0),

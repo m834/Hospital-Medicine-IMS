@@ -28,6 +28,8 @@ export interface LabRevenueResourceRow {
 
 export interface LabRevenueReport {
   range: { start: string | null; end: string | null };
+  /** When the server built the report, by the server's clock. */
+  generatedAt: string;
   categories: LabRevenueCategoryRow[];
   grandTotal: number;
   totalQuantity: number;
