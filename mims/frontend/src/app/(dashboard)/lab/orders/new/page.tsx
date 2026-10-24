@@ -161,6 +161,8 @@ export default function NewLabOrderPageComponent() {
   // Keyboard flow for the desk: arrows walk the category cards and the test
   // list, Enter picks. Focus is handed from one step to the next through these.
   const patientSearchRef = useRef<HTMLInputElement>(null);
+  // The quick-registration name box; null for roles that do not get the form.
+  const newPatientNameRef = useRef<HTMLInputElement>(null);
   const addTestButtonRef = useRef<HTMLButtonElement>(null);
   const submitButtonRef = useRef<HTMLButtonElement>(null);
   const categoryGridRef = useRef<HTMLDivElement>(null);
@@ -366,21 +368,26 @@ export default function NewLabOrderPageComponent() {
     if (foundPatient) addTestButtonRef.current?.focus();
   }, [foundPatient]);
 
-  // After the slips print, the form is empty again: back to the patient search
-  // for the next patient.
+  // Where the cursor starts for a new patient: the quick-registration name box,
+  // or the patient search for a role that cannot register.
+  const focusNewPatient = () =>
+    (newPatientNameRef.current ?? patientSearchRef.current)?.focus();
+
+  // After the slips print, the form is empty again: back to the start for the
+  // next patient.
   useEffect(() => {
-    if (lastPrinted.length > 0) patientSearchRef.current?.focus();
+    if (lastPrinted.length > 0) focusNewPatient();
   }, [lastPrinted]);
 
-  // Opening Lab Services puts the cursor in the patient search, so the desk
-  // can type an MRN straight away — and again when the form comes back after
-  // the slip screen. One frame late: the tab and the page are still settling,
-  // and focusing immediately can be taken back.
+  // Opening Lab Services puts the cursor in the new-patient name box, so the
+  // desk can type a walk-in's name straight away — and again when the form
+  // comes back after the slip screen. One frame late: the tab and the page are
+  // still settling, and focusing immediately can be taken back.
   const formVisible = !!(selectedHospital || user?.hospitalId) && !(showSlip && createdOrders.length > 0);
   useEffect(() => {
     if (!formVisible) return;
     const frame = requestAnimationFrame(() => {
-      if (!foundPatient) patientSearchRef.current?.focus();
+      if (!foundPatient) focusNewPatient();
     });
     return () => cancelAnimationFrame(frame);
     // Only when the form appears; later focus is handed on step by step.
@@ -798,6 +805,7 @@ export default function NewLabOrderPageComponent() {
                   user={user}
                   selectedHospitalId={selectedHospital?.id}
                   onRegistered={handlePatientRegistered}
+                  nameInputRef={newPatientNameRef}
                 />
               )}
 

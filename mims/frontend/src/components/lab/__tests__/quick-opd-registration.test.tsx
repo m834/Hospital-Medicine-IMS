@@ -51,6 +51,51 @@ describe('QuickOpdRegistration', () => {
     expect(nameBox()).toHaveValue('');
   });
 
+  it('sends the gender when one is picked, and clears it after saving', async () => {
+    setUp();
+
+    fireEvent.change(nameBox(), { target: { value: 'Ayesha Bibi' } });
+    fireEvent.change(screen.getByLabelText('New patient gender'), { target: { value: 'FEMALE' } });
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+
+    expect(mockPost).toHaveBeenCalledWith(
+      '/patients',
+      { fullName: 'Ayesha Bibi', visitType: 'OPD', gender: 'FEMALE' },
+      { params: {} },
+    );
+    expect(screen.getByLabelText('New patient gender')).toHaveValue('');
+  });
+
+  it('leaves gender optional: the name alone is enough', () => {
+    setUp();
+
+    expect(screen.getByLabelText('New patient gender')).toHaveValue('');
+    fireEvent.change(nameBox(), { target: { value: 'Ali Khan' } });
+    expect(saveButton()).toBeEnabled();
+  });
+
+  it('saves on Enter from the gender box too', async () => {
+    setUp();
+
+    fireEvent.change(nameBox(), { target: { value: 'Ali Khan' } });
+    fireEvent.change(screen.getByLabelText('New patient gender'), { target: { value: 'MALE' } });
+    await act(async () => {
+      fireEvent.keyDown(screen.getByLabelText('New patient gender'), { key: 'Enter' });
+    });
+
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(mockPost.mock.calls[0][1]).toMatchObject({ gender: 'MALE' });
+  });
+
+  it('hands the page its name box, so the cursor can start there', () => {
+    const ref = React.createRef<HTMLInputElement>();
+    render(<QuickOpdRegistration user={desk} onRegistered={jest.fn()} nameInputRef={ref} />);
+
+    expect(ref.current).toBe(nameBox());
+  });
+
   it('saves on Enter', async () => {
     setUp();
 
