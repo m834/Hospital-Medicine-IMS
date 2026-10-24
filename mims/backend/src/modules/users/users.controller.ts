@@ -56,4 +56,16 @@ export class UsersController {
   async remove(@Param('id') id: string, @Request() req: any) {
     return this.usersService.remove(id, req.user.id);
   }
+
+  /**
+   * DELETE /users/:id/permanent
+   * Erase a user for good — Super Admin only. Refused while the user has
+   * patients, receipts, lab orders or other records attached.
+   */
+  @Delete(':id/permanent')
+  @Roles(UserRole.SUPER_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async removePermanently(@Param('id') id: string, @Request() req: any) {
+    return this.usersService.removePermanently(id, req.user.id);
+  }
 }

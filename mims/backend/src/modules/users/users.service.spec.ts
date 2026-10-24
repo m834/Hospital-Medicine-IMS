@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { PrismaService } from '../../database/prisma.service';
 import { CacheService } from '../../common/services/cache.service';
@@ -7,12 +7,37 @@ import { CacheService } from '../../common/services/cache.service';
 describe('UsersService', () => {
   let service: UsersService;
 
-  const prisma = {
-    user: { findUnique: jest.fn(), update: jest.fn() },
+  // Every model the permanent delete counts before it erases anyone.
+  const counted = {
+    patient: { count: jest.fn() },
+    receipt: { count: jest.fn() },
+    labOrder: { count: jest.fn() },
+    visit: { count: jest.fn() },
+    referral: { count: jest.fn() },
+    admission: { count: jest.fn() },
+    operation: { count: jest.fn() },
+    prescription: { count: jest.fn() },
+    prescriptionMedicine: { count: jest.fn() },
+    prescriptionDispatch: { count: jest.fn() },
+    medicineTemplate: { count: jest.fn() },
+    issueTransaction: { count: jest.fn() },
+    returnTransaction: { count: jest.fn() },
+    disposalTransaction: { count: jest.fn() },
+    transferRequest: { count: jest.fn() },
+    purchaseOrder: { count: jest.fn() },
+    gRN: { count: jest.fn() },
+    expenditure: { count: jest.fn() },
+    employeeShift: { count: jest.fn() },
+  };
+
+  const prisma: any = {
+    user: { findUnique: jest.fn(), update: jest.fn(), delete: jest.fn() },
     department: { findUnique: jest.fn() },
     subDepartment: { findUnique: jest.fn() },
     pharmacy: { findUnique: jest.fn() },
-    auditLog: { create: jest.fn() },
+    auditLog: { create: jest.fn(), deleteMany: jest.fn() },
+    ...counted,
+    $transaction: jest.fn((run: (tx: any) => unknown) => run(prisma)),
   };
   const cache = { delete: jest.fn() };
 
@@ -87,6 +112,49 @@ describe('UsersService', () => {
     it('refuses to delete your own account', async () => {
       await expect(service.remove('admin-1', 'admin-1')).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('removePermanently', () => {
+    const testUser = { id: 'u1', hospitalId: 'h1', role: 'REGISTRATION_STAFF', email: 'test@x.pk', fullName: 'Test Desk' };
+
+    beforeEach(() => {
+      prisma.user.findUnique.mockReset().mockResolvedValue(testUser);
+      for (const model of Object.values(counted)) model.count.mockResolvedValue(0);
+      prisma.auditLog.deleteMany.mockResolvedValue({ count: 4 });
+    });
+
+    it('erases a user with no records, with their own log entries, and logs the erasure', async () => {
+      const result = await service.removePermanently('u1', 'super-1');
+
+      expect(prisma.auditLog.deleteMany).toHaveBeenCalledWith({ where: { userId: 'u1' } });
+      expect(prisma.user.delete).toHaveBeenCalledWith({ where: { id: 'u1' } });
+      expect(prisma.auditLog.create.mock.calls[0][0].data).toMatchObject({
+        userId: 'super-1',
+        action: 'DELETE',
+        module: 'Users',
+        description: 'Permanently deleted user Test Desk (test@x.pk), with 4 of their activity-log entries',
+      });
+      expect(cache.delete).toHaveBeenCalledWith('user:auth:u1');
+      expect(result).toEqual({ message: 'User permanently deleted', auditEntriesRemoved: 4 });
+    });
+
+    it('refuses while the user has records, and says which', async () => {
+      counted.patient.count.mockResolvedValueOnce(12).mockResolvedValue(0);
+      counted.receipt.count.mockResolvedValue(30);
+
+      await expect(service.removePermanently('u1', 'super-1')).rejects.toThrow(
+        /Test Desk cannot be permanently deleted: they have 12 patients registered, 30 receipts\./,
+      );
+      expect(prisma.user.delete).not.toHaveBeenCalled();
+      expect(prisma.auditLog.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('never erases an admin account or your own', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...testUser, role: 'SUPER_ADMIN' });
+      await expect(service.removePermanently('u1', 'super-1')).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.removePermanently('super-1', 'super-1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.user.delete).not.toHaveBeenCalled();
     });
   });
 });

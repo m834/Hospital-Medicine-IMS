@@ -18,6 +18,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import api, { getErrorMessage } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth.store';
+import { UserRole } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import { AddUserModal } from './add-user-modal';
 import { EditUserModal } from './edit-user-modal';
@@ -61,6 +63,9 @@ export function HospitalUsersModal({ isOpen, hospital, onClose }: HospitalUsersM
   const [deleteUser, setDeleteUser] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // A Super Admin's delete erases the user for good (for clearing test
+  // accounts); anyone else's deactivates them.
+  const isSuperAdmin = useAuthStore((state) => state.user?.role) === UserRole.SUPER_ADMIN;
 
   useEffect(() => {
     if (isOpen && hospital) {
@@ -87,9 +92,12 @@ export function HospitalUsersModal({ isOpen, hospital, onClose }: HospitalUsersM
   };
 
   /**
-   * Deleting a user deactivates them (status INACTIVE): they can no longer sign
-   * in, and the receipts, orders and history they made stay intact. Edit can
-   * set them back to Active.
+   * A Super Admin's delete erases the user permanently. The server refuses it
+   * while the user has patients, receipts or other records, and says which.
+   *
+   * Anyone else's delete deactivates the user (status INACTIVE): they can no
+   * longer sign in, and the receipts, orders and history they made stay
+   * intact. Edit can set them back to Active.
    */
   const confirmDelete = async () => {
     if (!deleteUser) return;
@@ -97,7 +105,7 @@ export function HospitalUsersModal({ isOpen, hospital, onClose }: HospitalUsersM
     setDeleting(true);
     setDeleteError(null);
     try {
-      await api.delete(`/users/${deleteUser.id}`);
+      await api.delete(isSuperAdmin ? `/users/${deleteUser.id}/permanent` : `/users/${deleteUser.id}`);
       setDeleteUser(null);
       await fetchUsers();
     } catch (err) {
@@ -314,7 +322,7 @@ export function HospitalUsersModal({ isOpen, hospital, onClose }: HospitalUsersM
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
-                        {user.status !== 'INACTIVE' && (
+                        {(isSuperAdmin || user.status !== 'INACTIVE') && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -364,10 +372,20 @@ export function HospitalUsersModal({ isOpen, hospital, onClose }: HospitalUsersM
       <Dialog open={!!deleteUser} onOpenChange={(open) => !open && !deleting && setDeleteUser(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete user?</DialogTitle>
+            <DialogTitle>{isSuperAdmin ? 'Permanently delete user?' : 'Delete user?'}</DialogTitle>
             <DialogDescription>
-              {deleteUser?.fullName} ({deleteUser?.email}) will no longer be able to sign in. Their
-              receipts, orders and history are kept. You can reactivate them later from Edit.
+              {isSuperAdmin ? (
+                <>
+                  {deleteUser?.fullName} ({deleteUser?.email}) will be removed for good, with their
+                  sign-in history. This cannot be undone. A user who has registered patients, raised
+                  receipts or made other records cannot be deleted — deactivate them from Edit instead.
+                </>
+              ) : (
+                <>
+                  {deleteUser?.fullName} ({deleteUser?.email}) will no longer be able to sign in. Their
+                  receipts, orders and history are kept. You can reactivate them later from Edit.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           {deleteError && (
@@ -381,7 +399,7 @@ export function HospitalUsersModal({ isOpen, hospital, onClose }: HospitalUsersM
             </Button>
             <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
               {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {deleting ? 'Deleting...' : 'Delete'}
+              {deleting ? 'Deleting...' : isSuperAdmin ? 'Delete permanently' : 'Delete'}
             </Button>
           </DialogFooter>
         </DialogContent>

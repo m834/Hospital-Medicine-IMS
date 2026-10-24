@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Search, UserPlus, Eye, Edit, Trash2, RefreshCw } from 'lucide-react';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { useHospitalStore } from '@/stores/hospital.store';
 import { useAuthStore } from '@/stores/auth.store';
 import { UserRole } from '@/lib/constants';
@@ -85,6 +85,7 @@ export default function UsersPage() {
   const [deleteUserModal, setDeleteUserModal] = useState<User | null>(null);
   const [addUserModal, setAddUserModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Get selected hospital from store (for Super Admin)
   const { selectedHospital } = useHospitalStore();
@@ -169,15 +170,19 @@ export default function UsersPage() {
     if (!deleteUserModal) return;
 
     setIsDeleting(true);
+    setDeleteError(null);
     try {
-      await api.delete(`/users/${deleteUserModal.id}`);
+      // A Super Admin erases the user for good; the server refuses while the
+      // user has records, and says which. Anyone else deactivates them.
+      await api.delete(
+        isSuperAdmin ? `/users/${deleteUserModal.id}/permanent` : `/users/${deleteUserModal.id}`,
+      );
 
       // Refresh users list
       await fetchUsers();
       setDeleteUserModal(null);
     } catch (error) {
-      console.error('Error deleting user:', error);
-      alert('Failed to delete user');
+      setDeleteError(getErrorMessage(error));
     } finally {
       setIsDeleting(false);
     }
@@ -389,7 +394,10 @@ export default function UsersPage() {
                           <Button 
                             variant="ghost" 
                             size="sm"
-                            onClick={() => setDeleteUserModal(user)}
+                            onClick={() => {
+                              setDeleteError(null);
+                              setDeleteUserModal(user);
+                            }}
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -507,9 +515,11 @@ export default function UsersPage() {
       <Dialog open={!!deleteUserModal} onOpenChange={(open) => !open && setDeleteUserModal(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete User</DialogTitle>
+            <DialogTitle>{isSuperAdmin ? 'Permanently Delete User' : 'Delete User'}</DialogTitle>
             <DialogDescription>
-              This user will no longer be able to sign in. Their receipts, orders and history are kept, and you can reactivate them later from Edit.
+              {isSuperAdmin
+                ? 'This user will be removed for good, with their sign-in history. This cannot be undone. A user who has registered patients, raised receipts or made other records cannot be deleted — deactivate them from Edit instead.'
+                : 'This user will no longer be able to sign in. Their receipts, orders and history are kept, and you can reactivate them later from Edit.'}
             </DialogDescription>
           </DialogHeader>
           {deleteUserModal && (
@@ -525,6 +535,11 @@ export default function UsersPage() {
               </p>
             </div>
           )}
+          {deleteError && (
+            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+              {deleteError}
+            </div>
+          )}
           <DialogFooter>
             <Button 
               variant="outline" 
@@ -538,7 +553,7 @@ export default function UsersPage() {
               onClick={handleDeleteUser}
               disabled={isDeleting}
             >
-              {isDeleting ? 'Deleting...' : 'Delete User'}
+              {isDeleting ? 'Deleting...' : isSuperAdmin ? 'Delete Permanently' : 'Delete User'}
             </Button>
           </DialogFooter>
         </DialogContent>

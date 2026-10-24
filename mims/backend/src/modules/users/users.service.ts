@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CacheService } from '../../common/services/cache.service';
 import { UpdateUserDto } from './dto';
@@ -285,5 +291,128 @@ export class UsersService {
     await this.forgetSignedInUser(id);
 
     return { message: 'User deleted successfully' };
+  }
+
+  /**
+   * The records a user can be named on that must outlive them: hospital and
+   * stock data. While any exist the user cannot be erased — most of these links
+   * are RESTRICT in the database anyway, and the rest would silently lose who
+   * did the work. Personal rows (notifications, attendance, shifts, leave,
+   * payroll, biometrics, clinics) cascade with the user and are not listed.
+   */
+  private async countRecordsKeepingUser(id: string) {
+    const counts = await Promise.all([
+      ['patients registered', this.prisma.patient.count({ where: { registeredBy: id } })],
+      ['patients as attending doctor', this.prisma.patient.count({ where: { attendingDoctorId: id } })],
+      ['receipts', this.prisma.receipt.count({ where: { generatedById: id } })],
+      ['lab orders', this.prisma.labOrder.count({ where: { orderedById: id } })],
+      [
+        'lab results collected, entered or approved',
+        this.prisma.labOrder.count({
+          where: {
+            OR: [{ sampleCollectedById: id }, { resultsEnteredById: id }, { resultsApprovedById: id }],
+          },
+        }),
+      ],
+      [
+        'visits',
+        this.prisma.visit.count({
+          where: { OR: [{ registrarId: id }, { consultantId: id }, { attendingDoctorId: id }] },
+        }),
+      ],
+      ['referrals', this.prisma.referral.count({ where: { referrerId: id } })],
+      [
+        'admissions',
+        this.prisma.admission.count({
+          where: {
+            OR: [{ attendingDoctorId: id }, { admittingUserId: id }, { dischargingUserId: id }],
+          },
+        }),
+      ],
+      ['operations', this.prisma.operation.count({ where: { surgeonId: id } })],
+      [
+        'prescriptions',
+        this.prisma.prescription.count({ where: { OR: [{ doctorId: id }, { createdBy: id }] } }),
+      ],
+      ['prescription medicines added', this.prisma.prescriptionMedicine.count({ where: { addedBy: id } })],
+      ['prescription dispatches', this.prisma.prescriptionDispatch.count({ where: { dispatchedBy: id } })],
+      ['medicine templates', this.prisma.medicineTemplate.count({ where: { createdBy: id } })],
+      ['medicine issues', this.prisma.issueTransaction.count({ where: { issuedBy: id } })],
+      ['medicine returns', this.prisma.returnTransaction.count({ where: { returnedBy: id } })],
+      ['disposals', this.prisma.disposalTransaction.count({ where: { disposedBy: id } })],
+      [
+        'transfers',
+        this.prisma.transferRequest.count({
+          where: { OR: [{ requestedBy: id }, { approvedBy: id }, { receivedBy: id }] },
+        }),
+      ],
+      ['purchase orders', this.prisma.purchaseOrder.count({ where: { createdBy: id } })],
+      ['goods received notes', this.prisma.gRN.count({ where: { receivedBy: id } })],
+      ['expenditures', this.prisma.expenditure.count({ where: { createdBy: id } })],
+      ['shifts assigned to others', this.prisma.employeeShift.count({ where: { assignedBy: id } })],
+    ].map(async ([label, count]) => [label, await count] as [string, number]));
+
+    return counts.filter(([, count]) => count > 0);
+  }
+
+  /**
+   * Erase a user for good — for clearing test accounts. Only a user with no
+   * records attached can go; their own activity-log entries go with them, and
+   * the erasure itself is logged under the Super Admin who did it.
+   */
+  async removePermanently(id: string, requestingUserId: string) {
+    if (id === requestingUserId) {
+      throw new BadRequestException('You cannot delete your own account');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, hospitalId: true, role: true, email: true, fullName: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
+
+    if (user.role === UserRole.MASTER_ADMIN || user.role === UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Admin accounts cannot be permanently deleted');
+    }
+
+    const records = await this.countRecordsKeepingUser(id);
+    if (records.length > 0) {
+      const list = records.map(([label, count]) => `${count} ${label}`).join(', ');
+      throw new ConflictException(
+        `${user.fullName} cannot be permanently deleted: they have ${list}. ` +
+          'Those records must keep their author — deactivate this user instead.',
+      );
+    }
+
+    const auditEntries = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.auditLog.deleteMany({ where: { userId: id } });
+      await tx.user.delete({ where: { id } });
+
+      if (user.hospitalId) {
+        await tx.auditLog.create({
+          data: {
+            hospitalId: user.hospitalId,
+            userId: requestingUserId,
+            action: 'DELETE',
+            module: 'Users',
+            entityType: 'User',
+            entityId: id,
+            description:
+              `Permanently deleted user ${user.fullName} (${user.email}), ` +
+              `with ${count} of their activity-log entries`,
+            beforeState: JSON.stringify({ email: user.email, fullName: user.fullName, role: user.role }),
+          },
+        });
+      }
+
+      return count;
+    });
+
+    await this.forgetSignedInUser(id);
+
+    return { message: 'User permanently deleted', auditEntriesRemoved: auditEntries };
   }
 }
