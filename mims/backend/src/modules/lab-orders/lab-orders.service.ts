@@ -1111,12 +1111,16 @@ export class LabOrdersService {
    * test ordered at two different prices inside one range lands on two rows,
    * which keeps Quantity x Test Price = Total Price true on every line. Orders
    * with no receipt fall back to the catalogue price.
+   *
+   * A department narrows it to orders booked by that department's staff — the
+   * ordering user's own department, the same rule the registration report uses.
    */
   async getRevenueReport(
     hospitalId: string,
     startDate?: Date,
     endDate?: Date,
     user?: { id: string; role: string },
+    departmentId?: string,
   ) {
     // Same rule as the order list: a self-scoped role reports on its own work
     // whatever it asks for — and only on today, by the server's clock, so a
@@ -1148,7 +1152,12 @@ export class LabOrdersService {
 
     const [orders, receipts] = await Promise.all([
       this.prisma.labOrder.findMany({
-        where: { hospitalId, ...(orderedById && { orderedById }), ...dateRange },
+        where: {
+          hospitalId,
+          ...(orderedById && { orderedById }),
+          ...(departmentId && { orderedBy: { departmentId } }),
+          ...dateRange,
+        },
         select: {
           id: true,
           orderedById: true,

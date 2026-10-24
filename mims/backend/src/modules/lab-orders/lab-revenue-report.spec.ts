@@ -255,6 +255,32 @@ describe('LabOrdersService.getRevenueReport', () => {
     expect(report.generatedAt).toEqual(expect.any(String));
   });
 
+  it('narrows to one department by the ordering staff member', async () => {
+    mockPrismaService.labOrder.findMany.mockResolvedValue([]);
+    mockPrismaService.receipt.findMany.mockResolvedValue([]);
+
+    await service.getRevenueReport(
+      'hospital-1',
+      undefined,
+      undefined,
+      { id: 'manager-1', role: 'REGISTRATION_STAFF_MANAGER' },
+      'dept-opd',
+    );
+
+    expect(mockPrismaService.labOrder.findMany.mock.calls[0][0].where.orderedBy).toEqual({
+      departmentId: 'dept-opd',
+    });
+  });
+
+  it('reports every department when none is chosen', async () => {
+    mockPrismaService.labOrder.findMany.mockResolvedValue([]);
+    mockPrismaService.receipt.findMany.mockResolvedValue([]);
+
+    await service.getRevenueReport('hospital-1');
+
+    expect(mockPrismaService.labOrder.findMany.mock.calls[0][0].where.orderedBy).toBeUndefined();
+  });
+
   it('shows the whole desk to a manager', async () => {
     mockPrismaService.labOrder.findMany.mockResolvedValue([]);
     mockPrismaService.receipt.findMany.mockResolvedValue([]);

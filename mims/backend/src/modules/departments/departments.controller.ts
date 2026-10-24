@@ -45,6 +45,8 @@ export class DepartmentsController {
     UserRole.REGISTRATION_STAFF,
     // Needed by the department filter on the registration report
     UserRole.REGISTRATION_STAFF_MANAGER,
+    // Needed by the department filter on lab revenue
+    UserRole.LAB_TECHNICIAN,
   )
   findAll(@Query('hospitalId') hospitalId: string | undefined, @Request() req: any) {
     // If hospitalId is provided as query param, use it

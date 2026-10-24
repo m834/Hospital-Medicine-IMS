@@ -41,12 +41,17 @@ export interface LabRevenueParams {
   /** Both dates or neither — a half-open range reports the whole history. */
   startDate?: string;
   endDate?: string;
+  /** Orders booked by this department's staff only. */
+  departmentId?: string;
+  /** False holds the request — e.g. until a required department is chosen. */
+  enabled?: boolean;
 }
 
 async function fetchLabRevenue(params: LabRevenueParams) {
   const { data } = await api.get('/lab-orders/revenue', {
     params: {
       hospitalId: params.hospitalId,
+      ...(params.departmentId ? { departmentId: params.departmentId } : {}),
       ...(params.startDate && params.endDate
         ? { startDate: params.startDate, endDate: params.endDate }
         : {}),
@@ -66,8 +71,9 @@ export function useLabRevenue(params: LabRevenueParams) {
       params.hospitalId,
       params.startDate || null,
       params.endDate || null,
+      params.departmentId || null,
     ],
     queryFn: () => fetchLabRevenue(params),
-    enabled: !!token && !!params.hospitalId,
+    enabled: !!token && !!params.hospitalId && params.enabled !== false,
   });
 }

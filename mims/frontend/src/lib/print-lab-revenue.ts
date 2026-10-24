@@ -102,6 +102,7 @@ export function printLabStaffDailySummary(
 export function printLabRevenueReport(
   report: LabRevenueReport,
   hospitalName: string | null | undefined,
+  departmentName?: string | null,
 ) {
   const categoryBlocks = report.categories
     .map(
@@ -199,7 +200,7 @@ export function printLabRevenueReport(
       <body>
         <h1>${hospitalName ? escapeHtml(hospitalName) : 'Lab Revenue Report'}</h1>
         <div class="meta">
-          ${hospitalName ? 'Lab Revenue Report &nbsp;|&nbsp; ' : ''}Period: ${escapeHtml(periodLabel(report.range))}
+          ${hospitalName ? 'Lab Revenue Report &nbsp;|&nbsp; ' : ''}${departmentName ? `Department: ${escapeHtml(departmentName)} &nbsp;|&nbsp; ` : ''}Period: ${escapeHtml(periodLabel(report.range))}
           &nbsp;|&nbsp; Printed: ${escapeHtml(prettyDate(new Date().toISOString()))}
         </div>
 

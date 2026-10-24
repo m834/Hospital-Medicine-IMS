@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useDepartments, Department } from "@/hooks/use-departments";
 import { Search, Download, FileText, Calendar, User, TestTube, Printer } from "lucide-react";
 import { formatMRN, matchesMRN } from '@/lib/mrn';
 import { useLabRevenue } from "@/hooks/use-lab-revenue";
@@ -36,6 +38,9 @@ export default function LabReportsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  // Lab revenue is reported one department at a time; nothing loads or prints
+  // until one is chosen.
+  const [departmentId, setDepartmentId] = useState("");
 
   // Get hospital ID - Master/Super Admin use dropdown, others use user.hospitalId
   const hospitalId = selectedHospital?.id || user?.hospitalId;
@@ -55,10 +60,18 @@ export default function LabReportsPage() {
   // charge is raised when the slip is created, so filtering by status here
   // would under-report the money that was actually taken. Registration staff
   // send no range: the server gives them today, by its own clock.
+  const { data: departmentsData } = useDepartments({
+    hospitalId: isOwnOrdersOnly ? undefined : hospitalId,
+  });
+  const departments: Department[] = Array.isArray(departmentsData) ? departmentsData : [];
+  const selectedDepartment = departments.find((department) => department.id === departmentId);
+
   const { data: revenue, isLoading: revenueLoading } = useLabRevenue({
     hospitalId,
     startDate: isOwnOrdersOnly ? undefined : startDate,
     endDate: isOwnOrdersOnly ? undefined : endDate,
+    departmentId: isOwnOrdersOnly ? undefined : departmentId,
+    enabled: isOwnOrdersOnly || !!departmentId,
   });
 
   const revenuePeriodLabel = useMemo(() => {
@@ -227,24 +240,49 @@ export default function LabReportsPage() {
           <div>
             <CardTitle>Lab Revenue</CardTitle>
             <CardDescription>
+              {selectedDepartment ? `${selectedDepartment.name} · ` : ''}
               {revenuePeriodLabel}
-              {isOwnOrdersOnly ? ' · your own orders' : ''}
             </CardDescription>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!revenue || revenueLoading}
-            onClick={() =>
-              revenue && printLabRevenueReport(revenue, selectedHospital?.name)
-            }
-          >
-            <Printer className="mr-2 h-4 w-4" />
-            Print
-          </Button>
+          <div className="flex items-center gap-2">
+            <Select value={departmentId} onValueChange={setDepartmentId}>
+              <SelectTrigger className="w-56">
+                <SelectValue placeholder="Select a department" />
+              </SelectTrigger>
+              <SelectContent>
+                {departments.length === 0 ? (
+                  <SelectItem value="none" disabled>
+                    No departments available
+                  </SelectItem>
+                ) : (
+                  departments.map((department) => (
+                    <SelectItem key={department.id} value={department.id}>
+                      {department.name}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!departmentId || !revenue || revenueLoading}
+              onClick={() =>
+                revenue &&
+                printLabRevenueReport(revenue, selectedHospital?.name, selectedDepartment?.name)
+              }
+            >
+              <Printer className="mr-2 h-4 w-4" />
+              Print
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
-          {revenueLoading ? (
+          {!departmentId ? (
+            <p className="py-6 text-center text-muted-foreground">
+              Select a department to see and print its lab revenue.
+            </p>
+          ) : revenueLoading ? (
             <p className="py-6 text-center text-muted-foreground">Loading lab revenue...</p>
           ) : !revenue || revenue.categories.length === 0 ? (
             <p className="py-6 text-center text-muted-foreground">
@@ -307,7 +345,11 @@ export default function LabReportsPage() {
           <CardDescription>Tests created by each resource in this period, and their total amount.</CardDescription>
         </CardHeader>
         <CardContent>
-          {!revenue || revenue.resources.length === 0 ? (
+          {!departmentId ? (
+            <p className="py-6 text-center text-muted-foreground">
+              Select a department above.
+            </p>
+          ) : !revenue || revenue.resources.length === 0 ? (
             <p className="py-6 text-center text-muted-foreground">
               No tests were created in this period.
             </p>

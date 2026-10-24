@@ -92,8 +92,9 @@ export class LabOrdersController {
   }
 
   /**
-   * Lab revenue for a date range, grouped by category. Registration staff get
-   * the same report scoped to their own orders, exactly as the list above is.
+   * Lab revenue for a date range, grouped by category, optionally for one
+   * department. Registration staff get the same report scoped to their own
+   * orders, exactly as the list above is.
    */
   @Get('revenue')
   getRevenueReport(
@@ -101,12 +102,14 @@ export class LabOrdersController {
     @CurrentUser() user: any,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('departmentId') departmentId?: string,
   ) {
     return this.labOrdersService.getRevenueReport(
       hospitalId,
       startDate ? new Date(startDate) : undefined,
       endDate ? new Date(endDate) : undefined,
       user,
+      departmentId || undefined,
     );
   }
 

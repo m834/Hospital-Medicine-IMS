@@ -1,4 +1,4 @@
-import { printLabStaffDailySummary } from '../print-lab-revenue';
+import { printLabRevenueReport, printLabStaffDailySummary } from '../print-lab-revenue';
 import type { LabRevenueReport } from '@/hooks/use-lab-revenue';
 
 /** printReceiptHtml renders into a hidden iframe through srcdoc; capture it. */
@@ -58,5 +58,22 @@ describe('printLabStaffDailySummary', () => {
     // 09:30 UTC is 2:30 pm in Karachi.
     expect(html).toMatch(/Printed: 24 Oct 2026, 0?2:30 pm/i);
     expect(html).not.toContain('2020');
+  });
+});
+
+describe('printLabRevenueReport', () => {
+  it('names the department it was printed for, and is otherwise the same report', () => {
+    const html = capturePrintedHtml(() => printLabRevenueReport(report, 'Civil Hospital', 'OPD'));
+
+    expect(html).toContain('Lab Revenue Report &nbsp;|&nbsp; Department: OPD &nbsp;|&nbsp; Period: 24 Oct 2026');
+    expect(html).toContain('CBC');
+    expect(html).toContain('GRAND TOTAL');
+    expect(html).toContain('Tests by Resource');
+  });
+
+  it('prints as before when no department is given', () => {
+    const html = capturePrintedHtml(() => printLabRevenueReport(report, 'Civil Hospital'));
+
+    expect(html).not.toContain('Department:');
   });
 });
