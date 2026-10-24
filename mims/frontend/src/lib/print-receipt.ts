@@ -25,20 +25,20 @@ function present(values: (string | null | undefined)[]): string[] {
 }
 
 /**
- * What the registration slip prints, on two lines: the full MR number
- * (MR-2026-10-18-482913), with who registered on the right; then the
- * patient's name, with their gender and the registration date on the right.
+ * What the registration slip prints, on two lines, laid out like the lab
+ * slip's first line: the full MR number (MR-2026-10-18-482913), the patient's
+ * name and the registration date; then who registered them, on the right.
  * The HTML slip and the dot-matrix text slip both print exactly these.
  */
 export function patientSlipValues(patient: ReceiptPatient, registeredBy?: string): SlipLine[] {
   return [
     {
-      left: present([formatSlipMRN(patient.nrNumber)]),
-      right: present([registeredBy]),
+      left: present([formatSlipMRN(patient.nrNumber), patient.fullName]),
+      right: present([patient.registeredAt ? formatKarachiDate(patient.registeredAt) : '']),
     },
     {
-      left: present([patient.fullName]),
-      right: present([patient.gender, patient.registeredAt ? formatKarachiDate(patient.registeredAt) : '']),
+      left: [],
+      right: present([registeredBy ? `Created By: ${registeredBy}` : '']),
     },
   ];
 }
@@ -86,15 +86,43 @@ async function printSlipHtml(html: string): Promise<SlipPrintResult> {
   return printed ? { printed: true } : { printed: false, error: 'The slip did not print.' };
 }
 
-function slipLineHtml(line: SlipLine): string {
+const escapeHtml = (value: string) =>
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+const cell = (value = '') => `<span>${escapeHtml(value)}</span>`;
+
+/**
+ * The first line of both slips: MR (twice Name's width, printed larger) |
+ * Name | Date (as wide as the date).
+ */
+function slipHeadHtml(line: SlipLine): string {
   return `
-        <div class="line">
-          <span>${line.left.join('<span class="sep">|</span>')}</span>
-          <span>${line.right.join('<span class="sep">|</span>')}</span>
-        </div>`;
+          <div class="head">${cell(line.left[0])}${cell(line.left[1])}${cell(line.right[0])}</div>`;
 }
 
-function patientSlipHtml(lines: SlipLine[]): string {
+/** Values flush left and flush right, as on the lab slip's test line. */
+function slipLineHtml(line: SlipLine): string {
+  return `
+          <div class="line">${[...line.left, ...line.right].map((value) => cell(value)).join('')}</div>`;
+}
+
+/** Every value on both slips prints bold, at 20px; the MR at 30px. */
+const SLIP_LINE_CSS = `
+          .head, .middle, .line {
+            gap: 16px;
+            font-size: 20px;
+            font-weight: 700;
+            line-height: 1.4;
+          }
+          .head { display: grid; grid-template-columns: 2fr 1fr auto; align-items: baseline; }
+          .head > span:first-child { font-size: 30px; }
+          .middle { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+          .head > span, .middle > span { min-width: 0; overflow-wrap: anywhere; }
+          .head > span:last-child, .middle > span:last-child { text-align: right; }
+          .line { display: flex; justify-content: space-between; }`;
+
+function patientSlipHtml([head, createdBy]: SlipLine[]): string {
+  // An empty first cell keeps Created By flush right.
   return `
     <!DOCTYPE html>
     <html>
@@ -103,19 +131,10 @@ function patientSlipHtml(lines: SlipLine[]): string {
         <style>
           @page { size: A4; margin: 0; }
           * { box-sizing: border-box; }
-          body { font-family: Arial, sans-serif; color: #000; padding: 15mm 15mm 15mm 22mm; margin-top: 15%; }
-          .line {
-            display: flex;
-            justify-content: space-between;
-            gap: 16px;
-            font-size: 20px;
-            font-weight: 700;
-            line-height: 1.4;
-          }
-          .sep { font-weight: 700; color: #374151; padding: 0 14px; }
+          body { font-family: Arial, sans-serif; color: #000; padding: 15mm 15mm 15mm 22mm; margin-top: 15%; }${SLIP_LINE_CSS}
         </style>
       </head>
-      <body>${lines.map(slipLineHtml).join('')}
+      <body>${slipHeadHtml(head)}${slipLineHtml({ left: [''], right: createdBy.right })}
       </body>
     </html>
   `;
@@ -198,20 +217,13 @@ export function printLabReceipt(
   );
 }
 
-const escapeHtml = (value: string) =>
-  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
 function labSlipHtml(slips: SlipLine[][]): string {
-  const cell = (value = '') => `<span>${escapeHtml(value)}</span>`;
-
   // Line 1: MR (twice Name's width) | Name | Date (as wide as the date).
   // Line 2: an empty cell as wide as the right one, so the category sits in
   // the middle of the slip, not the middle of what is left; then Created By
   // flush right. Line 3: test name and amount, flush left and right.
-  const linesHtml = ([head, middle, test]: SlipLine[]) => `
-          <div class="head">${cell(head.left[0])}${cell(head.left[1])}${cell(head.right[0])}</div>
-          <div class="middle">${cell()}${cell(middle.left[0])}${cell(middle.right[0])}</div>
-          <div class="line">${[...test.left, ...test.right].map((value) => cell(value)).join('')}</div>`;
+  const linesHtml = ([head, middle, test]: SlipLine[]) => `${slipHeadHtml(head)}
+          <div class="middle">${cell()}${cell(middle.left[0])}${cell(middle.right[0])}</div>${slipLineHtml(test)}`;
 
   const pages = slips
     .map((lines, i) => {
@@ -235,19 +247,7 @@ function labSlipHtml(slips: SlipLine[][]): string {
           body { font-family: Arial, sans-serif; color: #000; margin: 0; }
           /* Same landing point as before: 46.5mm top, 22mm + 8px left. */
           .slip { padding: 46.5mm calc(15mm + 8px) 15mm calc(22mm + 8px); }
-          .break { page-break-after: always; }
-          .head, .middle, .line {
-            gap: 16px;
-            font-size: 20px;
-            font-weight: 700;
-            line-height: 1.4;
-          }
-          .head { display: grid; grid-template-columns: 2fr 1fr auto; align-items: baseline; }
-          .head > span:first-child { font-size: 30px; }
-          .middle { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
-          .head > span, .middle > span { min-width: 0; overflow-wrap: anywhere; }
-          .head > span:last-child, .middle > span:last-child { text-align: right; }
-          .line { display: flex; justify-content: space-between; }
+          .break { page-break-after: always; }${SLIP_LINE_CSS}
         </style>
       </head>
       <body>${pages}

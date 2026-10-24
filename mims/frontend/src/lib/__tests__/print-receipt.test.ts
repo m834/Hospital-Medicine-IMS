@@ -471,10 +471,10 @@ describe('printPatientReceipt', () => {
     jest.restoreAllMocks();
   });
 
-  it('prints two lines: the full MR number and staff, then name, gender and date', () => {
+  it('prints two lines: MR, name and date, then Created By on the right', () => {
     expect(patientSlipValues(registered, 'Sana Iqbal')).toEqual([
-      { left: ['MR-2026-10-16-482913'], right: ['Sana Iqbal'] },
-      { left: ['Ali Khan'], right: ['MALE', '16/10/2026'] },
+      { left: ['MR-2026-10-16-482913', 'Ali Khan'], right: ['16/10/2026'] },
+      { left: [], right: ['Created By: Sana Iqbal'] },
     ]);
   });
 
@@ -489,8 +489,8 @@ describe('printPatientReceipt', () => {
       slips: [
         {
           lines: [
-            { left: ['MR-2026-10-16-482913'], right: ['Sana Iqbal'], bold: true },
-            { left: ['Ali Khan'], right: ['MALE', '16/10/2026'], bold: true },
+            { left: ['MR-2026-10-16-482913', 'Ali Khan'], right: ['16/10/2026'], bold: true },
+            { left: [], right: ['Created By: Sana Iqbal'], bold: true },
           ],
         },
       ],
@@ -529,10 +529,16 @@ describe('printPatientReceipt', () => {
     // The station check is async; let it settle so the slip frame goes in.
     for (let i = 0; i < 5 && !written; i += 1) await Promise.resolve();
 
-    expect(written).toContain('Ali Khan');
-    expect(written).toContain('MR-2026-10-16-482913');
-    expect(written).toContain('Sana Iqbal');
-    expect(written.split('class="line"').length - 1).toBe(2);
+    // Laid out like the lab slip: MR (30px, twice Name's width) | Name | Date,
+    // then Created By flush right — everything bold.
+    expect(written).toContain(
+      '<div class="head"><span>MR-2026-10-16-482913</span><span>Ali Khan</span><span>16/10/2026</span></div>',
+    );
+    expect(written).toContain('<div class="line"><span></span><span>Created By: Sana Iqbal</span></div>');
+    expect(written).toContain('grid-template-columns: 2fr 1fr auto');
+    expect(written).toContain('.head > span:first-child { font-size: 30px; }');
+    expect(written).toContain('font-weight: 700');
+    expect(written).not.toContain('MALE');
     if (print) expect(print).not.toHaveBeenCalled();
 
     // The frame never loads in jsdom, so the print gives up as not printed.
