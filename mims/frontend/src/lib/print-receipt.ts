@@ -106,7 +106,23 @@ function slipLineHtml(line: SlipLine): string {
           <div class="line">${[...line.left, ...line.right].map((value) => cell(value)).join('')}</div>`;
 }
 
-/** Every value on both slips prints bold, at 20px; the MR at 30px. */
+/**
+ * Where both slips land on the page: 46.5mm from the top, 22mm + 8px from the
+ * left, 15mm + 8px from the right. The registration slip keeps 40px more on
+ * the right, where its line was being cut off on the printer.
+ */
+const SLIP_PAGE_CSS = `
+          @page { size: A4; margin: 0; }
+          * { box-sizing: border-box; }
+          body { font-family: Arial, sans-serif; color: #000; margin: 0; }
+          .slip { padding: 46.5mm calc(15mm + 8px) 15mm calc(22mm + 8px); }
+          .slip.registration { padding-right: calc(15mm + 48px); }`;
+
+/**
+ * Every value on both slips prints bold, at 20px; the MR at 32px — the
+ * largest that still leaves line 1 room for a normal name on the registration
+ * slip's narrower line (40px pushed the name out letter by letter).
+ */
 const SLIP_LINE_CSS = `
           .head, .middle, .line {
             gap: 16px;
@@ -114,10 +130,15 @@ const SLIP_LINE_CSS = `
             font-weight: 700;
             line-height: 1.4;
           }
-          .head { display: grid; grid-template-columns: 2fr 1fr auto; align-items: baseline; }
-          .head > span:first-child { font-size: 30px; }
-          .middle { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+          /* MR twice Name's width where there is room, never narrower than
+             the MR itself: it must not break onto a second line. */
+          .head { display: grid; grid-template-columns: minmax(max-content, 2fr) 1fr auto; align-items: baseline; }
+          .head > span:first-child { font-size: 32px; }
+          /* Equal side columns keep the category centred; Created By stays on
+             one line, nudging the category left when a name is long. */
+          .middle { display: grid; grid-template-columns: 1fr auto 1fr; }
           .head > span, .middle > span { min-width: 0; overflow-wrap: anywhere; }
+          .head > span:first-child, .middle > span:last-child { white-space: nowrap; min-width: max-content; }
           .head > span:last-child, .middle > span:last-child { text-align: right; }
           .line { display: flex; justify-content: space-between; }`;
 
@@ -129,12 +150,12 @@ function patientSlipHtml([head, createdBy]: SlipLine[]): string {
       <head>
         <meta charset="utf-8">
         <style>
-          @page { size: A4; margin: 0; }
-          * { box-sizing: border-box; }
-          body { font-family: Arial, sans-serif; color: #000; padding: 15mm 15mm 15mm 22mm; margin-top: 15%; }${SLIP_LINE_CSS}
+${SLIP_PAGE_CSS}${SLIP_LINE_CSS}
         </style>
       </head>
-      <body>${slipHeadHtml(head)}${slipLineHtml({ left: [''], right: createdBy.right })}
+      <body>
+        <div class="slip registration">${slipHeadHtml(head)}${slipLineHtml({ left: [''], right: createdBy.right })}
+        </div>
       </body>
     </html>
   `;
@@ -242,11 +263,7 @@ function labSlipHtml(slips: SlipLine[][]): string {
       <head>
         <meta charset="utf-8">
         <style>
-          @page { size: A4; margin: 0; }
-          * { box-sizing: border-box; }
-          body { font-family: Arial, sans-serif; color: #000; margin: 0; }
-          /* Same landing point as before: 46.5mm top, 22mm + 8px left. */
-          .slip { padding: 46.5mm calc(15mm + 8px) 15mm calc(22mm + 8px); }
+${SLIP_PAGE_CSS}
           .break { page-break-after: always; }${SLIP_LINE_CSS}
         </style>
       </head>

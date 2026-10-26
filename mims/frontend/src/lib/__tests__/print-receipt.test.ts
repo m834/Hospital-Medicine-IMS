@@ -146,10 +146,10 @@ describe('printLabReceipt', () => {
     // Each value its own span, spread across the line with equal gaps.
     // MR takes the width of two columns; Name and Date one each.
     expect(html).toContain('<div class="head"><span>MR-2026-08-04-482913</span><span>Ali Khan</span><span>25/09/2026</span></div>');
-    expect(html).toContain('grid-template-columns: 2fr 1fr auto');
+    expect(html).toContain('grid-template-columns: minmax(max-content, 2fr) 1fr auto');
     // An empty cell as wide as Created By's keeps the category centred on the slip.
     expect(html).toContain('<div class="middle"><span></span><span>CARDIAC</span><span>Created By: Sana Iqbal</span></div>');
-    expect(html).toContain('grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr)');
+    expect(html).toContain('grid-template-columns: 1fr auto 1fr');
     expect(html).not.toContain('MALE');
     expect(html).toContain('<span>ECG</span><span>Rs. 500.00</span>');
     expect(html).toContain('justify-content: space-between');
@@ -206,6 +206,7 @@ describe('printLabReceipt', () => {
     );
 
     expect(html).toContain('padding: 46.5mm calc(15mm + 8px) 15mm calc(22mm + 8px)');
+    expect(html).not.toContain('class="slip registration"');
     expect(html).toContain('@page { size: A4; margin: 0; }');
   });
 
@@ -535,10 +536,13 @@ describe('printPatientReceipt', () => {
       '<div class="head"><span>MR-2026-10-16-482913</span><span>Ali Khan</span><span>16/10/2026</span></div>',
     );
     expect(written).toContain('<div class="line"><span></span><span>Created By: Sana Iqbal</span></div>');
-    expect(written).toContain('grid-template-columns: 2fr 1fr auto');
-    expect(written).toContain('.head > span:first-child { font-size: 30px; }');
+    expect(written).toContain('grid-template-columns: minmax(max-content, 2fr) 1fr auto');
+    expect(written).toContain('.head > span:first-child { font-size: 32px; }');
     expect(written).toContain('font-weight: 700');
     expect(written).not.toContain('MALE');
+    // The lab slip's margins, plus 40px on the right where it was cut off.
+    expect(written).toContain('<div class="slip registration">');
+    expect(written).toContain('.slip.registration { padding-right: calc(15mm + 48px); }');
     if (print) expect(print).not.toHaveBeenCalled();
 
     // The frame never loads in jsdom, so the print gives up as not printed.

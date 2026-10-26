@@ -105,15 +105,15 @@ function LabSlip({
             <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">
               Page {index + 1} of {orders.length}
             </p>
-            <div className="grid grid-cols-[2fr_1fr_auto] items-baseline gap-4 text-sm font-bold leading-6">
-              <span className="text-[21px]">{head.left[0]}</span>
+            <div className="grid grid-cols-[minmax(max-content,2fr)_1fr_auto] items-baseline gap-4 text-sm font-bold leading-6">
+              <span className="whitespace-nowrap text-[22px]">{head.left[0]}</span>
               <span>{head.left[1]}</span>
               <span className="text-right">{head.right[0]}</span>
             </div>
-            <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-4 text-sm font-bold leading-6">
+            <div className="grid grid-cols-[1fr_auto_1fr] gap-4 text-sm font-bold leading-6">
               <span />
               <span>{middle.left[0]}</span>
-              <span className="text-right">{middle.right[0]}</span>
+              <span className="whitespace-nowrap text-right">{middle.right[0]}</span>
             </div>
             <div className="flex justify-between gap-4 text-sm font-bold leading-6">
               {[...test.left, ...test.right].map((value, j) => (
