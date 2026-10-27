@@ -55,6 +55,10 @@ interface Patient {
     fullName: string;
   };
   registeredAt: string;
+  /** Who registered the patient — the reprinted slip's Created By. */
+  registeredByUser?: {
+    fullName: string;
+  };
   address?: string;
 }
 
@@ -237,7 +241,8 @@ export default function PatientDetailPage() {
   const printPatientDetails = () => {
     if (!patient) return;
     const hospitalName = selectedHospital?.name || 'Hospital Medical Center';
-    printPatientReceipt(patient, hospitalName, user?.fullName).then((result) => {
+    // A reprint names whoever registered the patient, not whoever is reprinting.
+    printPatientReceipt(patient, hospitalName, patient.registeredByUser?.fullName || user?.fullName).then((result) => {
       if (!result.printed) alert(`The slip did not print: ${result.error}`);
     });
   };

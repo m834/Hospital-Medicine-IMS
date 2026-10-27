@@ -472,10 +472,10 @@ describe('printPatientReceipt', () => {
     jest.restoreAllMocks();
   });
 
-  it('prints two lines: MR, name and date, then Created By on the right', () => {
+  it('prints two lines: MR with the date on the right, then name with Created By', () => {
     expect(patientSlipValues(registered, 'Sana Iqbal')).toEqual([
-      { left: ['MR-2026-10-16-482913', 'Ali Khan'], right: ['16/10/2026'] },
-      { left: [], right: ['Created By: Sana Iqbal'] },
+      { left: ['MR-2026-10-16-482913'], right: ['16/10/2026'] },
+      { left: ['Ali Khan'], right: ['Created By: Sana Iqbal'] },
     ]);
   });
 
@@ -490,8 +490,8 @@ describe('printPatientReceipt', () => {
       slips: [
         {
           lines: [
-            { left: ['MR-2026-10-16-482913', 'Ali Khan'], right: ['16/10/2026'], bold: true },
-            { left: [], right: ['Created By: Sana Iqbal'], bold: true },
+            { left: ['MR-2026-10-16-482913'], right: ['16/10/2026'], bold: true },
+            { left: ['Ali Khan'], right: ['Created By: Sana Iqbal'], bold: true },
           ],
         },
       ],
@@ -530,19 +530,22 @@ describe('printPatientReceipt', () => {
     // The station check is async; let it settle so the slip frame goes in.
     for (let i = 0; i < 5 && !written; i += 1) await Promise.resolve();
 
-    // Laid out like the lab slip: MR (30px, twice Name's width) | Name | Date,
-    // then Created By flush right — everything bold.
+    // MR (30px) | Date, then Name | Created By — everything bold, on the lab
+    // slip's page, fonts and margins.
     expect(written).toContain(
-      '<div class="head"><span>MR-2026-10-16-482913</span><span>Ali Khan</span><span>16/10/2026</span></div>',
+      '<div class="line reg-row mr"><span>MR-2026-10-16-482913</span><span>16/10/2026</span></div>',
     );
-    expect(written).toContain('<div class="line"><span></span><span>Created By: Sana Iqbal</span></div>');
-    expect(written).toContain('grid-template-columns: minmax(max-content, 2fr) 1fr auto');
-    expect(written).toContain('.head > span:first-child { font-size: 32px; }');
+    expect(written).toContain(
+      '<div class="line reg-row"><span>Ali Khan</span><span>Created By: Sana Iqbal</span></div>',
+    );
+    expect(written).toContain('.reg-row.mr > span:first-child { font-size: 30px; }');
     expect(written).toContain('font-weight: 700');
     expect(written).not.toContain('MALE');
-    // The lab slip's margins, plus 40px on the right where it was cut off.
+    expect(written).toContain('.slip { padding: 46.5mm calc(15mm + 8px) 15mm calc(22mm + 8px); }');
+    // Date and Created By share one tunable gap from the right edge.
     expect(written).toContain('<div class="slip registration">');
-    expect(written).toContain('.slip.registration { padding-right: calc(15mm + 48px); }');
+    expect(written).toContain('.slip.registration { --slip-right-gap: 60px; }');
+    expect(written).toContain('margin-right: var(--slip-right-gap)');
     if (print) expect(print).not.toHaveBeenCalled();
 
     // The frame never loads in jsdom, so the print gives up as not printed.

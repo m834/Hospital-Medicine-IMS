@@ -25,19 +25,19 @@ function present(values: (string | null | undefined)[]): string[] {
 }
 
 /**
- * What the registration slip prints, on two lines, laid out like the lab
- * slip's first line: the full MR number (MR-2026-10-18-482913), the patient's
- * name and the registration date; then who registered them, on the right.
- * The HTML slip and the dot-matrix text slip both print exactly these.
+ * What the registration slip prints, on two lines: the full MR number
+ * (MR-2026-10-18-482913) with the registration date on the right; then the
+ * patient's name with who registered them on the right. The HTML slip and the
+ * dot-matrix text slip both print exactly these.
  */
 export function patientSlipValues(patient: ReceiptPatient, registeredBy?: string): SlipLine[] {
   return [
     {
-      left: present([formatSlipMRN(patient.nrNumber), patient.fullName]),
+      left: present([formatSlipMRN(patient.nrNumber)]),
       right: present([patient.registeredAt ? formatKarachiDate(patient.registeredAt) : '']),
     },
     {
-      left: [],
+      left: present([patient.fullName]),
       right: present([registeredBy ? `Created By: ${registeredBy}` : '']),
     },
   ];
@@ -92,7 +92,7 @@ const escapeHtml = (value: string) =>
 const cell = (value = '') => `<span>${escapeHtml(value)}</span>`;
 
 /**
- * The first line of both slips: MR (twice Name's width, printed larger) |
+ * The lab slip's first line: MR (twice Name's width, printed larger) |
  * Name | Date (as wide as the date).
  */
 function slipHeadHtml(line: SlipLine): string {
@@ -108,20 +108,17 @@ function slipLineHtml(line: SlipLine): string {
 
 /**
  * Where both slips land on the page: 46.5mm from the top, 22mm + 8px from the
- * left, 15mm + 8px from the right. The registration slip keeps 40px more on
- * the right, where its line was being cut off on the printer.
+ * left, 15mm + 8px from the right.
  */
 const SLIP_PAGE_CSS = `
           @page { size: A4; margin: 0; }
           * { box-sizing: border-box; }
           body { font-family: Arial, sans-serif; color: #000; margin: 0; }
-          .slip { padding: 46.5mm calc(15mm + 8px) 15mm calc(22mm + 8px); }
-          .slip.registration { padding-right: calc(15mm + 48px); }`;
+          .slip { padding: 46.5mm calc(15mm + 8px) 15mm calc(22mm + 8px); }`;
 
 /**
- * Every value on both slips prints bold, at 20px; the MR at 32px — the
- * largest that still leaves line 1 room for a normal name on the registration
- * slip's narrower line (40px pushed the name out letter by letter).
+ * Every value on both slips prints bold, at 20px; the lab slip's MR at 32px,
+ * the registration slip's at 30px (its own rows, below).
  */
 const SLIP_LINE_CSS = `
           .head, .middle, .line {
@@ -142,19 +139,38 @@ const SLIP_LINE_CSS = `
           .head > span:last-child, .middle > span:last-child { text-align: right; }
           .line { display: flex; justify-content: space-between; }`;
 
-function patientSlipHtml([head, createdBy]: SlipLine[]): string {
-  // An empty first cell keeps Created By flush right.
+/**
+ * The registration slip's two rows: MR (30px) | Date, then Name | Created By.
+ * The right-hand values keep a gap from the edge — the printer was cutting
+ * them off — and share it, so Date and Created By line up. Tune the gap with
+ * --slip-right-gap. MR may wrap before it pushes the Date off the page.
+ */
+const REGISTRATION_ROW_CSS = `
+          .slip.registration { --slip-right-gap: 60px; }
+          .reg-row { display: flex; justify-content: space-between; align-items: baseline; }
+          .reg-row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+          .reg-row > span:last-child { flex-shrink: 0; white-space: nowrap; margin-right: var(--slip-right-gap); text-align: right; }
+          .reg-row.mr > span:first-child { font-size: 30px; }`;
+
+function patientSlipHtml(lines: SlipLine[]): string {
+  const rows = lines
+    .map(
+      (line, index) => `
+          <div class="line reg-row${index === 0 ? ' mr' : ''}">${cell(line.left[0])}${cell(line.right[0])}</div>`,
+    )
+    .join('');
+
   return `
     <!DOCTYPE html>
     <html>
       <head>
         <meta charset="utf-8">
         <style>
-${SLIP_PAGE_CSS}${SLIP_LINE_CSS}
+${SLIP_PAGE_CSS}${SLIP_LINE_CSS}${REGISTRATION_ROW_CSS}
         </style>
       </head>
       <body>
-        <div class="slip registration">${slipHeadHtml(head)}${slipLineHtml({ left: [''], right: createdBy.right })}
+        <div class="slip registration">${rows}
         </div>
       </body>
     </html>
