@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useLabOrders, downloadLabResultPdf } from "@/hooks/use-lab-orders";
 import { useHospitalStore } from "@/stores/hospital.store";
 import { useAuthStore } from "@/stores/auth.store";
@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useDepartments, Department } from "@/hooks/use-departments";
 import { Search, Download, FileText, Calendar, User, TestTube, Printer } from "lucide-react";
 import { formatMRN, matchesMRN } from '@/lib/mrn';
-import { useLabRevenue } from "@/hooks/use-lab-revenue";
+import { useLabRevenue, useServerDate } from "@/hooks/use-lab-revenue";
 import { printLabRevenueReport, printLabStaffDailySummary } from "@/lib/print-lab-revenue";
 
 /** Two decimals, grouped — the same figures the printed report carries. */
@@ -38,6 +38,16 @@ export default function LabReportsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  // Both dates open on today — the server's today, not this PC's. Only the
+  // first answer fills them in, so a date the user picks is never overwritten.
+  const { data: serverDate } = useServerDate();
+  const [datesDefaulted, setDatesDefaulted] = useState(false);
+  useEffect(() => {
+    if (datesDefaulted || !serverDate?.today) return;
+    setStartDate((current) => current || serverDate.today);
+    setEndDate((current) => current || serverDate.today);
+    setDatesDefaulted(true);
+  }, [serverDate, datesDefaulted]);
   // Lab revenue is reported one department at a time; nothing loads or prints
   // until one is chosen.
   const [departmentId, setDepartmentId] = useState("");
@@ -178,6 +188,8 @@ export default function LabReportsPage() {
                 value={startDate}
                 onChange={setStartDate}
                 placeholder="Start Date"
+                aria-label="Start date"
+                withCalendar
               />
             </div>
             <div>
@@ -185,6 +197,8 @@ export default function LabReportsPage() {
                 value={endDate}
                 onChange={setEndDate}
                 placeholder="End Date"
+                aria-label="End date"
+                withCalendar
               />
             </div>
           </div>

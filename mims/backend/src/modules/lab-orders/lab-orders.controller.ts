@@ -113,6 +113,21 @@ export class LabOrdersController {
     );
   }
 
+  /**
+   * Today as the server sees it (yyyy-mm-dd, the server's local day — the same
+   * day boundaries the revenue report uses). The revenue filter defaults to
+   * this, so a desk PC with a wrong clock cannot shift which day it opens on.
+   */
+  @Get('server-date')
+  getServerDate() {
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, '0');
+    return {
+      today: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+      now: now.toISOString(),
+    };
+  }
+
   @Get('statistics')
   getStatistics(
     @Query('hospitalId') hospitalId: string,

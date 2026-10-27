@@ -77,3 +77,21 @@ export function useLabRevenue(params: LabRevenueParams) {
     enabled: !!token && !!params.hospitalId && params.enabled !== false,
   });
 }
+
+/**
+ * Today by the server's clock (yyyy-mm-dd). The revenue dates default to it
+ * rather than to the desk PC's date, which has been seen to be wrong.
+ */
+export function useServerDate() {
+  const token = useAuthStore((state) => state.token);
+
+  return useQuery({
+    queryKey: ['lab-orders', 'server-date'],
+    queryFn: async () => {
+      const { data } = await api.get('/lab-orders/server-date');
+      return data as { today: string; now: string };
+    },
+    enabled: !!token,
+    staleTime: 60_000,
+  });
+}
