@@ -13,6 +13,7 @@ import { EnterResultDto } from './dto/enter-result.dto';
 import { ApproveResultDto } from './dto/approve-result.dto';
 import { LabOrderStatus, TestPriority, ReceiptType, PaymentStatus, PaymentMethod, Prisma } from '@prisma/client';
 import { isUuid, mrnFilter } from '../../common/utils/mrn.util';
+import { retryOnUniqueViolation } from '../../common/utils/unique-retry.util';
 
 /**
  * Roles allowed to print a lab slip more than once. Everyone else gets the one
@@ -33,6 +34,27 @@ const SLIP_REPRINT_ROLES = new Set<string>([
  * of it, so the lab can still work the full queue.
  */
 const SELF_SCOPED_LIST_ROLES = new Set<string>(['REGISTRATION_STAFF']);
+
+/** Lab work lists are capped so a long history cannot make each load heavier. */
+const DEFAULT_LIST_LIMIT = 200;
+const MAX_LIST_LIMIT = 1000;
+
+const clampListLimit = (limit: number) =>
+  Math.min(Math.max(Math.floor(limit) || DEFAULT_LIST_LIMIT, 1), MAX_LIST_LIMIT);
+
+/**
+ * The dates arrive as plain days (2026-11-01), which parse to midnight; a
+ * one-day range would otherwise end before the day began. Widened to the
+ * whole of both days on the server's (Karachi) clock — the same rule the
+ * revenue report uses.
+ */
+function wholeDays(startDate: Date, endDate: Date) {
+  const gte = new Date(startDate);
+  const lte = new Date(endDate);
+  gte.setHours(0, 0, 0, 0);
+  lte.setHours(23, 59, 59, 999);
+  return { gte, lte };
+}
 
 /**
  * Roles allowed to book a lab order on a past date. A backdated order moves
@@ -171,23 +193,26 @@ export class LabOrdersService {
     // Generate order number: LAB-YYYYMMDD-XXXX, on the day the order is booked
     const dateStr = this.localDateStamp(orderedAt);
     
-    const lastOrder = await this.prisma.labOrder.findFirst({
-      where: {
-        hospitalId: createLabOrderDto.hospitalId,
-        orderNumber: {
-          startsWith: `LAB-${dateStr}`,
+    // Read inside the transaction, so a retry after a collision draws afresh.
+    const nextOrderNumber = async (db: Prisma.TransactionClient) => {
+      const lastOrder = await db.labOrder.findFirst({
+        where: {
+          hospitalId: createLabOrderDto.hospitalId,
+          orderNumber: {
+            startsWith: `LAB-${dateStr}`,
+          },
         },
-      },
-      orderBy: { orderNumber: 'desc' },
-    });
+        orderBy: { orderNumber: 'desc' },
+      });
 
-    let sequence = 1;
-    if (lastOrder) {
-      const lastSeq = parseInt(lastOrder.orderNumber.split('-')[2]);
-      sequence = lastSeq + 1;
-    }
+      let sequence = 1;
+      if (lastOrder) {
+        const lastSeq = parseInt(lastOrder.orderNumber.split('-')[2]);
+        sequence = lastSeq + 1;
+      }
 
-    const orderNumber = `LAB-${dateStr}-${sequence.toString().padStart(4, '0')}`;
+      return `LAB-${dateStr}-${sequence.toString().padStart(4, '0')}`;
+    };
 
     // Get test price for receipt
     const labTest = await this.prisma.labTest.findUnique({
@@ -214,7 +239,12 @@ export class LabOrdersService {
       labTest.departmentId || (visit as any)?.departmentId || orderedBy?.departmentId || null;
 
 
-    const labOrder = await this.prisma.$transaction(async (tx) => {
+    // Order and receipt numbers are "highest so far + 1"; one taken by another
+    // desk at the same moment retries the whole booking with fresh numbers, as
+    // createBatch() does.
+    const labOrder = await retryOnUniqueViolation(() => this.prisma.$transaction(async (tx) => {
+      const orderNumber = await nextOrderNumber(tx);
+
       // orderedAt is the DTO's name for the booking date; the column is
       // createdAt, so it never reaches the row as an unknown field.
       const { orderedAt: _orderedAt, ...orderData } = createLabOrderDto;
@@ -328,7 +358,7 @@ export class LabOrdersService {
       }
 
       return order;
-    });
+    }));
 
     return labOrder;
   }
@@ -527,6 +557,8 @@ export class LabOrdersService {
       orderedById?: string;
       startDate?: Date;
       endDate?: Date;
+      /** At most this many rows (capped at MAX_LIST_LIMIT); all when absent. */
+      limit?: number;
     },
     user?: { id: string; role: string },
   ) {
@@ -547,12 +579,10 @@ export class LabOrdersService {
         ...(filters?.status && { status: filters.status }),
         ...(filters?.priority && { priority: filters.priority }),
         ...(filters?.startDate && filters?.endDate && {
-          createdAt: {
-            gte: filters.startDate,
-            lte: filters.endDate,
-          },
+          createdAt: wholeDays(filters.startDate, filters.endDate),
         }),
       },
+      ...(filters?.limit && { take: clampListLimit(filters.limit) }),
       include: {
         patient: { 
           select: { 
@@ -673,12 +703,26 @@ export class LabOrdersService {
     });
   }
 
-  async getPendingOrders(hospitalId: string) {
+  /**
+   * The sample-collection queue, oldest first within priority. The lab screen
+   * polls it every few seconds, so it is capped (DEFAULT_LIST_LIMIT unless the
+   * caller asks for a limit) and can be narrowed to a range of days — orders
+   * whose samples were never marked collected would otherwise make every poll
+   * heavier, day after day.
+   */
+  async getPendingOrders(
+    hospitalId: string,
+    options: { startDate?: Date; endDate?: Date; limit?: number } = {},
+  ) {
     return this.prisma.labOrder.findMany({
       where: {
         hospitalId,
         status: LabOrderStatus.PENDING,
+        ...(options.startDate && options.endDate && {
+          createdAt: wholeDays(options.startDate, options.endDate),
+        }),
       },
+      take: clampListLimit(options.limit ?? DEFAULT_LIST_LIMIT),
       include: {
         patient: { 
           select: { 

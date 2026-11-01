@@ -23,6 +23,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Download, Upload, Loader2, CheckCircle2, XCircle, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import api from '@/lib/api';
+import { toast } from '@/hooks/use-toast';
 
 interface Pharmacy {
   id: string;
@@ -164,7 +165,7 @@ export function BulkImportModal({ open, onOpenChange, pharmacies, hospitalId, on
 
   const handleImport = async () => {
     if (!file || !selectedPharmacy) {
-      alert('Please select a pharmacy and upload a file');
+      toast({ title: 'Nothing to import', description: 'Please select a pharmacy and upload a file', variant: 'destructive' });
       return;
     }
 
@@ -215,7 +216,11 @@ export function BulkImportModal({ open, onOpenChange, pharmacies, hospitalId, on
       }
     } catch (error: any) {
       console.error('Import error:', error);
-      alert(error.response?.data?.message || 'Failed to import stock batches');
+      toast({
+        title: 'Import failed',
+        description: error.response?.data?.message || 'Failed to import stock batches',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }

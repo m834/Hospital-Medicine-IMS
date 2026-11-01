@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -63,6 +64,7 @@ const STATUS_COLORS = {
 };
 
 export function ClinicManagement() {
+  const [confirm, confirmDialog] = useConfirmDialog();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [showDialog, setShowDialog] = useState(false);
@@ -195,7 +197,7 @@ export function ClinicManagement() {
   };
 
   const handleDeleteClinic = async (clinic: Clinic) => {
-    if (!confirm(`Are you sure you want to delete this clinic?`)) return;
+    if (!(await confirm('Are you sure you want to delete this clinic?'))) return;
 
     try {
       await deleteClinic.mutateAsync(clinic.id);
@@ -577,6 +579,7 @@ export function ClinicManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

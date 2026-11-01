@@ -7,9 +7,13 @@ import { PrismaService } from '@/database/prisma.service';
 import { CreateVisitDto, UpdateVisitDto, VisitQueryDto } from './dto';
 import { VisitStatus, PaymentStatus, TokenStatus, ReceiptType, PaymentMethod, VisitType, Prisma } from '@prisma/client';
 import { localCalendarDay, localDateStamp } from '../../common/utils/local-day.util';
+import { nextNumberAfterHighest, retryOnUniqueViolation } from '../../common/utils/unique-retry.util';
 
 // Flat fee (PKR) charged when an emergency patient is registered.
 const EMERGENCY_REGISTRATION_FEE = 20;
+
+// The visit, its token and its receipt are written together.
+const VISIT_TX = { maxWait: 10_000, timeout: 20_000 };
 
 @Injectable()
 export class VisitsService {
@@ -17,45 +21,41 @@ export class VisitsService {
 
   /**
    * Generate Visit Number in format: PV-YYYYMMDD-XXXX
+   *
+   * The highest PV- number already issued today, plus one. Visit numbers are
+   * unique across the whole database, so this reads every hospital's numbers,
+   * and it reads the highest rather than counting today's visits: a deleted
+   * patient takes their visits with them, and a count would then hand out a
+   * number that is still in use. A collision with a desk saving at the same
+   * moment is retried by create().
    */
-  private async generateVisitNumber(
-    hospitalId: string,
-    db: Prisma.TransactionClient = this.prisma,
-  ): Promise<string> {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    const datePrefix = `${year}${month}${day}`;
-
-    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
-
-    const todayCount = await db.visit.count({
-      where: {
-        hospitalId,
-        visitDate: {
-          gte: startOfDay,
-          lte: endOfDay,
-        },
-      },
-    });
-
-    const sequence = String(todayCount + 1).padStart(4, '0');
-    return `PV-${datePrefix}-${sequence}`;
+  private async generateVisitNumber(db: Prisma.TransactionClient): Promise<string> {
+    const prefix = `PV-${localDateStamp()}-`;
+    const sequence = await nextNumberAfterHighest(db, 'visits', 'visit_number', prefix);
+    return `${prefix}${String(sequence).padStart(4, '0')}`;
   }
 
   /**
    * Create a new visit with token generation
    *
-   * tx: run inside the caller's transaction. Used by indoor registration so
-   * the patient, the visit and the admission are saved together or not at
-   * all. Only a visit with no OPD clinic and no emergency fee can be created
-   * this way — those branches write tokens and receipts outside it.
+   * The visit, its token and its receipt are saved together or not at all.
+   * Without a transaction of the caller's, this opens its own and retries it
+   * when a generated number (visit, token, receipt) was taken by another desk
+   * at the same moment.
+   *
+   * tx: run inside the caller's transaction — registration passes one so the
+   * patient and the visit are saved together. The caller then owns the retry,
+   * since a collision aborts the whole transaction.
    */
-  async create(createVisitDto: CreateVisitDto, tx?: Prisma.TransactionClient) {
-    const db = tx ?? this.prisma;
-    const visitNumber = await this.generateVisitNumber(createVisitDto.hospitalId, db);
+  async create(createVisitDto: CreateVisitDto, tx?: Prisma.TransactionClient): Promise<any> {
+    if (!tx) {
+      return retryOnUniqueViolation(() =>
+        this.prisma.$transaction((t) => this.create(createVisitDto, t), VISIT_TX),
+      );
+    }
+
+    const db = tx;
+    const visitNumber = await this.generateVisitNumber(db);
 
     // Validate patient exists
     const patient = await db.patient.findUnique({
@@ -120,11 +120,6 @@ export class VisitsService {
       const isEmergency = createVisitDto.visitType === VisitType.EMERGENCY;
       const consultationFee = isEmergency ? EMERGENCY_REGISTRATION_FEE : 0;
 
-      // The emergency receipt is written outside any transaction.
-      if (tx && isEmergency) {
-        throw new Error('Emergency visits cannot be created inside a transaction');
-      }
-
       const prisma = db as any;
       const visit = await prisma.visit.create({
         data: {
@@ -157,6 +152,7 @@ export class VisitsService {
       // Generate the emergency fee receipt against the patient, by the logged-in registrar
       if (isEmergency) {
         await this.createFlatReceipt(
+          db,
           visit,
           createVisitDto.registrarId,
           EMERGENCY_REGISTRATION_FEE,
@@ -168,13 +164,8 @@ export class VisitsService {
       return { visit };
     }
 
-    // The clinic path writes tokens and receipts outside any transaction.
-    if (tx) {
-      throw new Error('OPD clinic visits cannot be created inside a transaction');
-    }
-
     // At this point an OPD clinic was provided — validate it exists and is active
-    const clinic = await this.prisma.clinic.findUnique({
+    const clinic = await db.clinic.findUnique({
       where: { id: createVisitDto.clinicId },
       include: {
         hospital: true,
@@ -195,7 +186,7 @@ export class VisitsService {
 
     // Check if max patients reached for today
     if (clinic.maxPatientsPerDay) {
-      const todayVisits = await this.prisma.visit.count({
+      const todayVisits = await db.visit.count({
         where: {
           clinicId: clinic.id,
           visitDate: { gte: today },
@@ -209,7 +200,7 @@ export class VisitsService {
     }
 
     // Generate token number for today
-    const lastToken = await this.prisma.token.findFirst({
+    const lastToken = await db.token.findFirst({
       where: {
         clinicId: clinic.id,
         tokenDate: localCalendarDay(today),
@@ -219,7 +210,7 @@ export class VisitsService {
     const nextTokenNumber = (lastToken?.tokenNumber || 0) + 1;
 
     // Create token first
-    const token = await this.prisma.token.create({
+    const token = await db.token.create({
       data: {
         hospitalId: clinic.hospitalId,
         clinicId: clinic.id,
@@ -230,8 +221,7 @@ export class VisitsService {
     });
 
     // Create visit with token
-    const prisma = this.prisma as any;
-    const visit = await prisma.visit.create({
+    const visit = await (db as any).visit.create({
       data: {
         hospitalId: clinic.hospitalId,
         patientId: createVisitDto.patientId,
@@ -263,7 +253,7 @@ export class VisitsService {
       },
     });
 
-    await this.generateReceipt(visit.id, createVisitDto.registrarId);
+    await this.createOpdReceipt(db, visit, createVisitDto.registrarId);
 
     return {
       visit,
@@ -649,9 +639,9 @@ export class VisitsService {
   /**
    * Generate the next REC-YYYYMMDD-NNNN receipt number.
    */
-  private async nextReceiptNumber(): Promise<string> {
+  private async nextReceiptNumber(db: Prisma.TransactionClient): Promise<string> {
     const dateStr = localDateStamp();
-    const lastReceipt = await this.prisma.receipt.findFirst({
+    const lastReceipt = await db.receipt.findFirst({
       where: { receiptNumber: { startsWith: `REC-${dateStr}` } },
       orderBy: { receiptNumber: 'desc' },
     });
@@ -664,18 +654,18 @@ export class VisitsService {
    * Charged to the patient, recorded by the logged-in registrar.
    */
   private async createFlatReceipt(
+    db: Prisma.TransactionClient,
     visit: any,
     generatedById: string,
     amount: number,
     receiptType: ReceiptType,
     description: string,
   ) {
-    const existing = await this.prisma.receipt.findFirst({ where: { visitId: visit.id } });
+    const existing = await db.receipt.findFirst({ where: { visitId: visit.id } });
     if (existing) return existing;
 
-    const receiptNumber = await this.nextReceiptNumber();
-    const prisma = this.prisma as any;
-    return prisma.receipt.create({
+    const receiptNumber = await this.nextReceiptNumber(db);
+    return (db as any).receipt.create({
       data: {
         hospitalId: visit.hospitalId,
         patientId: visit.patientId,
@@ -708,23 +698,17 @@ export class VisitsService {
       return existingReceipt;
     }
 
-    // Generate receipt number
-    const today = new Date();
-    const dateStr = localDateStamp(today);
-    const lastReceipt = await this.prisma.receipt.findFirst({
-      where: {
-        receiptNumber: { startsWith: `REC-${dateStr}` },
-      },
-      orderBy: { receiptNumber: 'desc' },
-    });
-    const sequence = lastReceipt
-      ? parseInt(lastReceipt.receiptNumber.split('-')[2]) + 1
-      : 1;
-    const receiptNumber = `REC-${dateStr}-${sequence.toString().padStart(4, '0')}`;
+    return retryOnUniqueViolation(() => this.createOpdReceipt(this.prisma, visit, generatedById));
+  }
 
-    // Create receipt
-    const prisma = this.prisma as any;
-    const receipt = await prisma.receipt.create({
+  /**
+   * The OPD consultation receipt for a clinic visit. `visit` must carry its
+   * clinic with the clinic's department.
+   */
+  private async createOpdReceipt(db: Prisma.TransactionClient, visit: any, generatedById: string) {
+    const receiptNumber = await this.nextReceiptNumber(db);
+
+    return (db as any).receipt.create({
       data: {
         hospitalId: visit.hospitalId,
         patientId: visit.patientId,
@@ -741,8 +725,6 @@ export class VisitsService {
         paymentStatus: PaymentStatus.UNPAID,
       },
     });
-
-    return receipt;
   }
 
   /**

@@ -46,6 +46,7 @@ import api from '@/lib/api';
 import { printPatientReceipt } from '@/lib/print-receipt';
 import { format } from 'date-fns';
 import { formatMRN, matchesMRN } from '@/lib/mrn';
+import { toast } from '@/hooks/use-toast';
 
 interface Patient {
   id: string;
@@ -225,7 +226,9 @@ export default function PatientsPage() {
     const hospitalName = selectedHospital?.name || 'Hospital Medical Center';
     // A reprint names whoever registered the patient, not whoever is reprinting.
     printPatientReceipt(patient, hospitalName, patient.registeredByUser?.fullName || user?.fullName).then((result) => {
-      if (!result.printed) alert(`The slip did not print: ${result.error}`);
+      if (!result.printed) {
+        toast({ title: 'The slip did not print', description: result.error, variant: 'destructive' });
+      }
     });
   };
 

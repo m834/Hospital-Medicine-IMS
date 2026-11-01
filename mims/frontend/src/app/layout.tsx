@@ -10,6 +10,7 @@ import { Inter } from 'next/font/google'
 import { ThemeProvider } from '@/providers/theme-provider'
 import { QueryProvider } from '@/providers/query-provider'
 import { Toaster } from '@/components/ui/toaster'
+import { ErrorReporting } from '@/providers/error-reporting'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -26,6 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className} suppressHydrationWarning>
+        <ErrorReporting />
         <QueryProvider>
           <ThemeProvider>
             {children}

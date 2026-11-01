@@ -11,6 +11,7 @@ import { DischargeAdmissionDto } from './dto/discharge-admission.dto';
 import { AdmissionQueryDto } from './dto/admission-query.dto';
 import { AdmissionStatus, BedStatus, RoomStatus, Prisma, ReceiptType, PaymentStatus, PaymentMethod } from '@prisma/client';
 import { localCalendarDay, localDateStamp } from '../../common/utils/local-day.util';
+import { retryOnUniqueViolation } from '../../common/utils/unique-retry.util';
 
 @Injectable()
 export class AdmissionsService {
@@ -490,7 +491,9 @@ export class AdmissionsService {
         )
       : this.calculateRoomCharges(admission, dischargeDate);
 
-    return this.prisma.$transaction(async (tx) => {
+    // The discharge receipt's number is "highest so far + 1"; one taken by
+    // another desk at the same moment retries the whole discharge.
+    return retryOnUniqueViolation(() => this.prisma.$transaction(async (tx) => {
       const [operationCharges, labCharges, pharmacyCharges, opdCharges] = await Promise.all([
         this.sumOperationCharges(tx, admission.id),
         this.sumLabCharges(tx, admission.patientId, admission.admittedAt, dischargeDate),
@@ -575,7 +578,7 @@ export class AdmissionsService {
         totalCharges: totalCharges.toString(),
         receipt,
       };
-    });
+    }));
   }
 
   async getActiveAdmissions(hospitalId: string) {

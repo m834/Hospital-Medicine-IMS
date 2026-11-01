@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Save, TestTube, User, Clock, Plus, Trash2 } from "lucide-react";
 import { formatMRN } from '@/lib/mrn';
+import { toast } from "@/hooks/use-toast";
 
 interface ResultField {
   parameter: string;
@@ -53,7 +54,7 @@ export default function ResultEntryPage({ params }: { params: Promise<{ orderId:
     const validResults = resultFields.filter((f) => f.parameter && f.value);
 
     if (validResults.length === 0) {
-      alert("Please enter at least one result parameter");
+      toast({ title: "Nothing to save", description: "Please enter at least one result parameter", variant: "destructive" });
       return;
     }
 

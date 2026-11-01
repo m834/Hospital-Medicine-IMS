@@ -6,6 +6,7 @@ import { PrismaService } from '@/database/prisma.service';
 import { CreateReceiptDto, ReceiptQueryDto } from './dto';
 import { PaymentStatus, PaymentMethod } from '@prisma/client';
 import { localDateStamp } from '../../common/utils/local-day.util';
+import { retryOnUniqueViolation } from '../../common/utils/unique-retry.util';
 
 @Injectable()
 export class ReceiptsService {
@@ -46,9 +47,6 @@ export class ReceiptsService {
       );
     }
 
-    // Generate receipt number
-    const receiptNumber = await this.generateReceiptNumber();
-
     // Calculate total amount
     const amount = createReceiptDto.amount;
     const discount = createReceiptDto.discount || 0;
@@ -58,33 +56,37 @@ export class ReceiptsService {
     const normalizedPaidAmount = Math.max(createReceiptDto.paidAmount ?? 0, 0);
     const resolvedPaymentStatus = this.resolvePaymentStatus(normalizedPaidAmount, totalAmount);
 
-    // Create receipt
-    return this.prisma.receipt.create({
-      data: {
-        hospitalId: createReceiptDto.hospitalId,
-        patientId: createReceiptDto.patientId,
-        visitId: createReceiptDto.visitId,
-        departmentId: createReceiptDto.departmentId,
-        generatedById: createReceiptDto.generatedById,
-        receiptNumber,
-        receiptType: createReceiptDto.receiptType,
-        description: createReceiptDto.description,
-        amount,
-        discount,
-        tax,
-        totalAmount,
-        paidAmount: normalizedPaidAmount,
-        paymentMethod: createReceiptDto.paymentMethod || PaymentMethod.CASH,
-        paymentStatus: createReceiptDto.paymentStatus || resolvedPaymentStatus,
-        paidAt: normalizedPaidAmount > 0 ? new Date() : undefined,
-        notes: createReceiptDto.notes,
-      },
-      include: {
-        hospital: { select: { id: true, name: true } },
-        patient: { select: { id: true, fullName: true, nrNumber: true } },
-        department: { select: { id: true, name: true } },
-        generatedBy: { select: { id: true, fullName: true } },
-      },
+    // Create receipt. Its number is "highest so far + 1", so a number another
+    // desk took at the same moment is drawn again.
+    return retryOnUniqueViolation(async () => {
+      const receiptNumber = await this.generateReceiptNumber();
+      return this.prisma.receipt.create({
+        data: {
+          hospitalId: createReceiptDto.hospitalId,
+          patientId: createReceiptDto.patientId,
+          visitId: createReceiptDto.visitId,
+          departmentId: createReceiptDto.departmentId,
+          generatedById: createReceiptDto.generatedById,
+          receiptNumber,
+          receiptType: createReceiptDto.receiptType,
+          description: createReceiptDto.description,
+          amount,
+          discount,
+          tax,
+          totalAmount,
+          paidAmount: normalizedPaidAmount,
+          paymentMethod: createReceiptDto.paymentMethod || PaymentMethod.CASH,
+          paymentStatus: createReceiptDto.paymentStatus || resolvedPaymentStatus,
+          paidAt: normalizedPaidAmount > 0 ? new Date() : undefined,
+          notes: createReceiptDto.notes,
+        },
+        include: {
+          hospital: { select: { id: true, name: true } },
+          patient: { select: { id: true, fullName: true, nrNumber: true } },
+          department: { select: { id: true, name: true } },
+          generatedBy: { select: { id: true, fullName: true } },
+        },
+      });
     });
   }
 

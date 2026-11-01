@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -71,6 +72,7 @@ interface SubDepartment {
 }
 
 export function DepartmentManagement() {
+  const [confirm, confirmDialog] = useConfirmDialog();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [selectedDepartment, setSelectedDepartment] = useState<Department | null>(null);
   const [subDepartments, setSubDepartments] = useState<SubDepartment[]>([]);
@@ -208,7 +210,7 @@ export function DepartmentManagement() {
   };
 
   const handleDeleteDepartment = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this department?')) return;
+    if (!(await confirm('Are you sure you want to delete this department?'))) return;
 
     try {
       await api.delete(`/departments/${id}`);
@@ -273,7 +275,7 @@ export function DepartmentManagement() {
   };
 
   const handleDeleteSubDepartment = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this sub-department?')) return;
+    if (!(await confirm('Are you sure you want to delete this sub-department?'))) return;
 
     try {
       await api.delete(`/sub-departments/${id}`);
@@ -731,6 +733,7 @@ export function DepartmentManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

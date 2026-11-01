@@ -8,13 +8,14 @@ import { VisitsService } from '../visits/visits.service';
 import { AdmissionsService } from '../admissions/admissions.service';
 import { AdmissionType, Prisma, VisitType } from '@prisma/client';
 import { mrnFilter } from '../../common/utils/mrn.util';
+import { retryOnUniqueViolation } from '../../common/utils/unique-retry.util';
 
 /**
- * An indoor registration writes the patient, the visit, the admission, the
- * bed and the room in one transaction — more than Prisma's 5s default allows
- * on a busy server.
+ * A registration writes the patient and the visit (and, for indoor, the
+ * admission, the bed and the room) in one transaction — more than Prisma's 5s
+ * default allows on a busy server.
  */
-const INDOOR_REGISTRATION_TX = { maxWait: 10_000, timeout: 20_000 };
+const REGISTRATION_TX = { maxWait: 10_000, timeout: 20_000 };
 
 @Injectable()
 export class PatientsService {
@@ -259,25 +260,23 @@ export class PatientsService {
 
     if (existingPatient) {
       if (isIndoor) {
-        await this.prisma.$transaction(
-          (tx) => this.createIndoorStay(tx, existingPatient.id, createPatientDto, userId, hospitalId),
-          INDOOR_REGISTRATION_TX,
+        await retryOnUniqueViolation(() =>
+          this.prisma.$transaction(
+            (tx) => this.createIndoorStay(tx, existingPatient.id, createPatientDto, userId, hospitalId),
+            REGISTRATION_TX,
+          ),
         );
         return existingPatient;
       }
 
-      // Create visit for all other types
+      // Create visit for all other types (it saves and retries on its own)
       await this.createVisitForRegistration(existingPatient.id, createPatientDto, userId, hospitalId);
 
       return existingPatient;
     }
 
-    // Generate MRN
-    const nrNumber = await this.generateNRNumber(hospitalId);
-
-    const patientData: Prisma.PatientUncheckedCreateInput = {
+    const patientData: Omit<Prisma.PatientUncheckedCreateInput, 'nrNumber'> = {
       hospitalId,
-      nrNumber,
       fullName: createPatientDto.fullName,
       mobile: createPatientDto.mobile ?? null,
       // Blank is stored as null, not '', so it never collides with another
@@ -297,27 +296,30 @@ export class PatientsService {
       registeredBy: userId,
     };
 
-    // Indoor: the patient, visit and admission are saved together, so a
-    // refused admission (bed taken, patient already admitted) leaves no
-    // half-registered patient behind.
-    if (isIndoor) {
+    // The patient and their visit (and, for indoor, the admission) are saved
+    // together: a visit that fails — a refused admission, a bed taken — leaves
+    // no patient without a visit behind, and so no duplicate when the desk
+    // tries again. A visit, token or receipt number taken by another desk at
+    // the same moment retries the whole registration with fresh numbers; the
+    // MRN is drawn again too, so a collision on it is covered the same way.
+    return retryOnUniqueViolation(async () => {
+      const nrNumber = await this.generateNRNumber(hospitalId);
+
       return this.prisma.$transaction(async (tx) => {
-        const patient = await tx.patient.create({ data: patientData, include: patientInclude });
-        await this.createIndoorStay(tx, patient.id, createPatientDto, userId, hospitalId);
+        const patient = await tx.patient.create({
+          data: { ...patientData, nrNumber },
+          include: patientInclude,
+        });
+
+        if (isIndoor) {
+          await this.createIndoorStay(tx, patient.id, createPatientDto, userId, hospitalId);
+        } else {
+          await this.createVisitForRegistration(patient.id, createPatientDto, userId, hospitalId, tx);
+        }
+
         return patient;
-      }, INDOOR_REGISTRATION_TX);
-    }
-
-    // Create patient
-    const patient = await this.prisma.patient.create({
-      data: patientData,
-      include: patientInclude,
+      }, REGISTRATION_TX);
     });
-
-    // Create visit for all other types
-    await this.createVisitForRegistration(patient.id, createPatientDto, userId, hospitalId);
-
-    return patient;
   }
 
   /**

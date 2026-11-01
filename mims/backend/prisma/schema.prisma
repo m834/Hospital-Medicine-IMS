@@ -2566,3 +2566,33 @@ model Expenditure {
   @@index([hospitalId, type])
   @@map("expenditures")
 }
+
+/// Errors reported by the browser on client machines (window errors, unhandled
+/// promise rejections and failed API calls), so a desk that cannot be reached
+/// can still be diagnosed. Deliberately unrelated to other tables: a report
+/// must be storable even before login, and must never block a delete.
+model ClientErrorLog {
+  id         String    @id @default(uuid())
+  createdAt  DateTime  @default(now()) @map("created_at")
+  /// When the browser saw it, by the browser's clock.
+  occurredAt DateTime? @map("occurred_at")
+  /// "error" | "unhandledrejection" | "api"
+  kind       String
+  message    String
+  stack      String?
+  route      String?
+  apiUrl     String?   @map("api_url")
+  apiMethod  String?   @map("api_method")
+  apiStatus  Int?      @map("api_status")
+  appVersion String?   @map("app_version")
+  machineId  String?   @map("machine_id")
+  userAgent  String?   @map("user_agent")
+  userId     String?   @map("user_id")
+  hospitalId String?   @map("hospital_id")
+  ipAddress  String?   @map("ip_address")
+
+  @@index([createdAt])
+  @@index([machineId, createdAt])
+  @@index([kind, createdAt])
+  @@map("client_error_logs")
+}

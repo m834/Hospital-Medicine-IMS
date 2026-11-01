@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useLabOrders, useEnterResult } from "@/hooks/use-lab-orders";
+import { useLabOrders, useEnterResult, LAB_LIST_LIMIT } from "@/hooks/use-lab-orders";
 import { useHospitalStore } from "@/stores/hospital.store";
 import { useAuthStore } from "@/stores/auth.store";
 import { UserRole } from "@/lib/constants";
@@ -14,12 +14,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Search, FileText, Clock, TestTube } from "lucide-react";
 import { matchesMRN } from '@/lib/mrn';
+import { LabListDateFilter } from "@/components/lab/lab-list-date-filter";
 
 export default function LabResultsPage() {
   const { selectedHospital } = useHospitalStore();
   const { user } = useAuthStore();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+  // Both or neither; empty shows every date, up to the list's cap.
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   // Get hospital ID - Master/Super Admin use dropdown, others use user.hospitalId
   const hospitalId = selectedHospital?.id || user?.hospitalId;
@@ -27,6 +31,9 @@ export default function LabResultsPage() {
 
   const { data: orders, isLoading } = useLabOrders(hospitalId || "", {
     status: "SAMPLE_COLLECTED",
+    startDate,
+    endDate,
+    limit: LAB_LIST_LIMIT,
   });
 
   const filteredOrders = orders?.filter((order) =>
@@ -67,7 +74,7 @@ export default function LabResultsPage() {
       </div>
 
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 space-y-4">
           <div className="relative">
             <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
@@ -77,6 +84,13 @@ export default function LabResultsPage() {
               className="pl-10"
             />
           </div>
+          <LabListDateFilter
+            startDate={startDate}
+            endDate={endDate}
+            onStartDateChange={setStartDate}
+            onEndDateChange={setEndDate}
+            shown={orders?.length ?? 0}
+          />
         </CardContent>
       </Card>
 

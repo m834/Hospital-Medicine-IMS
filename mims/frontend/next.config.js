@@ -2,6 +2,12 @@
 
 const isProd = process.env.NODE_ENV === 'production';
 
+// Which build a client machine is running, sent with its error reports:
+// the package version plus when this build was made (UTC).
+const appVersion =
+  process.env.NEXT_PUBLIC_APP_VERSION ||
+  `${require('./package.json').version}+${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}`;
+
 const nextConfig = {
   // Standalone output — enables minimal Docker image without node_modules copy
   output: isProd ? 'standalone' : undefined,
@@ -13,6 +19,7 @@ const nextConfig = {
     NEXTAUTH_URL: process.env.NEXTAUTH_URL,
     NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+    NEXT_PUBLIC_APP_VERSION: appVersion,
   },
 
   // ─── Production Protection ──────────────────────────────────────

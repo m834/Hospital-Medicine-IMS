@@ -132,12 +132,16 @@ describe('PatientsService indoor registration', () => {
     );
   });
 
-  it('leaves OPD registration as it was — no transaction, no admission', async () => {
+  it('saves an OPD patient and their visit in one transaction, with no admission', async () => {
     await service.create({ fullName: 'Sana Iqbal', visitType: 'OPD' } as any, 'user-1', 'hospital-1');
 
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(prisma.patient.create).toHaveBeenCalledTimes(1);
-    expect(visitsService.create).toHaveBeenCalledWith(expect.anything(), undefined);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.patient.create).toHaveBeenCalledTimes(1);
+    expect(prisma.patient.create).not.toHaveBeenCalled();
+    expect(visitsService.create).toHaveBeenCalledWith(
+      expect.objectContaining({ patientId: 'patient-1' }),
+      tx,
+    );
     expect(admissionsService.create).not.toHaveBeenCalled();
   });
 });

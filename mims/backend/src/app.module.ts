@@ -59,6 +59,7 @@ import { LicenseModule } from './common/license/license.module';
 import { DatabaseModule } from './database/database.module';
 import { HospitalsModule } from './modules/hospitals/hospitals.module';
 import { BackupModule } from './modules/backup/backup.module';
+import { ClientErrorsModule } from './modules/client-errors/client-errors.module';
 import databaseConfig from './config/database.config';
 import appConfig from './config/app.config';
 
@@ -132,6 +133,8 @@ import appConfig from './config/app.config';
     AttendanceModule,
     PayrollModule,
     ExpenditureModule,
+    // Errors reported by browsers on client machines
+    ClientErrorsModule,
   ],
   providers: [
     {

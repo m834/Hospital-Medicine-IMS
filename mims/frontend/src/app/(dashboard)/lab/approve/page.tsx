@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useLabOrders, useApproveResult, downloadLabResultPdf } from "@/hooks/use-lab-orders";
+import { useLabOrders, useApproveResult, downloadLabResultPdf, LAB_LIST_LIMIT } from "@/hooks/use-lab-orders";
 import { useHospitalStore } from "@/stores/hospital.store";
 import { useAuthStore } from "@/stores/auth.store";
 import { UserRole } from "@/lib/constants";
@@ -14,11 +14,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Search, CheckCircle, Download, FileText, User, TestTube } from "lucide-react";
 import type { LabOrder } from "@/hooks/use-lab-orders";
+import { LabListDateFilter } from "@/components/lab/lab-list-date-filter";
 
 export default function LabApprovePage() {
   const { selectedHospital } = useHospitalStore();
   const { user, token } = useAuthStore();
   const [searchQuery, setSearchQuery] = useState("");
+  // Both or neither; empty shows every date, up to the list's cap.
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<LabOrder | null>(null);
   const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
   const [approvalNotes, setApprovalNotes] = useState("");
@@ -29,6 +33,9 @@ export default function LabApprovePage() {
 
   const { data: completedOrders } = useLabOrders(hospitalId || "", {
     status: "COMPLETED",
+    startDate,
+    endDate,
+    limit: LAB_LIST_LIMIT,
   });
 
   const approveMutation = useApproveResult();
@@ -92,7 +99,7 @@ export default function LabApprovePage() {
       </div>
 
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 space-y-4">
           <div className="relative">
             <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
@@ -102,6 +109,13 @@ export default function LabApprovePage() {
               className="pl-10"
             />
           </div>
+          <LabListDateFilter
+            startDate={startDate}
+            endDate={endDate}
+            onStartDateChange={setStartDate}
+            onEndDateChange={setEndDate}
+            shown={completedOrders?.length ?? 0}
+          />
         </CardContent>
       </Card>
 

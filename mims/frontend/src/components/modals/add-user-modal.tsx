@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import api, { getErrorMessage } from '@/lib/api';
+import { toast } from '@/hooks/use-toast';
 
 interface Hospital {
   id: string;
@@ -256,12 +257,12 @@ export function AddUserModal({ isOpen, hospital, onClose, onUserAdded }: AddUser
 
       await api.post(`/hospitals/${hospital.id}/users`, payload);
 
-      alert('User created successfully');
+      toast({ title: 'User created successfully' });
 
       onUserAdded();
       onClose();
     } catch (err) {
-      alert(`Error: ${getErrorMessage(err)}`);
+      toast({ title: 'Could not create the user', description: getErrorMessage(err), variant: 'destructive' });
     } finally {
       setLoading(false);
     }

@@ -135,6 +135,9 @@ export default function RegisterPatientPage() {
   const [lastRegisteredPrinted, setLastRegisteredPrinted] = useState(false);
   // Why that registration's slip did not print, if it did not.
   const [lastPrintError, setLastPrintError] = useState({ mrn: '', error: '' });
+  // Shown on the page, not in a native alert: alert() leaves the MIMS Desktop
+  // window unable to focus its inputs afterwards.
+  const [registerError, setRegisterError] = useState('');
 
   const router = useRouter();
   const { user } = useAuthStore();
@@ -314,10 +317,10 @@ export default function RegisterPatientPage() {
 
   const registerPatient = async (data: PatientFormData, print: boolean) => {
     setSubmitting(true);
+    setRegisterError('');
     try {
       if (!currentHospitalId) {
-        alert('Please select a hospital first');
-        setSubmitting(false);
+        setRegisterError('Please select a hospital first.');
         return;
       }
 
@@ -378,8 +381,8 @@ export default function RegisterPatientPage() {
       setSelectedFee('');
       setSelectedBedRate('');
     } catch (error: any) {
-      console.error('Error registering patient:', error);
-      alert(error.response?.data?.message || 'Failed to register patient');
+      setLastRegisteredMrn('');
+      setRegisterError(error.response?.data?.message || 'Failed to register patient');
     } finally {
       setSubmitting(false);
     }
@@ -402,6 +405,16 @@ export default function RegisterPatientPage() {
           Fill in patient details to generate MRN
         </p>
       </div>
+
+      {registerError && (
+        <div
+          role="alert"
+          className="mb-6 flex items-center gap-2 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
+        >
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>The patient was not registered: {registerError}</span>
+        </div>
+      )}
 
       {/* Confirms the save that just happened — the form itself is back to blank
           for the next patient. */}

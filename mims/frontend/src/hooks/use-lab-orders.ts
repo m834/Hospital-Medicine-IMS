@@ -94,6 +94,13 @@ export interface ApproveResultInput {
   approvalNotes?: string;
 }
 
+/**
+ * How many rows the lab work lists (queue, results, approval) load at most.
+ * A list that comes back this long may have more behind it; the screens say
+ * so and offer dates to narrow it.
+ */
+export const LAB_LIST_LIMIT = 200;
+
 export function useLabOrders(
   hospitalId: string,
   filters?: {
@@ -103,6 +110,7 @@ export function useLabOrders(
     priority?: string;
     startDate?: string;
     endDate?: string;
+    limit?: number;
   }
 ) {
   const { token } = useAuthStore();
@@ -116,6 +124,7 @@ export function useLabOrders(
       if (filters?.priority) params.priority = filters.priority;
       if (filters?.startDate) params.startDate = filters.startDate;
       if (filters?.endDate) params.endDate = filters.endDate;
+      if (filters?.limit) params.limit = String(filters.limit);
 
       const { data } = await api.get(`/lab-orders`, { params });
       // Handle both wrapped and unwrapped responses
@@ -137,12 +146,23 @@ export function useLabOrder(id: string) {
   });
 }
 
-export function usePendingLabOrders(hospitalId: string) {
+export function usePendingLabOrders(
+  hospitalId: string,
+  filters: { startDate?: string; endDate?: string } = {},
+) {
   const { token } = useAuthStore();
   return useQuery({
-    queryKey: ["labOrders", "pending", hospitalId],
+    queryKey: ["labOrders", "pending", hospitalId, filters.startDate || null, filters.endDate || null],
     queryFn: async () => {
-      const { data } = await api.get(`/lab-orders/pending`, { params: { hospitalId } });
+      const { data } = await api.get(`/lab-orders/pending`, {
+        params: {
+          hospitalId,
+          limit: LAB_LIST_LIMIT,
+          ...(filters.startDate && filters.endDate
+            ? { startDate: filters.startDate, endDate: filters.endDate }
+            : {}),
+        },
+      });
       // Handle both wrapped and unwrapped responses
       return (data?.data || data) as LabOrder[];
     },

@@ -16,12 +16,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { TestTube, Clock, User, AlertCircle, CheckCircle2, Syringe, DollarSign } from "lucide-react";
 import type { LabOrder } from "@/hooks/use-lab-orders";
 import { formatMRN } from '@/lib/mrn';
+import { LabListDateFilter } from "@/components/lab/lab-list-date-filter";
 
 export default function LabQueuePage() {
   const { selectedHospital } = useHospitalStore();
   const { user } = useAuthStore();
   const [selectedOrder, setSelectedOrder] = useState<LabOrder | null>(null);
   const [isCollectDialogOpen, setIsCollectDialogOpen] = useState(false);
+  // Both or neither; empty shows every date, up to the list's cap.
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [collectData, setCollectData] = useState({
     sampleType: "",
     sampleNotes: "",
@@ -31,7 +35,7 @@ export default function LabQueuePage() {
   const hospitalId = selectedHospital?.id || user?.hospitalId;
   const isMasterOrSuper = user?.role === UserRole.MASTER_ADMIN || user?.role === UserRole.SUPER_ADMIN;
 
-  const { data: pendingOrders, isLoading } = usePendingLabOrders(hospitalId || "");
+  const { data: pendingOrders, isLoading } = usePendingLabOrders(hospitalId || "", { startDate, endDate });
   const collectMutation = useCollectSample();
 
   const getPriorityBadge = (priority: string) => {
@@ -105,6 +109,18 @@ export default function LabQueuePage() {
         <h1 className="text-3xl font-bold">Lab Sample Collection Queue</h1>
         <p className="text-muted-foreground">Pending lab orders awaiting sample collection</p>
       </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          <LabListDateFilter
+            startDate={startDate}
+            endDate={endDate}
+            onStartDateChange={setStartDate}
+            onEndDateChange={setEndDate}
+            shown={pendingOrders?.length ?? 0}
+          />
+        </CardContent>
+      </Card>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

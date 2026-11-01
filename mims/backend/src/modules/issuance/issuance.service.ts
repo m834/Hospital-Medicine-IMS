@@ -12,6 +12,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { PaymentMethod, PaymentStatus, Prisma, ReceiptType } from '@prisma/client';
 import { mrnFilter } from '../../common/utils/mrn.util';
 import { localDateStamp } from '../../common/utils/local-day.util';
+import { retryOnUniqueViolation } from '../../common/utils/unique-retry.util';
 
 @Injectable()
 export class IssuanceService {
@@ -153,7 +154,10 @@ export class IssuanceService {
     );
 
     // Execute atomic transaction
-    const issueTransaction = await this.prisma.$transaction(async (tx) => {
+    // The receipt's number is "highest so far + 1"; one taken by another desk
+    // at the same moment retries the whole issue (nothing is kept from a
+    // failed attempt).
+    const issueTransaction = await retryOnUniqueViolation(() => this.prisma.$transaction(async (tx) => {
       // Create issue transaction
       const issue = await tx.issueTransaction.create({
         data: {
@@ -248,7 +252,7 @@ export class IssuanceService {
       });
 
       return issue;
-    });
+    }));
 
     // Return full issue details
     return this.findOne(issueTransaction.id, hospitalId);

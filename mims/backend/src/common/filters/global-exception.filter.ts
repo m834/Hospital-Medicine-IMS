@@ -129,16 +129,21 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
     // Handle unknown exceptions
     else if (exception instanceof Error) {
-      // The client is told nothing (right — the message may carry internals),
-      // so the log is the ONLY record of what happened. It has to survive the
-      // obfuscator, which means Logger rather than console.
-      this.logger.error(
-        `Unhandled error on ${request.method} ${request.url}: ${exception.message}`,
-        exception.stack,
-      );
       message = 'Internal Server Error';
       error = 'InternalServerError';
       statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
+    }
+
+    // Every 5xx is logged — thrown errors and HttpExceptions alike. The client
+    // is told only "An unexpected error occurred" (right — the message may
+    // carry internals), so the log is the ONLY record of what happened. It has
+    // to survive the obfuscator, which means Logger rather than console.
+    if (statusCode >= 500) {
+      const detail = exception instanceof Error ? exception.message : String(exception);
+      this.logger.error(
+        `Unhandled error on ${request.method} ${request.url} (${statusCode}): ${detail}`,
+        exception instanceof Error ? exception.stack : undefined,
+      );
     }
 
     // Build response

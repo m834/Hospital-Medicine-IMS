@@ -21,6 +21,7 @@ import {
   ReceiptType,
 } from '@prisma/client';
 import { localDateStamp } from '../../common/utils/local-day.util';
+import { retryOnUniqueViolation } from '../../common/utils/unique-retry.util';
 
 enum OperationPatientType {
   OPD = 'OPD',
@@ -243,27 +244,31 @@ export class OperationsService {
     });
 
     const operationAmount = createDto.operationPrice ?? 0;
-    const receiptNumber = await this.generateReceiptNumber();
+    // The receipt's number is "highest so far + 1"; one taken by another desk
+    // at the same moment is drawn again.
+    await retryOnUniqueViolation(async () => {
+      const receiptNumber = await this.generateReceiptNumber();
 
-    await this.prisma.receipt.create({
-      data: {
-        hospitalId,
-        patientId,
-        visitId: visitId ?? resolvedAdmission?.visitId ?? undefined,
-        departmentId,
-        generatedById: createdById,
-        receiptNumber,
-        receiptType: ReceiptType.PROCEDURE,
-        description: `Procedure - ${createDto.operationType}`,
-        amount: operationAmount,
-        discount: 0,
-        tax: 0,
-        totalAmount: operationAmount,
-        paidAmount: 0,
-        paymentMethod: PaymentMethod.CASH,
-        paymentStatus: PaymentStatus.UNPAID,
-        notes: createDto.notes,
-      },
+      await this.prisma.receipt.create({
+        data: {
+          hospitalId,
+          patientId,
+          visitId: visitId ?? resolvedAdmission?.visitId ?? undefined,
+          departmentId,
+          generatedById: createdById,
+          receiptNumber,
+          receiptType: ReceiptType.PROCEDURE,
+          description: `Procedure - ${createDto.operationType}`,
+          amount: operationAmount,
+          discount: 0,
+          tax: 0,
+          totalAmount: operationAmount,
+          paidAmount: 0,
+          paymentMethod: PaymentMethod.CASH,
+          paymentStatus: PaymentStatus.UNPAID,
+          notes: createDto.notes,
+        },
+      });
     });
 
     return operation;

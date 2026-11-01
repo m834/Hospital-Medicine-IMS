@@ -6,6 +6,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL } from './constants';
 import { getAccessToken, refreshAccessToken, clearAuthTokens } from './auth';
+import { reportApiFailure } from './error-reporter';
 
 // Create axios instance
 const api = axios.create({
@@ -41,6 +42,10 @@ api.interceptors.response.use(
     const originalRequest = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;
     };
+
+    // The screen shows its friendly message; the real failure (5xx, or no
+    // answer at all) is reported so it is never lost.
+    reportApiFailure(error);
 
     // Handle 401 Unauthorized - attempt a single refresh and retry queued requests
     if (error.response?.status === 401 && originalRequest) {

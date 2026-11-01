@@ -13,7 +13,8 @@ describe('LabOrdersService.create — backdating', () => {
   let service: LabOrdersService;
 
   const tx = {
-    labOrder: { create: jest.fn() },
+    // The order number is read inside the transaction.
+    labOrder: { create: jest.fn(), findFirst: jest.fn() },
     receipt: { create: jest.fn(), findFirst: jest.fn() },
     auditLog: { create: jest.fn() },
   };
@@ -47,6 +48,7 @@ describe('LabOrdersService.create — backdating', () => {
       departmentId: null,
     });
     mockPrismaService.user.findUnique.mockResolvedValue({ departmentId: null });
+    tx.labOrder.findFirst.mockResolvedValue(null);
     tx.receipt.findFirst.mockResolvedValue(null);
     tx.labOrder.create.mockImplementation(({ data }: any) =>
       Promise.resolve({ id: 'order-1', ...data }),

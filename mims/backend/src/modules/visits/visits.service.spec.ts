@@ -105,6 +105,10 @@ describe('VisitsService', () => {
       create: jest.fn(),
       update: jest.fn(),
     },
+    // The highest PV- number already issued today: none yet.
+    $queryRaw: jest.fn().mockResolvedValue([{ highest: null }]),
+    // The lock taken before reading it.
+    $executeRaw: jest.fn().mockResolvedValue(1),
     $transaction: jest.fn((arg) => {
       // Handle both array pattern and callback pattern
       if (Array.isArray(arg)) {

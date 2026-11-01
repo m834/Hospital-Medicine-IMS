@@ -70,6 +70,7 @@ export class LabOrdersController {
     @Query('orderedById') orderedById?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('limit') limit?: string,
   ) {
     return this.labOrdersService.findAll(
       hospitalId,
@@ -81,14 +82,24 @@ export class LabOrdersController {
         orderedById,
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
+        limit: limit ? Number(limit) : undefined,
       },
       user,
     );
   }
 
   @Get('pending')
-  getPendingOrders(@Query('hospitalId') hospitalId: string) {
-    return this.labOrdersService.getPendingOrders(hospitalId);
+  getPendingOrders(
+    @Query('hospitalId') hospitalId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.labOrdersService.getPendingOrders(hospitalId, {
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
   }
 
   /**
