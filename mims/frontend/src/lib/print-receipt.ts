@@ -117,8 +117,8 @@ const SLIP_PAGE_CSS = `
           .slip { padding: 46.5mm calc(15mm + 8px) 15mm calc(22mm + 8px); }`;
 
 /**
- * Every value on both slips prints bold, at 20px; the lab slip's MR at 32px,
- * the registration slip's at 30px (its own rows, below).
+ * Every value on the lab slip prints bold, at 20px; the MR at 32px. The
+ * registration slip has its own block, below.
  */
 const SLIP_LINE_CSS = `
           .head, .middle, .line {
@@ -141,24 +141,50 @@ const SLIP_LINE_CSS = `
 
 /**
  * The registration slip's two rows: MR (30px) | Date, then Name | Created By.
- * The right-hand values keep a gap from the edge — the printer was cutting
- * them off — and share it, so Date and Created By line up. Tune the gap with
- * --slip-right-gap. MR may wrap before it pushes the Date off the page.
+ * They sit as one block in the middle of the page, clear of both edges and
+ * the tractor-feed holes, with a fixed gap between the two columns; Date and
+ * Created By line up on their right.
+ *
+ * Tune against the pre-printed form with these values only:
+ *   --slip-top      down / up      (distance from the top of the paper)
+ *   --slip-shift-x  right / left   (positive moves right, negative left)
+ *   --slip-width    the widest the block may get, as a share of the page
+ *   --slip-gap      space between the left values and the right values
+ *   --slip-row-gap  space between row 1 and row 2
  */
 const REGISTRATION_ROW_CSS = `
-          .slip.registration { --slip-right-gap: 60px; }
-          .reg-row { display: flex; justify-content: space-between; align-items: baseline; }
-          .reg-row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
-          .reg-row > span:last-child { flex-shrink: 0; white-space: nowrap; margin-right: var(--slip-right-gap); text-align: right; }
-          .reg-row.mr > span:first-child { font-size: 30px; }`;
+          .slip.registration {
+            --slip-top: 46.5mm;
+            --slip-shift-x: 0mm;
+            --slip-width: 75%;
+            --slip-gap: 36px;
+            --slip-row-gap: 0px;
+            padding: var(--slip-top) 0 0;
+          }
+          .reg-block {
+            display: grid;
+            grid-template-columns: minmax(0, max-content) max-content;
+            justify-content: center;
+            align-items: baseline;
+            column-gap: var(--slip-gap);
+            row-gap: var(--slip-row-gap);
+            width: var(--slip-width);
+            margin: 0 auto;
+            position: relative;
+            left: var(--slip-shift-x);
+            font-size: 20px;
+            font-weight: 700;
+            line-height: 1.4;
+          }
+          .reg-block > span { white-space: nowrap; }
+          .reg-block > .right { justify-self: end; }
+          .reg-block > .mr { font-size: 30px; }
+          /* Only a name too long for the block may wrap, at its spaces. */
+          .reg-block > .name { white-space: normal; }`;
 
-function patientSlipHtml(lines: SlipLine[]): string {
-  const rows = lines
-    .map(
-      (line, index) => `
-          <div class="line reg-row${index === 0 ? ' mr' : ''}">${cell(line.left[0])}${cell(line.right[0])}</div>`,
-    )
-    .join('');
+function patientSlipHtml([first, second]: SlipLine[]): string {
+  const span = (className: string, value = '') =>
+    `<span class="${className}">${escapeHtml(value)}</span>`;
 
   return `
     <!DOCTYPE html>
@@ -166,11 +192,12 @@ function patientSlipHtml(lines: SlipLine[]): string {
       <head>
         <meta charset="utf-8">
         <style>
-${SLIP_PAGE_CSS}${SLIP_LINE_CSS}${REGISTRATION_ROW_CSS}
+${SLIP_PAGE_CSS}${REGISTRATION_ROW_CSS}
         </style>
       </head>
       <body>
-        <div class="slip registration">${rows}
+        <div class="slip registration">
+          <div class="reg-block">${span('mr', first.left[0])}${span('right', first.right[0])}${span('name', second.left[0])}${span('right', second.right[0])}</div>
         </div>
       </body>
     </html>

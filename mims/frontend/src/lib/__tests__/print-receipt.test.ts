@@ -530,22 +530,22 @@ describe('printPatientReceipt', () => {
     // The station check is async; let it settle so the slip frame goes in.
     for (let i = 0; i < 5 && !written; i += 1) await Promise.resolve();
 
-    // MR (30px) | Date, then Name | Created By — everything bold, on the lab
-    // slip's page, fonts and margins.
+    // MR (30px) | Date, then Name | Created By — one block, centred on the
+    // page with a fixed gap, never pushed to the edges.
     expect(written).toContain(
-      '<div class="line reg-row mr"><span>MR-2026-10-16-482913</span><span>16/10/2026</span></div>',
+      '<div class="reg-block"><span class="mr">MR-2026-10-16-482913</span><span class="right">16/10/2026</span>' +
+        '<span class="name">Ali Khan</span><span class="right">Created By: Sana Iqbal</span></div>',
     );
-    expect(written).toContain(
-      '<div class="line reg-row"><span>Ali Khan</span><span>Created By: Sana Iqbal</span></div>',
-    );
-    expect(written).toContain('.reg-row.mr > span:first-child { font-size: 30px; }');
+    expect(written).toContain('.reg-block > .mr { font-size: 30px; }');
     expect(written).toContain('font-weight: 700');
     expect(written).not.toContain('MALE');
-    expect(written).toContain('.slip { padding: 46.5mm calc(15mm + 8px) 15mm calc(22mm + 8px); }');
-    // Date and Created By share one tunable gap from the right edge.
-    expect(written).toContain('<div class="slip registration">');
-    expect(written).toContain('.slip.registration { --slip-right-gap: 60px; }');
-    expect(written).toContain('margin-right: var(--slip-right-gap)');
+    expect(written).toContain('@page { size: A4; margin: 0; }');
+    expect(written).toContain('justify-content: center;');
+    expect(written).toContain('margin: 0 auto;');
+    expect(written).not.toContain('space-between');
+    for (const variable of ['--slip-top', '--slip-shift-x', '--slip-width', '--slip-gap', '--slip-row-gap']) {
+      expect(written).toContain(`${variable}:`);
+    }
     if (print) expect(print).not.toHaveBeenCalled();
 
     // The frame never loads in jsdom, so the print gives up as not printed.
