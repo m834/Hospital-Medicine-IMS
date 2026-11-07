@@ -6,6 +6,7 @@ import {
   labSlipLines,
   LabReceiptOrder,
 } from '../print-receipt';
+import { labSlipText, registrationSlipText } from '../slip-text';
 
 /**
  * printLabReceipt renders into a hidden iframe through srcdoc. Capture what it
@@ -487,14 +488,7 @@ describe('printPatientReceipt', () => {
 
     expect(print).toHaveBeenCalledWith({
       docName: 'MIMS registration slip',
-      slips: [
-        {
-          lines: [
-            { left: ['MR-2026-10-16-482913'], right: ['16/10/2026'], bold: true },
-            { left: ['Ali Khan'], right: ['Created By: Sana Iqbal'], bold: true },
-          ],
-        },
-      ],
+      slips: [{ lines: registrationSlipText(patientSlipValues(registered, 'Sana Iqbal')) }],
     });
     expect(appendChild).not.toHaveBeenCalled();
   });
@@ -592,16 +586,9 @@ describe('printLabReceipt on a dot-matrix station', () => {
 
     await expect(printLabReceipt(orders, opts)).resolves.toEqual({ printed: true });
 
-    const head = [
-      { left: ['MR-2026-08-04-482913', 'Ali Khan'], right: ['16/10/2026'], bold: true },
-      { left: ['HEMATOLOGY'], right: ['Created By: Sana Iqbal'], bold: true },
-    ];
     expect(print).toHaveBeenCalledWith({
       docName: 'MIMS lab slip',
-      slips: [
-        { lines: [...head, { left: ['Complete Blood Count'], right: ['Rs. 1200.00'], bold: true }] },
-        { lines: [...head, { left: ['Liver Function Test'], right: ['Rs. 850.50'], bold: true }] },
-      ],
+      slips: orders.map((o) => ({ lines: labSlipText(labSlipLines(o, opts)) })),
     });
     expect(appendChild).not.toHaveBeenCalled();
   });

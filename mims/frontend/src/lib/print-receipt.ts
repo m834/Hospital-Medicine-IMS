@@ -1,6 +1,7 @@
 import { formatSlipMRN } from './mrn';
 import { formatKarachiDate } from './karachi-date';
 import { hasShellSlipPrinter, printRawSlips, rawSlipPrinter, type RawSlip } from './slip-printer';
+import { labSlipText, registrationSlipText } from './slip-text';
 
 export interface ReceiptPatient {
   nrNumber: string;
@@ -57,7 +58,7 @@ export function printPatientReceipt(
 
   return printSlips(
     'MIMS registration slip',
-    [{ lines: lines.map((line) => ({ ...line, bold: true })) }],
+    [{ lines: registrationSlipText(lines) }],
     () => patientSlipHtml(lines),
   );
 }
@@ -231,7 +232,7 @@ export interface LabReceiptOrder {
  * name and the order date; then the test's category, with who raised the
  * order on the right; then the test name, with its own amount on the right.
  * The HTML slip lays these out in columns (see labSlipHtml); the dot-matrix
- * text slip prints left and right as given.
+ * text slip lays them out the same way in spaces (see slip-text.ts).
  */
 export function labSlipLines(
   order: LabReceiptOrder,
@@ -276,7 +277,7 @@ export function printLabReceipt(
 
   return printSlips(
     'MIMS lab slip',
-    slips.map((lines) => ({ lines: lines.map((line) => ({ ...line, bold: true })) })),
+    slips.map((lines) => ({ lines: labSlipText(lines) })),
     () => labSlipHtml(slips),
   );
 }
